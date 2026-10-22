@@ -1,0 +1,33 @@
+## Visual Studio / .NET Build Artifacts
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+## Visual Studio Cache & User Files
+.vs/
+*.user
+*.userosscache
+*.suo
+*.userprefs
+*.sln.docstates
+
+## Debugger & Symbols
+*.pdb
+*.idb
+
+## Python Cache (modules)
+__pycache__/
+*.py[cod]
+*$py.class
+
+## Temporary Scratch & Reports
+scratch/
+reports/reports_*/
+
+## OS Generated Files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store

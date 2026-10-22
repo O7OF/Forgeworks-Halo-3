@@ -1,0 +1,15 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="ForgeWorks.UI.App"
+             xmlns:local="using:ForgeWorks.UI"
+             RequestedThemeVariant="Dark">
+             <!-- Forced Dark: the editor panels use a dark palette, so a Light system theme made all text invisible. -->
+
+    <Application.DataTemplates>
+        <local:ViewLocator />
+    </Application.DataTemplates>
+
+    <Application.Styles>
+        <FluentTheme />
+    </Application.Styles>
+</Application>

@@ -1,0 +1,1271 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:ForgeWorks.UI.ViewModels"
+        xmlns:views="using:ForgeWorks.UI.Views"
+        xmlns:geom="using:ForgeWorks.Core.Geometry"
+        xmlns:tags="using:ForgeWorks.Blam.Tags"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Width="1620" Height="960" MinWidth="1180" MinHeight="720"
+        WindowStartupLocation="CenterScreen"
+        WindowState="Normal"
+        x:Class="ForgeWorks.UI.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Icon="/Assets/avalonia-logo.ico"
+        Title="ForgeWorks Studio - Halo 3 Blam! Engine Desktop Editor (Sapien + Guerilla + Blender + Blockbench)"
+        Background="#181a1f">
+
+    <Window.Styles>
+        <!-- Blockbench Dark Obsidian Theme Styles -->
+        <Style Selector="Button">
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="FontSize" Value="11"/>
+        </Style>
+        <Style Selector="TextBox">
+            <Setter Property="Background" Value="#121316"/>
+            <Setter Property="Foreground" Value="#e4e4e7"/>
+            <Setter Property="BorderBrush" Value="#2e323b"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="FontSize" Value="11"/>
+        </Style>
+        <Style Selector="NumericUpDown">
+            <Setter Property="Background" Value="#121316"/>
+            <Setter Property="Foreground" Value="#e4e4e7"/>
+            <Setter Property="BorderBrush" Value="#2e323b"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="FontSize" Value="11"/>
+        </Style>
+        <Style Selector="TabControl">
+            <Setter Property="Background" Value="#1b1d23"/>
+        </Style>
+        <Style Selector="TabItem">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="10,6"/>
+            <Setter Property="Foreground" Value="#9ca3af"/>
+        </Style>
+        <Style Selector="TabItem:selected">
+            <Setter Property="Foreground" Value="#38bdf8"/>
+        </Style>
+    </Window.Styles>
+
+    <Window.KeyBindings>
+        <KeyBinding Gesture="Ctrl+Z" Command="{Binding UndoCommand}"/>
+        <KeyBinding Gesture="Ctrl+Y" Command="{Binding RedoCommand}"/>
+        <KeyBinding Gesture="Ctrl+D" Command="{Binding DuplicateSelectedObjectCommand}"/>
+        <KeyBinding Gesture="Delete" Command="{Binding DeleteSelectedCommand}"/>
+    </Window.KeyBindings>
+
+    <Grid RowDefinitions="Auto,Auto,*,170,Auto">
+
+        <!-- 1. TOP MENU & WORKSPACE BAR (BLOCKBENCH STYLE) -->
+        <Border Grid.Row="0" Background="#1e2128" BorderBrush="#2a2e39" BorderThickness="0,0,0,1" Padding="8,4">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                
+                <!-- Menu & Title -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <TextBlock Text="⚡ FORGEWORKS" FontWeight="Bold" FontSize="13" Foreground="#38bdf8" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <Menu Background="Transparent">
+                        <MenuItem Header="File" Foreground="#d1d5db" FontSize="11">
+                            <MenuItem Header="New Level Canvas" Command="{Binding GenerateTerrainCommand}"/>
+                            <Separator/>
+                            <MenuItem Header="Import">
+                                <MenuItem Header="Import .ASS Amalgam Scene..." Command="{Binding ImportAssCommand}"/>
+                                <MenuItem Header="Import .JMS Jointed Model..." Command="{Binding ImportJmsCommand}"/>
+                                <MenuItem Header="Import .OBJ Wavefront..." Command="{Binding ImportObjCommand}"/>
+                                <MenuItem Header="Import Tool WRL Error Wire..." Command="{Binding ImportWrlCommand}"/>
+                            </MenuItem>
+                            <MenuItem Header="Export">
+                                <MenuItem Header="Export .ASS to H3EK Structure Folder..." Command="{Binding ExportAssCommand}"/>
+                                <MenuItem Header="Export .JMS Model..." Command="{Binding ExportJmsCommand}"/>
+                                <MenuItem Header="Export .OBJ Wavefront..." Command="{Binding ExportObjCommand}"/>
+                            </MenuItem>
+                            <Separator/>
+                            <MenuItem Header="📁 Setup Map Folders &amp; Scenario" Command="{Binding SetupMapFoldersCommand}"/>
+                            <MenuItem Header="Save .scenario Tag" Command="{Binding SaveScenarioTagCommand}"/>
+                            <Separator/>
+                            <MenuItem Header="1-Click Compile &amp; Build" Command="{Binding CompileStructureCommand}"/>
+                        </MenuItem>
+                        <MenuItem Header="Edit" Foreground="#d1d5db" FontSize="11">
+                            <MenuItem Header="Undo" Command="{Binding UndoCommand}" InputGesture="Ctrl+Z"/>
+                            <MenuItem Header="Redo" Command="{Binding RedoCommand}" InputGesture="Ctrl+Y"/>
+                            <Separator/>
+                            <MenuItem Header="🌾 Swampthing Fix Open Edges &amp; Welds" Command="{Binding SwampthingFixAllCommand}"/>
+                            <MenuItem Header="1-Click Fix All Errors (Weld + Dissolve + Cap)" Command="{Binding AutoRepairAllCommand}"/>
+                            <MenuItem Header="Auto-Repair Active Mesh" Command="{Binding AutoRepairCommand}"/>
+                            <MenuItem Header="Run Geometry Linter" Command="{Binding RunLinterCommand}"/>
+                        </MenuItem>
+                        <MenuItem Header="Procedural Generation" Foreground="#d1d5db" FontSize="11">
+                            <MenuItem Header="🚀 Generate 'delta_canyon' Map" Command="{Binding GenerateDeltaCanyonMapCommand}"/>
+                            <MenuItem Header="🚀 Generate 'alpine_valley' Map" Command="{Binding GenerateAlpineValleyMapCommand}"/>
+                            <MenuItem Header="🚀 Generate 'swamp_basin' Map" Command="{Binding GenerateSwampBasinMapCommand}"/>
+                            <Separator/>
+                            <MenuItem Header="Generate Procedural Terrain" Command="{Binding GenerateTerrainCommand}"/>
+                            <MenuItem Header="Generate Rock Archetype" Command="{Binding GenerateRockCommand}"/>
+                            <MenuItem Header="Scatter Rocks on Terrain" Command="{Binding ScatterRocksCommand}"/>
+                            <MenuItem Header="Generate Foliage Tree" Command="{Binding GenerateFoliageCommand}"/>
+                            <MenuItem Header="Scatter Foliage on Terrain" Command="{Binding ScatterFoliageCommand}"/>
+                            <Separator/>
+                            <MenuItem Header="Generate UNSC Bunker" Command="{Binding GenerateBunkerCommand}"/>
+                            <MenuItem Header="Generate Sealed Water Volume" Command="{Binding GenerateWaterVolumeCommand}"/>
+                            <MenuItem Header="Generate Hallway Airlock (+portal)" Command="{Binding GenerateHallwayAirlockCommand}"/>
+                            <MenuItem Header="Generate Chokepoint Arch &amp; Portal" Command="{Binding GenerateChokepointArchCommand}"/>
+                        </MenuItem>
+                        <MenuItem Header="Transform" Foreground="#d1d5db" FontSize="11">
+                            <MenuItem Header="Snap to Ground" Command="{Binding CreateBrushCommand}"/>
+                            <MenuItem Header="Reset Viewport Camera" Command="{Binding FrameViewCommand}"/>
+                        </MenuItem>
+                        <MenuItem Header="Halo 3 Tools" Foreground="#d1d5db" FontSize="11">
+                            <MenuItem Header="Generate Watertight Sky Dome (+sky)" Command="{Binding GenerateWatertightSkyDomeCommand}"/>
+                            <MenuItem Header="Seal Map Watertight (+sky)" Command="{Binding SealMapWatertightCommand}"/>
+                            <MenuItem Header="Generate Cluster Portal Quad (+portal)" Command="{Binding GeneratePortalCommand}"/>
+                            <MenuItem Header="Import Tool WRL Error Wire" Command="{Binding ImportWrlCommand}"/>
+                            <MenuItem Header="Clear WRL Overlay" Command="{Binding ClearWrlCommand}"/>
+                            <Separator/>
+                            <MenuItem Header="Open Standalone Guerilla Tag Editor" Command="{Binding OpenTagEditorWindowCommand}"/>
+                        </MenuItem>
+                    </Menu>
+
+                    <!-- Active Document Tab (Blockbench generic model tab) -->
+                    <Border Background="#252932" CornerRadius="4,4,0,0" Padding="10,4" Margin="12,0,0,0">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Text="🌐" FontSize="11"/>
+                            <TextBlock Text="{Binding ActiveLevelName, StringFormat='{}{0}.scenario'}" FontWeight="SemiBold" FontSize="11" Foreground="#f3f4f6"/>
+                            <TextBlock Text="[Halo 3 H3EK]" FontSize="10" Foreground="#0284c7"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- Center EK Path Quick View & Setup Folders -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock Text="Level:" FontSize="11" Foreground="#9ca3af" VerticalAlignment="Center"/>
+                    <TextBox Text="{Binding ActiveLevelName}" Width="110" Height="24"/>
+                    <TextBlock Text="H3EK:" FontSize="11" Foreground="#9ca3af" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                    <TextBox Text="{Binding EkPath}" Width="250" Height="24" FontSize="10"/>
+                    <Button Command="{Binding SetupMapFoldersCommand}" Background="#0284c7" Foreground="White" FontWeight="Bold" Padding="8,3" Height="24" ToolTip.Tip="Create all required folders and scenario tag for this level in H3EK">
+                        <TextBlock Text="📁 Setup Folders" FontSize="10" VerticalAlignment="Center"/>
+                    </Button>
+                </StackPanel>
+
+                <!-- TOP-RIGHT WORKBENCH MODE SWITCHER BUTTONS (WITH MINI-MENUS) -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+                    <!-- Edit Mode Button with Mini-Menu Flyout -->
+                    <Button Command="{Binding SetEditModeCommand}" Background="#2563eb" Foreground="White" FontWeight="Bold" Padding="10,5" Margin="2,0" ToolTip.Tip="Edit Mode &amp; CSG Blockout (Click for mini-menu)">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <TextBlock Text="🛠️ Edit ▾"/>
+                        </StackPanel>
+                        <Button.Flyout>
+                            <MenuFlyout Placement="Bottom">
+                                <MenuItem Header="🛠️ Switch to Edit Mode (Q)" Command="{Binding SetEditModeCommand}"/>
+                                <Separator/>
+                                <MenuItem Header="📋 Duplicate Object (Ctrl+D)" Command="{Binding DuplicateSelectedObjectCommand}"/>
+                                <MenuItem Header="🗑️ Delete Selected Node (Del)" Command="{Binding DeleteSelectedCommand}"/>
+                                <Separator/>
+                                <MenuItem Header="🏔️ Smooth Mountain Crests" Command="{Binding SmoothMountainTopsCommand}"/>
+                                <MenuItem Header="🧗 Smooth Cliff Walls" Command="{Binding SmoothCliffWallsCommand}"/>
+                                <Separator/>
+                                <MenuItem Header="🔧 Auto-Repair Active Mesh" Command="{Binding AutoRepairActiveMeshCommand}"/>
+                                <MenuItem Header="🛠️ Fix All Open Edges &amp; Seams" Command="{Binding AutoRepairAllCommand}"/>
+                                <MenuItem Header="🌐 Seal Map Watertight (+sky)" Command="{Binding SealMapWatertightCommand}"/>
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
+
+                    <!-- Sculpt Mode Button with Mini-Menu Flyout (Gizmo OFF) -->
+                    <Button Command="{Binding SetSculptModeCommand}" Background="#9333ea" Foreground="White" FontWeight="Bold" Padding="10,5" Margin="2,0" ToolTip.Tip="Sculpt Mode: Elevation Brushes &amp; Terrain Shaping (Gizmo OFF)">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <TextBlock Text="🏔️ Sculpt ▾"/>
+                        </StackPanel>
+                        <Button.Flyout>
+                            <MenuFlyout Placement="Bottom">
+                                <MenuItem Header="🏔️ Switch to Sculpt Mode (S)" Command="{Binding SetSculptModeCommand}"/>
+                                <Separator/>
+                                <MenuItem Header="🏔️ Sculpt: Raise Elevation" Command="{Binding SetSculptModeRaiseCommand}"/>
+                                <MenuItem Header="⛰️ Sculpt: Lower Elevation" Command="{Binding SetSculptModeLowerCommand}"/>
+                                <MenuItem Header="🌄 Sculpt: Rise Plateau Dome" Command="{Binding SetSculptModeRiseCommand}"/>
+                                <MenuItem Header="🌊 Sculpt: Smooth (Laplacian)" Command="{Binding SetSculptModeSmoothCommand}"/>
+                                <MenuItem Header="🌧️ Sculpt: Hydraulic Erosion" Command="{Binding SetSculptModeErodeCommand}"/>
+                                <MenuItem Header="🪨 Sculpt: Thermal Talus Slump" Command="{Binding SetSculptModeThermalErodeCommand}"/>
+                                <MenuItem Header="🪜 Sculpt: Terrace Bench Steps" Command="{Binding SetSculptModeTerraceCommand}"/>
+                                <MenuItem Header="📏 Sculpt: Flatten to Plane" Command="{Binding SetSculptModeFlattenCommand}"/>
+                                <MenuItem Header="🔍 Sculpt: Pinch Inward" Command="{Binding SetSculptModePinchCommand}"/>
+                                <MenuItem Header="🎈 Sculpt: Inflate along Normal" Command="{Binding SetSculptModeInflateCommand}"/>
+                                <MenuItem Header="🌪️ Sculpt: Organic Surface Noise" Command="{Binding SetSculptModeNoiseCommand}"/>
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
+
+                    <!-- Paint Mode Button with Mini-Menu Flyout (Gizmo OFF) -->
+                    <Button Command="{Binding SetPaintModeCommand}" Background="#7c3aed" Foreground="White" FontWeight="Bold" Padding="10,5" Margin="2,0" ToolTip.Tip="Paint Mode: Materials, Shaders &amp; Vertex Colors (Gizmo OFF)">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <TextBlock Text="🎨 Paint ▾"/>
+                        </StackPanel>
+                        <Button.Flyout>
+                            <MenuFlyout Placement="Bottom">
+                                <MenuItem Header="🎨 Switch to Paint Mode (P)" Command="{Binding SetPaintModeCommand}"/>
+                                <Separator/>
+                                <MenuItem Header="🖌️ Fill Active Mesh with Material" Command="{Binding FillMeshWithSelectedMaterialCommand}"/>
+                                <Separator/>
+                                <MenuItem Header="🎨 Paint Layer: Base Ground" Command="{Binding SetPaintLayerBaseCommand}"/>
+                                <MenuItem Header="🧗 Paint Layer: Rock / Cliff (Red)" Command="{Binding SetPaintLayerRockCommand}"/>
+                                <MenuItem Header="❄️ Paint Layer: Alpine / Snow (Green)" Command="{Binding SetPaintLayerAlpineCommand}"/>
+                                <MenuItem Header="🍂 Paint Layer: Dirt / Accent (Blue)" Command="{Binding SetPaintLayerDirtCommand}"/>
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
+
+                    <Button Command="{Binding SetSapienModeCommand}" Background="#0284c7" Foreground="White" FontWeight="Bold" Padding="12,5" Margin="2,0">
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                            <TextBlock Text="🎭 Sapien"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Command="{Binding SetGuerillaModeCommand}" Background="#059669" Foreground="White" FontWeight="Bold" Padding="12,5" Margin="2,0">
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                            <TextBlock Text="🧬 Guerilla"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- 2. SUB-TOOLBAR: CONTEXTUAL WORKSPACE RIBBON -->
+        <Border Grid.Row="1" Background="#15171c" BorderBrush="#252932" BorderThickness="0,0,0,1" Padding="8,4">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                
+                <!-- Left: History, Global View Toggles & 3D Transform Gizmo -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                    <Button Command="{Binding UndoCommand}" Background="#27272a" Foreground="#e4e4e7" ToolTip.Tip="Undo (Ctrl+Z)" Padding="6,4">
+                        <TextBlock Text="↩️ Undo"/>
+                    </Button>
+                    <Button Command="{Binding RedoCommand}" Background="#27272a" Foreground="#e4e4e7" ToolTip.Tip="Redo (Ctrl+Y)" Padding="6,4">
+                        <TextBlock Text="↪️ Redo"/>
+                    </Button>
+                    <CheckBox Content="Wire" IsChecked="{Binding ShowWireframe}" FontSize="10" Foreground="#cbd5e1" Margin="2,0,0,0" VerticalAlignment="Center"/>
+                    <Separator Width="1" Height="18" Background="#334155" Margin="4,0"/>
+
+                    <!-- 3D Transform Gizmo Buttons: Move (W), Rotate (E), Scale (R) -->
+                    <Border Background="#1b2029" BorderBrush="#2e3846" BorderThickness="1" CornerRadius="4" Padding="2"
+                            IsVisible="{Binding !IsSculptOrPaintMode}">
+                        <StackPanel Orientation="Horizontal" Spacing="2">
+                            <Button Command="{Binding SetGizmoModeTranslateCommand}" Background="#27272a" Foreground="#38bdf8" FontWeight="SemiBold" Padding="6,3" ToolTip.Tip="3D Translate Gizmo: Move selected entity or active mesh (W)">
+                                <StackPanel Orientation="Horizontal" Spacing="3">
+                                    <TextBlock Text="✛" FontSize="11" Foreground="#38bdf8"/>
+                                    <TextBlock Text="Move" FontSize="10"/>
+                                </StackPanel>
+                            </Button>
+                            <Button Command="{Binding SetGizmoModeRotateCommand}" Background="#27272a" Foreground="#38bdf8" FontWeight="SemiBold" Padding="6,3" ToolTip.Tip="3D Rotate Gizmo: Rotate selected entity or active mesh (E)">
+                                <StackPanel Orientation="Horizontal" Spacing="3">
+                                    <TextBlock Text="↻" FontSize="11" Foreground="#38bdf8"/>
+                                    <TextBlock Text="Rotate" FontSize="10"/>
+                                </StackPanel>
+                            </Button>
+                            <Button Command="{Binding SetGizmoModeScaleCommand}" Background="#27272a" Foreground="#38bdf8" FontWeight="SemiBold" Padding="6,3" ToolTip.Tip="3D Scale Gizmo: Scale selected entity or active mesh with 1:1 UV recalculation (R)">
+                                <StackPanel Orientation="Horizontal" Spacing="3">
+                                    <TextBlock Text="⤢" FontSize="11" Foreground="#38bdf8"/>
+                                    <TextBlock Text="Scale" FontSize="10"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </Border>
+                    <!-- Visual indicator that Gizmo is safely OFF during Sculpt & Paint -->
+                    <Border Background="#271c38" BorderBrush="#7c3aed" BorderThickness="1" CornerRadius="4" Padding="6,4"
+                            IsVisible="{Binding IsSculptOrPaintMode}" ToolTip.Tip="3D Gizmo is disabled while sculpting/painting so left-click directly shapes or paints terrain without moving it">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <TextBlock Text="🎯" FontSize="11"/>
+                            <TextBlock Text="Gizmo OFF" FontSize="10" Foreground="#d8b4fe" FontWeight="Bold"/>
+                        </StackPanel>
+                    </Border>
+                    <Separator Width="1" Height="18" Background="#334155" Margin="4,0"/>
+                </StackPanel>
+
+                <!-- Center: Contextual Ribbon based on WorkbenchModeIndex -->
+                <!-- Mode 0: EDIT / CSG BLOCKOUT -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center" VerticalAlignment="Center"
+                            IsVisible="{Binding WorkbenchModeIndex, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=0}">
+                    <TextBlock Text="BRUSH:" FontSize="10" FontWeight="Bold" Foreground="#38bdf8" VerticalAlignment="Center"/>
+                    <ComboBox SelectedIndex="{Binding BrushPrimitiveTypeIndex}" Height="26" Width="120" FontSize="11">
+                        <ComboBoxItem Content="Cube / Box"/>
+                        <ComboBoxItem Content="Hollow Room"/>
+                        <ComboBoxItem Content="Wedge Ramp"/>
+                        <ComboBoxItem Content="Cylinder Pillar"/>
+                    </ComboBox>
+                    <Button Command="{Binding CreateBrushCommand}" Background="#27272a" Foreground="#e4e4e7" ToolTip.Tip="Create new brush primitive">
+                        <TextBlock Text="+ Add"/>
+                    </Button>
+                    <Button Command="{Binding MergeBrushWithActiveMeshCommand}" Background="#27272a" Foreground="#4ade80" ToolTip.Tip="CSG Boolean Union into active BSP">
+                        <TextBlock Text="∪ Union"/>
+                    </Button>
+                    <Button Command="{Binding CarveDoorwayCommand}" Background="#27272a" Foreground="#a78bfa" ToolTip.Tip="Carve doorway volume">
+                        <TextBlock Text="✂️ Door"/>
+                    </Button>
+                    <Button Command="{Binding CarveTrenchCommand}" Background="#27272a" Foreground="#f472b6" ToolTip.Tip="Carve tactical trench">
+                        <TextBlock Text="⛏️ Trench"/>
+                    </Button>
+                    <Separator Width="1" Height="18" Background="#334155" Margin="2,0"/>
+                    <Button Command="{Binding DuplicateSelectedObjectCommand}" Background="#27272a" Foreground="#fbbf24" FontWeight="SemiBold" ToolTip.Tip="Duplicate selected object (Ctrl+D)">
+                        <TextBlock Text="📋 Duplicate"/>
+                    </Button>
+                    <Button Command="{Binding SmoothActiveMeshCommand}" Background="#27272a" Foreground="#38bdf8" FontWeight="SemiBold" ToolTip.Tip="Laplacian Smooth active mesh elevation">
+                        <TextBlock Text="🌊 Smooth"/>
+                    </Button>
+                    <Button Command="{Binding AutoRepairActiveMeshCommand}" Background="#059669" Foreground="White" FontWeight="Bold" ToolTip.Tip="Directly fix open edges, cap holes &amp; weld seams on active mesh">
+                        <TextBlock Text="🛠️ Fix Mesh"/>
+                    </Button>
+                    <Separator Width="1" Height="18" Background="#334155" Margin="2,0"/>
+                    <Button Command="{Binding GenerateWatertightSkyDomeCommand}" Background="#0369a1" Foreground="White" FontWeight="SemiBold" ToolTip.Tip="Enclose map in 100% sealed watertight +sky dome">
+                        <TextBlock Text="🌐 Watertight Sky"/>
+                    </Button>
+                    <Button Command="{Binding GeneratePortalCommand}" Background="#1e293b" Foreground="#38bdf8" ToolTip.Tip="Generate cluster portal quad under z_portals">
+                        <TextBlock Text="🚪 Portal"/>
+                    </Button>
+                </StackPanel>
+
+                <!-- Mode 1: DEDICATED SCULPT MODE (GIZMO OFF) -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center" VerticalAlignment="Center"
+                            IsVisible="{Binding WorkbenchModeIndex, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=1}">
+                    <Border Background="#2e1065" BorderBrush="#a855f7" BorderThickness="1" CornerRadius="3" Padding="5,2">
+                        <TextBlock Text="🏔️ SCULPT MODE" FontSize="10" FontWeight="Bold" Foreground="#d8b4fe" VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock Text="BRUSH:" FontSize="10" FontWeight="Bold" Foreground="#a855f7" VerticalAlignment="Center"/>
+                    <ComboBox ItemsSource="{Binding SculptBrushModes}" SelectedIndex="{Binding BrushModeIndex}" Height="26" Width="135" FontSize="11" ToolTip.Tip="Sculpt tool mode (Raise, Lower, Rise, Smooth, Erode, Terrace, Flatten, Pinch, Inflate, Noise)"/>
+
+                    <Separator Width="1" Height="18" Background="#334155" Margin="2,0"/>
+                    <TextBlock Text="Radius:" FontSize="10" Foreground="#cbd5e1" VerticalAlignment="Center"/>
+                    <Slider Value="{Binding BrushRadius}" Minimum="20" Maximum="2500" Width="80" VerticalAlignment="Center" ToolTip.Tip="Brush Radius in Blam World Units (use [ and ] to resize)"/>
+                    <TextBlock Text="{Binding BrushRadius, StringFormat='{}{0:F0}'}" Width="30" FontSize="10" Foreground="#f1f5f9" VerticalAlignment="Center"/>
+
+                    <TextBlock Text="Strength:" FontSize="10" Foreground="#cbd5e1" VerticalAlignment="Center"/>
+                    <Slider Value="{Binding BrushStrength}" Minimum="1" Maximum="100" Width="60" VerticalAlignment="Center" ToolTip.Tip="Brush Strength / Displacement Rate"/>
+                    <TextBlock Text="{Binding BrushStrength, StringFormat='{}{0:F0}'}" Width="22" FontSize="10" Foreground="#f1f5f9" VerticalAlignment="Center"/>
+
+                    <Separator Width="1" Height="18" Background="#334155" Margin="2,0"/>
+                    <Button Command="{Binding SetSculptModeRaiseCommand}" Background="#27272a" Foreground="#38bdf8" Padding="5,3" ToolTip.Tip="Raise Elevation">
+                        <TextBlock Text="▲ Raise" FontSize="10"/>
+                    </Button>
+                    <Button Command="{Binding SetSculptModeLowerCommand}" Background="#27272a" Foreground="#f87171" Padding="5,3" ToolTip.Tip="Lower Elevation">
+                        <TextBlock Text="▼ Lower" FontSize="10"/>
+                    </Button>
+                    <Button Command="{Binding SetSculptModeSmoothCommand}" Background="#27272a" Foreground="#4ade80" Padding="5,3" ToolTip.Tip="Smooth Mesh Elevation">
+                        <TextBlock Text="🌊 Smooth" FontSize="10"/>
+                    </Button>
+                    <Button Command="{Binding SetSculptModeErodeCommand}" Background="#27272a" Foreground="#fbbf24" Padding="5,3" ToolTip.Tip="Hydraulic Erosion Brush">
+                        <TextBlock Text="🌧️ Erode" FontSize="10"/>
+                    </Button>
+                    <Button Command="{Binding SetSculptModeNoiseCommand}" Background="#27272a" Foreground="#c084fc" Padding="5,3" ToolTip.Tip="Organic Surface Noise Brush">
+                        <TextBlock Text="🌪️ Noise" FontSize="10"/>
+                    </Button>
+                </StackPanel>
+
+                <!-- Mode 2: DEDICATED PAINT MODE (GIZMO OFF) -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center" VerticalAlignment="Center"
+                            IsVisible="{Binding WorkbenchModeIndex, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=2}">
+                    <Border Background="#3b0764" BorderBrush="#7c3aed" BorderThickness="1" CornerRadius="3" Padding="5,2">
+                        <TextBlock Text="🎨 PAINT MODE" FontSize="10" FontWeight="Bold" Foreground="#c4b5fd" VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock Text="MATERIAL:" FontSize="10" FontWeight="Bold" Foreground="#38bdf8" VerticalAlignment="Center"/>
+                    <ComboBox ItemsSource="{Binding AvailablePaintMaterials}" SelectedItem="{Binding PaintMaterialName}" Height="26" Width="150" FontSize="11" ToolTip.Tip="Choose material to paint directly onto mesh faces"/>
+                    <Button Command="{Binding FillMeshWithSelectedMaterialCommand}" Background="#27272a" Foreground="#38bdf8" Padding="6,4" ToolTip.Tip="Fill entire active mesh with selected material">
+                        <TextBlock Text="Fill All"/>
+                    </Button>
+
+                    <Separator Width="1" Height="18" Background="#334155" Margin="2,0"/>
+                    <TextBlock Text="LAYER:" FontSize="10" FontWeight="Bold" Foreground="#a78bfa" VerticalAlignment="Center"/>
+                    <RadioButton Content="Base (0)" IsChecked="{Binding PaintLayerIndex, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=0}" GroupName="PaintLayer" FontSize="10" ToolTip.Tip="Base ground material"/>
+                    <RadioButton Content="Cliff/Red (1)" IsChecked="{Binding PaintLayerIndex, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=1}" GroupName="PaintLayer" FontSize="10" Foreground="#f87171" ToolTip.Tip="Steep rock cliff shader weight (Vertex Color R)"/>
+                    <RadioButton Content="Snow/Green (2)" IsChecked="{Binding PaintLayerIndex, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=2}" GroupName="PaintLayer" FontSize="10" Foreground="#4ade80" ToolTip.Tip="Alpine grass/snow shader weight (Vertex Color G)"/>
+                    <RadioButton Content="Dirt/Blue (3)" IsChecked="{Binding PaintLayerIndex, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=3}" GroupName="PaintLayer" FontSize="10" Foreground="#60a5fa" ToolTip.Tip="Dirt path/accent shader weight (Vertex Color B)"/>
+
+                    <Separator Width="1" Height="18" Background="#334155" Margin="2,0"/>
+                    <TextBlock Text="Radius:" FontSize="10" Foreground="#cbd5e1" VerticalAlignment="Center"/>
+                    <Slider Value="{Binding BrushRadius}" Minimum="20" Maximum="2500" Width="70" VerticalAlignment="Center" ToolTip.Tip="Paint Brush Radius (use [ and ] to resize)"/>
+                    <TextBlock Text="{Binding BrushRadius, StringFormat='{}{0:F0}'}" Width="28" FontSize="10" Foreground="#f1f5f9" VerticalAlignment="Center"/>
+
+                    <TextBlock Text="Opacity:" FontSize="10" Foreground="#cbd5e1" VerticalAlignment="Center"/>
+                    <Slider Value="{Binding BrushStrength}" Minimum="1" Maximum="100" Width="55" VerticalAlignment="Center" ToolTip.Tip="Paint Flow / Opacity"/>
+                    <TextBlock Text="{Binding BrushStrength, StringFormat='{}{0:F0}%'}" Width="30" FontSize="10" Foreground="#f1f5f9" VerticalAlignment="Center"/>
+
+                    <Separator Width="1" Height="18" Background="#334155" Margin="2,0"/>
+                    <Button Command="{Binding RecalculateUvsCommand}" Background="#1e293b" Foreground="#38bdf8" BorderBrush="#0284c7" BorderThickness="1" Padding="6,3" ToolTip.Tip="Recalculate 1:1 isometric arc-length UVs to fix tiling and cliff stretching">
+                        <TextBlock Text="🔄 Fix Tiling" FontSize="10" FontWeight="SemiBold"/>
+                    </Button>
+                </StackPanel>
+
+                <!-- Mode 3: SAPIEN SCENARIO PLACEMENT & TEST PLAY -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center" VerticalAlignment="Center"
+                            IsVisible="{Binding WorkbenchModeIndex, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=3}">
+                    <TextBlock Text="PALETTE:" FontSize="10" FontWeight="Bold" Foreground="#0284c7" VerticalAlignment="Center"/>
+                    <ComboBox ItemsSource="{Binding PaletteCategories}" SelectedItem="{Binding SapienPaletteCategory}" Height="26" Width="135" FontSize="11"/>
+                    <ComboBox ItemsSource="{Binding PaletteItems}" SelectedItem="{Binding SelectedSapienPaletteItem}" Height="26" Width="165" FontSize="11"/>
+                    <Button Command="{Binding PlaceSelectedPaletteItemCommand}" Background="#0284c7" Foreground="White" FontWeight="Bold" ToolTip.Tip="Place selected palette object into the 3D world">
+                        <TextBlock Text="+ Place in World"/>
+                    </Button>
+                    <Separator Width="1" Height="18" Background="#334155" Margin="4,0"/>
+                    <Button Command="{Binding ToggleTestPlayCommand}" Background="#16a34a" Foreground="White" FontWeight="Bold" ToolTip.Tip="First-Person Ground Collision Walking Simulator (WASD to walk, Space to jump, ESC to exit)">
+                        <TextBlock Text="🎮 Test Play"/>
+                    </Button>
+                    <Button Command="{Binding LaunchExternalSapienCommand}" Background="#1e293b" Foreground="#38bdf8" ToolTip.Tip="Launch external sapien.exe from H3EK">
+                        <TextBlock Text="🚀 Launch Sapien.exe"/>
+                    </Button>
+                </StackPanel>
+
+                <!-- Mode 4: GUERILLA TAGS -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center" VerticalAlignment="Center"
+                            IsVisible="{Binding WorkbenchModeIndex, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=4}">
+                    <TextBlock Text="GUERILLA TAG ENGINE:" FontSize="10" FontWeight="Bold" Foreground="#10b981" VerticalAlignment="Center"/>
+                    <Button Command="{Binding SaveActiveTagToDiskCommand}" Background="#059669" Foreground="White" FontWeight="Bold" ToolTip.Tip="Commit changes directly into .tag file on disk">
+                        <TextBlock Text="💾 Save Tag to Disk"/>
+                    </Button>
+                    <Button Command="{Binding RefreshGuerillaTagDocumentCommand}" Background="#27272a" Foreground="#e4e4e7" ToolTip.Tip="Reload schema &amp; sync scenario references">
+                        <TextBlock Text="🔄 Reload Schema"/>
+                    </Button>
+                    <Button Command="{Binding OpenTagEditorWindowCommand}" Background="#1e293b" Foreground="#38bdf8" ToolTip.Tip="Open standalone Guerilla floating window">
+                        <TextBlock Text="🪟 Standalone Window"/>
+                    </Button>
+                </StackPanel>
+
+                <!-- Right: Quick Fix & 1-Click Compile Actions -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <Button Command="{Binding AutoRepairAllCommand}" Background="#059669" Foreground="White" FontWeight="Bold" ToolTip.Tip="Auto-weld vertices, remove duplicate faces and dissolve degenerates without destroying mesh topology">
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                            <TextBlock Text="🛠️ Fix Geo Errors"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Command="{Binding CompileStructureCommand}" Background="#2563eb" Foreground="White" FontWeight="Bold" IsEnabled="{Binding !IsCompiling}" ToolTip.Tip="1-Click export ASS, run tool_fast.exe structure &amp; build cache .map">
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                            <TextBlock Text="🚀 1-Click Compile"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- 3. MAIN WORKBENCH: 3 COLUMNS (LEFT TOOLS, CENTER 3D VIEWPORT, RIGHT OUTLINER/INSPECTOR) -->
+        <Grid Grid.Row="2" ColumnDefinitions="360,*,390">
+
+            <!-- LEFT PANEL: SHADERS (14K+), TAG BROWSER, PROCEDURAL TERRAIN -->
+            <Border Grid.Column="0" Background="#17191e" BorderBrush="#252932" BorderThickness="0,0,1,0">
+                <TabControl Margin="4">
+                    <!-- SHADER LIST & PAINT/SCULPT BRUSH PALETTE -->
+                    <TabItem Header="🎨 Paint &amp; Shaders">
+                        <Grid RowDefinitions="Auto,Auto,Auto,Auto,*" Margin="4">
+                            <!-- 1. Dedicated Brush Size & Mode Settings -->
+                            <Border Grid.Row="0" Background="#13151b" BorderBrush="#252b37" BorderThickness="1" CornerRadius="6" Padding="8" Margin="0,0,0,6">
+                                <StackPanel Spacing="5">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Grid.Column="0" Text="🖌️ Brush &amp; Sculpt Controls" FontWeight="Bold" FontSize="11" Foreground="#38bdf8"/>
+                                        <ComboBox Grid.Column="1" ItemsSource="{Binding SculptBrushModes}" SelectedIndex="{Binding BrushModeIndex}" Height="24" Width="140" FontSize="10"/>
+                                    </Grid>
+
+                                    <!-- Brush Radius Slider -->
+                                    <Grid ColumnDefinitions="Auto,*,Auto">
+                                        <TextBlock Grid.Column="0" Text="Radius:" FontSize="10" Foreground="#94a3b8" VerticalAlignment="Center" Width="46"/>
+                                        <Slider Grid.Column="1" Value="{Binding BrushRadius}" Minimum="20" Maximum="2500" Margin="4,0" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding BrushRadius, StringFormat='{}{0:F0}'}" FontSize="10" FontWeight="SemiBold" Foreground="#38bdf8" Width="36" TextAlignment="Right" VerticalAlignment="Center"/>
+                                    </Grid>
+
+                                    <!-- Brush Strength Slider -->
+                                    <Grid ColumnDefinitions="Auto,*,Auto">
+                                        <TextBlock Grid.Column="0" Text="Strength:" FontSize="10" Foreground="#94a3b8" VerticalAlignment="Center" Width="46"/>
+                                        <Slider Grid.Column="1" Value="{Binding BrushStrength}" Minimum="1" Maximum="60" Margin="4,0" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding BrushStrength, StringFormat='{}{0:F0}'}" FontSize="10" FontWeight="SemiBold" Foreground="#a78bfa" Width="36" TextAlignment="Right" VerticalAlignment="Center"/>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- 2. Active Brush Shader & Quick Palette Chips -->
+                            <Border Grid.Row="1" Background="#111318" BorderBrush="#1e293b" BorderThickness="1" CornerRadius="6" Padding="8" Margin="0,0,0,6">
+                                <StackPanel Spacing="6">
+                                    <Grid ColumnDefinitions="*,Auto,Auto">
+                                        <StackPanel Grid.Column="0" Spacing="1">
+                                            <TextBlock Text="Active Paint Brush Shader:" FontSize="9" Foreground="#94a3b8"/>
+                                            <TextBlock Text="{Binding PaintMaterialName}" FontSize="11" FontWeight="Bold" Foreground="#4ade80" TextTrimming="CharacterEllipsis"/>
+                                        </StackPanel>
+                                        <Button Grid.Column="1" Command="{Binding SetPaintModeCommand}" Background="#7c3aed" Foreground="White" FontWeight="Bold" Padding="6,3" Margin="4,0,2,0" ToolTip.Tip="Activate 3D mesh paint mode">
+                                            <TextBlock Text="🎨 Paint" FontSize="10"/>
+                                        </Button>
+                                        <Button Grid.Column="2" Command="{Binding FillMeshWithSelectedMaterialCommand}" Background="#0284c7" Foreground="White" FontWeight="Bold" Padding="6,3" ToolTip.Tip="Fill entire mesh with this shader">
+                                            <TextBlock Text="Fill All" FontSize="10"/>
+                                        </Button>
+                                    </Grid>
+
+                                    <!-- Quick Verified Palettes (1-Click Select) -->
+                                    <TextBlock Text="Quick Verified Materials (1-Click Select):" FontSize="9" Foreground="#64748b"/>
+                                    <WrapPanel Margin="0,0,0,0">
+                                        <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="river riverworld_ground" Background="#1e293b" Foreground="#4ade80" FontSize="9" Margin="1" Padding="5,2" Content="🌿 Ground"/>
+                                        <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="river riverworld_rock" Background="#1e293b" Foreground="#94a3b8" FontSize="9" Margin="1" Padding="5,2" Content="🪨 Rock"/>
+                                        <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="river riverworld_cliff" Background="#1e293b" Foreground="#cbd5e1" FontSize="9" Margin="1" Padding="5,2" Content="🧗 Cliff"/>
+                                        <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="chill chill_snow" Background="#1e293b" Foreground="#38bdf8" FontSize="9" Margin="1" Padding="5,2" Content="❄️ Snow"/>
+                                        <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="river riverworld_sand" Background="#1e293b" Foreground="#fbbf24" FontSize="9" Margin="1" Padding="5,2" Content="🏖️ Sand"/>
+                                        <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="mpshare mp_metal_trim" Background="#1e293b" Foreground="#e2e8f0" FontSize="9" Margin="1" Padding="5,2" Content="⚙️ Metal"/>
+                                        <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="mpshare water_clear" Background="#1e293b" Foreground="#06b6d4" FontSize="9" Margin="1" Padding="5,2" Content="🌊 Water"/>
+                                        <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="+sky" Background="#1e293b" Foreground="#60a5fa" FontSize="9" Margin="1" Padding="5,2" Content="🌐 +Sky"/>
+                                    </WrapPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- 3. Category Filter & Verified Toggle -->
+                            <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,4">
+                                <TextBlock Grid.Column="0" Text="Category:" FontSize="10" Foreground="#94a3b8" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <ComboBox Grid.Column="1" ItemsSource="{Binding ShaderCategories}" SelectedItem="{Binding SelectedCategory}" Height="24" HorizontalAlignment="Stretch" FontSize="10"/>
+                                <Button Grid.Column="2" Command="{Binding ToggleVerifiedShadersOnlyCommand}"
+                                        Background="#1e293b" Padding="6,3" Margin="4,0,0,0" ToolTip.Tip="Toggle filter: Show only verified working shaders compiled in H3EK">
+                                    <TextBlock Text="✓ Verified Only" FontSize="9" FontWeight="Bold" Foreground="#4ade80"/>
+                                </Button>
+                            </Grid>
+
+                            <!-- 4. Quick Category Filter Chips -->
+                            <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="3" Margin="0,0,0,6">
+                                <Button Command="{Binding FilterShaderCategoryCommand}" CommandParameter="sand" Background="#27272a" Padding="5,2" FontSize="9" Content="Sand"/>
+                                <Button Command="{Binding FilterShaderCategoryCommand}" CommandParameter="rock" Background="#27272a" Padding="5,2" FontSize="9" Content="Rock"/>
+                                <Button Command="{Binding FilterShaderCategoryCommand}" CommandParameter="snow" Background="#27272a" Padding="5,2" FontSize="9" Content="Snow"/>
+                                <Button Command="{Binding FilterShaderCategoryCommand}" CommandParameter="metal" Background="#27272a" Padding="5,2" FontSize="9" Content="Metal"/>
+                                <Button Command="{Binding FilterShaderCategoryCommand}" CommandParameter="water" Background="#27272a" Padding="5,2" FontSize="9" Content="Water"/>
+                                <Button Command="{Binding FilterShaderCategoryCommand}" CommandParameter="sky" Background="#27272a" Padding="5,2" FontSize="9" Content="Sky"/>
+                            </StackPanel>
+
+                            <!-- 5. Search Bar & Shader List (Differentiating Verified from Raw Tags) -->
+                            <Grid Grid.Row="4" RowDefinitions="Auto,*">
+                                <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,4">
+                                    <TextBox Grid.Column="0" Text="{Binding ShaderSearchQuery}" PlaceholderText="Search 14k+ shaders (e.g. chill, rock)..." Height="26" FontSize="10"/>
+                                    <Button Grid.Column="1" Command="{Binding PerformShaderSearchCommand}" Content="Search" Height="26" FontSize="10" Margin="4,0,0,0"/>
+                                </Grid>
+
+                                <ListBox Grid.Row="1" ItemsSource="{Binding SearchResults}" SelectedItem="{Binding SelectedShader}" Background="#111317">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border BorderBrush="#1f242d" BorderThickness="0,0,0,1" Padding="4,5">
+                                                <Grid ColumnDefinitions="Auto,*,Auto">
+                                                    <!-- Color Icon Box -->
+                                                    <Border Grid.Column="0" Width="14" Height="14" CornerRadius="2" Margin="0,0,6,0" VerticalAlignment="Center">
+                                                        <Border.Background>
+                                                            <SolidColorBrush Color="#0284c7"/>
+                                                        </Border.Background>
+                                                    </Border>
+
+                                                    <!-- Material & Tag info -->
+                                                    <StackPanel Grid.Column="1" Spacing="1">
+                                                        <TextBlock Text="{Binding MaterialName}" FontWeight="SemiBold" FontSize="10" Foreground="#f1f5f9"/>
+                                                        <TextBlock Text="{Binding TagPath}" FontSize="8" Foreground="#94a3b8" TextTrimming="CharacterEllipsis"/>
+                                                        <TextBlock Text="{Binding ShaderType}" FontSize="8" Foreground="#38bdf8"/>
+                                                    </StackPanel>
+
+                                                    <!-- Verified Badge Indicator -->
+                                                    <Border Grid.Column="2" VerticalAlignment="Center" Margin="4,0,0,0">
+                                                        <StackPanel Orientation="Horizontal" Spacing="2">
+                                                            <Border Background="#064e3b" CornerRadius="3" Padding="4,1" IsVisible="{Binding IsVerified}">
+                                                                <TextBlock Text="✓ VERIFIED" FontSize="8" FontWeight="Bold" Foreground="#34d399"/>
+                                                            </Border>
+                                                            <Border Background="#1f242d" CornerRadius="3" Padding="4,1" IsVisible="{Binding !IsVerified}">
+                                                                <TextBlock Text="TAG" FontSize="8" Foreground="#64748b"/>
+                                                            </Border>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </Grid>
+                        </Grid>
+                    </TabItem>
+
+                    <!-- HALO 3 TAG BROWSER (GUERILLA ECOSYSTEM) -->
+                    <TabItem Header="🧬 Tag Explorer">
+                        <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" Margin="6">
+                            <TextBlock Grid.Row="0" Text="Halo 3 EK Tag Explorer" FontWeight="Bold" FontSize="12" Foreground="#38bdf8"/>
+                            <TextBlock Grid.Row="1" Text="Folder hierarchy matching Halo Editing Kit (HEK/H3EK)." FontSize="10" Foreground="#94a3b8" Margin="0,2,0,6"/>
+
+                            <!-- Filter & Search Controls -->
+                            <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="0,0,0,6">
+                                <TextBox Grid.Column="0" Text="{Binding TagSearchQuery}" PlaceholderText="Filter tags (e.g. assault_rifle, chill)..."/>
+                                <Button Grid.Column="1" Command="{Binding DiscoverTagsCommand}" Content="Refresh" Margin="4,0,0,0"/>
+                            </Grid>
+
+                            <!-- Hierarchy vs Flat List View Switcher -->
+                            <TabControl Grid.Row="3" Margin="0,0,0,6">
+                                <TabItem Header="📁 Folder Hierarchy">
+                                    <TreeView ItemsSource="{Binding TagTreeRoot.Children}" SelectedItem="{Binding SelectedTagNode}" Background="#121316" BorderBrush="#1f242d" BorderThickness="1" CornerRadius="4">
+                                        <TreeView.ItemTemplate>
+                                            <TreeDataTemplate ItemsSource="{Binding Children}" x:DataType="tags:TagFolderNode">
+                                                <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,2">
+                                                    <TextBlock Grid.Column="0" Text="{Binding Icon}" Margin="0,0,6,0" VerticalAlignment="Center" FontSize="11"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding Name}" FontWeight="SemiBold" FontSize="11" Foreground="#f8fafc" VerticalAlignment="Center"/>
+                                                    <TextBlock Grid.Column="2" Text="{Binding TagGroup}" FontSize="9" FontWeight="Bold" Foreground="#38bdf8" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                                                </Grid>
+                                            </TreeDataTemplate>
+                                        </TreeView.ItemTemplate>
+                                    </TreeView>
+                                </TabItem>
+
+                                <TabItem Header="📋 Flat Search List">
+                                    <ListBox ItemsSource="{Binding DiscoveredTags}" SelectedItem="{Binding SelectedTagFile}" Background="#121316">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border BorderBrush="#1f242d" BorderThickness="0,0,0,1" Padding="4,6">
+                                                    <Grid ColumnDefinitions="Auto,*,Auto">
+                                                        <Border Grid.Column="0" Background="#1e293b" CornerRadius="3" Padding="4,1" Margin="0,0,8,0" VerticalAlignment="Center">
+                                                            <TextBlock Text="{Binding TagGroup}" FontSize="9" FontWeight="Bold" Foreground="#38bdf8"/>
+                                                        </Border>
+                                                        <StackPanel Grid.Column="1" Spacing="1">
+                                                            <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" FontSize="11" Foreground="#f8fafc"/>
+                                                            <TextBlock Text="{Binding RelativePath}" FontSize="9" Foreground="#64748b"/>
+                                                        </StackPanel>
+                                                        <TextBlock Grid.Column="2" Text="{Binding FileSizeBytes, StringFormat='{}{0:N0} b'}" FontSize="9" Foreground="#94a3b8" VerticalAlignment="Center"/>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </TabItem>
+                            </TabControl>
+
+                            <!-- Tag Action Buttons: 3D Visualization + Standalone Tag Editor -->
+                            <Grid Grid.Row="4" ColumnDefinitions="*,*" Margin="0,4,0,0">
+                                <Button Grid.Column="0" Command="{Binding LoadSelectedTagCommand}" Background="#0284c7" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="0,0,3,0">
+                                    <TextBlock Text="👁️ Visualize 3D Model"/>
+                                </Button>
+                                <Button Grid.Column="1" Command="{Binding OpenTagEditorWindowCommand}" Background="#059669" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="3,0,0,0">
+                                    <TextBlock Text="🧬 Open in Tag Editor"/>
+                                </Button>
+                            </Grid>
+                        </Grid>
+                    </TabItem>
+
+                    <!-- PROCEDURAL TERRAIN, ROCKS, FOLIAGE & PREFABS -->
+                    <TabItem Header="🏔️ Procedural &amp; Prefabs">
+                        <ScrollViewer Margin="6">
+                            <StackPanel Spacing="10">
+                                <!-- 3-Map Showcase Quick Generators -->
+                                <Border Background="#121316" BorderBrush="#0284c7" BorderThickness="1" CornerRadius="6" Padding="8">
+                                    <StackPanel Spacing="6">
+                                        <TextBlock Text="🚀 1-Click Map Generators (0 Errors)" FontWeight="Bold" FontSize="11" Foreground="#38bdf8"/>
+                                        <TextBlock Text="Generates full terrain, scatters rocks &amp; foliage, seals watertight (+sky), repairs and exports ASS." FontSize="9" Foreground="#94a3b8" TextWrapping="Wrap"/>
+                                        <Button Command="{Binding GenerateDeltaCanyonMapCommand}" Background="#0284c7" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center">
+                                            <TextBlock Text="🗺️ 1. 'delta_canyon' (Basalt &amp; Pine)"/>
+                                        </Button>
+                                        <Button Command="{Binding GenerateAlpineValleyMapCommand}" Background="#0369a1" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center">
+                                            <TextBlock Text="🗺️ 2. 'alpine_valley' (Ridge &amp; Fir)"/>
+                                        </Button>
+                                        <Button Command="{Binding GenerateSwampBasinMapCommand}" Background="#059669" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center">
+                                            <TextBlock Text="🗺️ 3. 'swamp_basin' (Water &amp; Palms)"/>
+                                        </Button>
+                                    </StackPanel>
+                                </Border>
+
+                                <Separator Height="1" Background="#2e323b"/>
+
+                                <!-- Terrain Presets (11 Rich Procedural Patterns) -->
+                                <Border Background="#121316" CornerRadius="4" Padding="6">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="Terrain Presets (11 Patterns)" FontWeight="Bold" FontSize="11" Foreground="#38bdf8"/>
+                                        <WrapPanel Margin="0,2,0,0">
+                                            <Button Command="{Binding ApplyPresetValleyCommand}" Background="#1e293b" Foreground="#f8fafc" FontSize="10" Margin="2" Padding="6,3" Content="Valley"/>
+                                            <Button Command="{Binding ApplyPresetCanyonCommand}" Background="#1e293b" Foreground="#f8fafc" FontSize="10" Margin="2" Padding="6,3" Content="Canyon"/>
+                                            <Button Command="{Binding ApplyPresetRollingHillsCommand}" Background="#1e293b" Foreground="#4ade80" FontSize="10" Margin="2" Padding="6,3" Content="Rolling Hills"/>
+                                            <Button Command="{Binding ApplyPresetCraterCommand}" Background="#1e293b" Foreground="#f472b6" FontSize="10" Margin="2" Padding="6,3" Content="Crater"/>
+                                            <Button Command="{Binding ApplyPresetMesaCommand}" Background="#1e293b" Foreground="#fb923c" FontSize="10" Margin="2" Padding="6,3" Content="Mesa"/>
+                                            <Button Command="{Binding ApplyPresetDunesCommand}" Background="#1e293b" Foreground="#facc15" FontSize="10" Margin="2" Padding="6,3" Content="Dunes"/>
+                                            <Button Command="{Binding ApplyPresetIslandCommand}" Background="#1e293b" Foreground="#38bdf8" FontSize="10" Margin="2" Padding="6,3" Content="Island"/>
+                                            <Button Command="{Binding ApplyPresetBasinCommand}" Background="#1e293b" Foreground="#f8fafc" FontSize="10" Margin="2" Padding="6,3" Content="Basin"/>
+                                            <Button Command="{Binding ApplyPresetCalderaCommand}" Background="#1e293b" Foreground="#f8fafc" FontSize="10" Margin="2" Padding="6,3" Content="Caldera"/>
+                                            <Button Command="{Binding ApplyPresetAlpinePeaksCommand}" Background="#1e293b" Foreground="#f8fafc" FontSize="10" Margin="2" Padding="6,3" Content="Alpine Peaks"/>
+                                            <Button Command="{Binding ApplyPresetBasaltColumnsCommand}" Background="#1e293b" Foreground="#f8fafc" FontSize="10" Margin="2" Padding="6,3" Content="Basalt Terrace"/>
+                                        </WrapPanel>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Perimeter Mountain Cliff Walls (Airtight Sky Seal Rim) -->
+                                <Border Background="#121316" BorderBrush="#252932" BorderThickness="1" CornerRadius="4" Padding="6">
+                                    <StackPanel Spacing="4">
+                                        <CheckBox Content="Perimeter Cliff Rim (Watertight Sky Seal)" IsChecked="{Binding OuterCliffWalls}" FontSize="10" Foreground="#38bdf8" FontWeight="SemiBold" ToolTip.Tip="Outer perimeter rises into steep mountain walls and flattens into a plateau rim on top, making the sky seal look realistic and seamless."/>
+                                        <Grid ColumnDefinitions="Auto,*" IsVisible="{Binding OuterCliffWalls}">
+                                            <TextBlock Grid.Column="0" Text="Perimeter Height:" FontSize="10" Foreground="#94a3b8" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                            <NumericUpDown Grid.Column="1" Value="{Binding PerimeterCliffHeight}" Minimum="100" Maximum="3000"/>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Noise Method / Algorithm -->
+                                <StackPanel Spacing="4">
+                                    <TextBlock Text="Procedural Algorithm:" FontSize="10" Foreground="#94a3b8"/>
+                                    <ComboBox ItemsSource="{Binding TerrainAlgorithms}" SelectedIndex="{Binding TerrainAlgorithmIndex}" Height="26" HorizontalAlignment="Stretch" FontSize="10"/>
+                                </StackPanel>
+
+                                <!-- Mesh Topology -->
+                                <StackPanel Spacing="4">
+                                    <TextBlock Text="Mesh Topology:" FontSize="10" Foreground="#38bdf8"/>
+                                    <ComboBox ItemsSource="{Binding TerrainTopologies}" SelectedIndex="{Binding TerrainTopologyIndex}" Height="26" HorizontalAlignment="Stretch" FontSize="10" ToolTip.Tip="Mesh lattice structure (Quads, Equilateral 60° Triangles, Honeycomb Hexagons, Polygonal Voronoi)"/>
+                                </StackPanel>
+
+                                <!-- Cellular Mode (Visible when Voronoi Cellular is selected) -->
+                                <StackPanel Spacing="4" IsVisible="{Binding TerrainAlgorithmIndex, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=10}">
+                                    <TextBlock Text="Cellular Style:" FontSize="10" Foreground="#38bdf8"/>
+                                    <ComboBox ItemsSource="{Binding CellularStyles}" SelectedIndex="{Binding CellularStyleIndex}" Height="26" HorizontalAlignment="Stretch" FontSize="10"/>
+                                </StackPanel>
+
+                                <Grid ColumnDefinitions="*,*">
+                                    <StackPanel Grid.Column="0" Margin="0,0,4,0">
+                                        <TextBlock Text="Res X:" FontSize="10" Foreground="#94a3b8"/>
+                                        <NumericUpDown Value="{Binding TerrainResX}" Minimum="8" Maximum="128"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Margin="4,0,0,0">
+                                        <TextBlock Text="Res Y:" FontSize="10" Foreground="#94a3b8"/>
+                                        <NumericUpDown Value="{Binding TerrainResY}" Minimum="8" Maximum="128"/>
+                                    </StackPanel>
+                                </Grid>
+
+                                <Grid ColumnDefinitions="*,*">
+                                    <StackPanel Grid.Column="0" Margin="0,0,4,0">
+                                        <TextBlock Text="Width (Units):" FontSize="10" Foreground="#94a3b8"/>
+                                        <NumericUpDown Value="{Binding TerrainWidth}" Minimum="500" Maximum="50000"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Margin="4,0,0,0">
+                                        <TextBlock Text="Length (Units):" FontSize="10" Foreground="#94a3b8"/>
+                                        <NumericUpDown Value="{Binding TerrainLength}" Minimum="500" Maximum="50000"/>
+                                    </StackPanel>
+                                </Grid>
+
+                                <StackPanel>
+                                    <TextBlock Text="Height Scale:" FontSize="10" Foreground="#94a3b8"/>
+                                    <NumericUpDown Value="{Binding TerrainHeightScale}" Minimum="50" Maximum="5000"/>
+                                </StackPanel>
+
+                                <Grid ColumnDefinitions="*,*">
+                                    <StackPanel Grid.Column="0" Margin="0,0,4,0">
+                                        <TextBlock Text="Hydraulic Drops:" FontSize="10" Foreground="#94a3b8"/>
+                                        <NumericUpDown Value="{Binding ErosionDrops}" Minimum="0" Maximum="20000"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Margin="4,0,0,0">
+                                        <TextBlock Text="Thermal Iterations:" FontSize="10" Foreground="#94a3b8"/>
+                                        <NumericUpDown Value="{Binding ThermalErosionIterations}" Minimum="0" Maximum="20"/>
+                                    </StackPanel>
+                                </Grid>
+
+                                <Grid ColumnDefinitions="*,*">
+                                    <StackPanel Grid.Column="0" Margin="0,0,4,0">
+                                        <TextBlock Text="UV Tile Scale:" FontSize="10" Foreground="#94a3b8" ToolTip.Tip="World units per texture repeat when tiling is enabled"/>
+                                        <NumericUpDown Value="{Binding TerrainUvTileScale}" Minimum="50" Maximum="10000" Increment="50" IsEnabled="{Binding !TerrainNoTiling}"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Margin="4,0,0,0" VerticalAlignment="Bottom">
+                                        <Button Command="{Binding RecalculateUvsCommand}" Background="#1e293b" Foreground="#38bdf8" BorderBrush="#0284c7" BorderThickness="1" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Height="28" ToolTip.Tip="Apply 1:1 isometric arc-length UVs to active mesh without re-generating">
+                                            <TextBlock Text="🔄 Recalculate UVs" FontSize="10" FontWeight="SemiBold"/>
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
+
+                                <CheckBox Content="No Tiling (1:1 Continuous Canvas)" IsChecked="{Binding TerrainNoTiling}" FontSize="11" Margin="0,2,0,0" ToolTip.Tip="Map entire landscape seamlessly from 0.0 to 1.0 across the canvas with zero repeating tiles"/>
+
+                                <Button Command="{Binding GenerateTerrainCommand}" Background="#0284c7" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="0,2,0,0">
+                                    <TextBlock Text="⚡ Generate Procedural Terrain"/>
+                                </Button>
+
+                                <Separator Height="1" Background="#2e323b" Margin="0,4"/>
+
+                                <!-- Rock Generator (Python Toolkit Port) -->
+                                <Border Background="#121316" CornerRadius="4" Padding="6">
+                                    <StackPanel Spacing="6">
+                                        <TextBlock Text="🪨 Halo Rock Archetypes" FontWeight="Bold" FontSize="11" Foreground="#38bdf8"/>
+                                        <ComboBox ItemsSource="{Binding RockArchetypes}" SelectedItem="{Binding SelectedRockArchetype}" Height="26" HorizontalAlignment="Stretch" FontSize="11"/>
+                                        <Grid ColumnDefinitions="*,*">
+                                            <Button Grid.Column="0" Command="{Binding GenerateRockCommand}" Background="#27272a" Foreground="#f1f5f9" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="0,0,2,0">
+                                                <TextBlock Text="+ Add Rock"/>
+                                            </Button>
+                                            <Button Grid.Column="1" Command="{Binding ScatterRocksCommand}" Background="#27272a" Foreground="#4ade80" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="2,0,0,0">
+                                                <TextBlock Text="🌿 Scatter (x16)"/>
+                                            </Button>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Foliage Generator (Python Toolkit Port) -->
+                                <Border Background="#121316" CornerRadius="4" Padding="6">
+                                    <StackPanel Spacing="6">
+                                        <TextBlock Text="🌲 Halo Foliage &amp; Trees" FontWeight="Bold" FontSize="11" Foreground="#38bdf8"/>
+                                        <ComboBox ItemsSource="{Binding FoliageArchetypes}" SelectedItem="{Binding SelectedFoliageArchetype}" Height="26" HorizontalAlignment="Stretch" FontSize="11"/>
+                                        <Grid ColumnDefinitions="*,*">
+                                            <Button Grid.Column="0" Command="{Binding GenerateFoliageCommand}" Background="#27272a" Foreground="#f1f5f9" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="0,0,2,0">
+                                                <TextBlock Text="+ Add Tree"/>
+                                            </Button>
+                                            <Button Grid.Column="1" Command="{Binding ScatterFoliageCommand}" Background="#27272a" Foreground="#4ade80" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="2,0,0,0">
+                                                <TextBlock Text="🌲 Scatter (x24)"/>
+                                            </Button>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+
+                                <Separator Height="1" Background="#2e323b" Margin="0,4"/>
+
+                                <!-- Prefabs & Portals -->
+                                <TextBlock Text="Structures &amp; Portals" FontWeight="Bold" FontSize="11" Foreground="#38bdf8"/>
+                                <Button Command="{Binding GenerateHallwayAirlockCommand}" Background="#27272a" Foreground="#f1f5f9" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center">
+                                    <TextBlock Text="🚪 UNSC Corridor Airlock (+portal)"/>
+                                </Button>
+                                <Button Command="{Binding GenerateChokepointArchCommand}" Background="#27272a" Foreground="#38bdf8" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center">
+                                    <TextBlock Text="🏔️ Canyon Chokepoint Arch &amp; Portal"/>
+                                </Button>
+                                <Button Command="{Binding GenerateBunkerCommand}" Background="#27272a" Foreground="#f1f5f9" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center">
+                                    <TextBlock Text="🏰 UNSC Blood Gulch Bunker"/>
+                                </Button>
+                                <Button Command="{Binding GenerateWaterVolumeCommand}" Background="#27272a" Foreground="#38bdf8" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center">
+                                    <TextBlock Text="🌊 4-UV Sealed Water Volume"/>
+                                </Button>
+                                <Button Command="{Binding SealMapWatertightCommand}" Background="#059669" Foreground="White" FontWeight="SemiBold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center">
+                                    <TextBlock Text="🛡️ Seal Entire Map Watertight (+sky)"/>
+                                </Button>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </TabItem>
+                </TabControl>
+            </Border>
+
+            <!-- CENTER PANEL: 3D HARDWARE-ACCELERATED VIEWPORT OR GUERILLA TAG STUDIO -->
+            <Grid Grid.Column="1" Background="#0b0b0e">
+                <!-- 1. 3D HARDWARE-ACCELERATED VIEWPORT (Visible in Edit, Paint, Sapien modes) -->
+                <Border BorderBrush="#1f242d" BorderThickness="1" Margin="4" Background="#08090b" CornerRadius="6" ClipToBounds="True"
+                        IsVisible="{Binding !IsGuerillaTab}">
+                    <Grid>
+                        <!-- Silk.NET OpenGL Viewport -->
+                        <views:BlamViewportControl HorizontalAlignment="Stretch" VerticalAlignment="Stretch" MinWidth="400" MinHeight="350"/>
+
+                        <!-- Navigation Hint & Pop Out Button -->
+                        <Border Background="#cc111317" CornerRadius="4" Padding="8,4" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="10">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="Right-Drag: Orbit | Middle-Drag: Pan | Scroll: Zoom | S: Sculpt (Gizmo Off) | P: Paint (Gizmo Off)" FontSize="10" Foreground="#cbd5e1" VerticalAlignment="Center"/>
+                                <Button Command="{Binding OpenTagEditorWindowCommand}" Background="#1e293b" Foreground="#38bdf8" Padding="6,2" ToolTip.Tip="Open Guerilla Tag Editor in separate window">
+                                    <TextBlock Text="🗗 Pop Out Tag Window" FontSize="10"/>
+                                </Button>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Active Stats & Hierarchy HUD Overlay -->
+                        <Border Background="#cc111317" CornerRadius="6" Padding="10,6" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="10">
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="SCENE &amp; MESH STATUS" FontSize="10" FontWeight="Bold" Foreground="#38bdf8"/>
+                                <TextBlock Text="{Binding MeshStats}" FontWeight="SemiBold" Foreground="#f8fafc" FontSize="11"/>
+                                <TextBlock Text="{Binding SelectedShader.MaterialName, StringFormat='Material: {0}'}" FontSize="10" Foreground="#4ade80"/>
+                                <TextBlock Text="{Binding ActiveGizmoPosition, StringFormat='Gizmo Pos: ({0:F0})'}" FontSize="10" Foreground="#fbbf24" IsVisible="{Binding IsGizmoActive}"/>
+                                <TextBlock Text="Gizmo: OFF (Sculpt Mode)" FontSize="10" Foreground="#d8b4fe" FontWeight="SemiBold" IsVisible="{Binding IsSculptOrPaintMode}"/>
+                                <TextBlock Text="{Binding SelectedSceneNode.Name, StringFormat='Selected Node: {0}'}" FontSize="10" Foreground="#a78bfa" IsVisible="{Binding SelectedSceneNode, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- FIRST-PERSON TEST PLAY HUD OVERLAY -->
+                        <Border Background="#d00f172a" BorderBrush="#16a34a" BorderThickness="1" CornerRadius="6" Padding="12,6"
+                                HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,10,0,0"
+                                IsVisible="{Binding IsTestPlayActive}">
+                            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                <TextBlock Text="🎮 TEST PLAY ACTIVE" FontWeight="Bold" FontSize="11" Foreground="#4ade80"/>
+                                <TextBlock Text="WASD: Walk  |  Space: Jump  |  Mouse: Look  |  ESC: Exit" FontSize="10" Foreground="#cbd5e1"/>
+                                <Button Command="{Binding ToggleTestPlayCommand}" Background="#dc2626" Foreground="White" Padding="6,2">
+                                    <TextBlock Text="Exit" FontSize="10"/>
+                                </Button>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- SAPIEN SCENARIO COMPILATION PROMPT BANNER -->
+                        <Border Background="#f0111827" BorderBrush="#0284c7" BorderThickness="2" CornerRadius="8" Padding="18"
+                                HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="520"
+                                IsVisible="{Binding IsSapienPromptVisible}">
+                            <StackPanel Spacing="10">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock Text="⚠️" FontSize="20" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Scenario Tag Not Found - Compile Required" FontWeight="Bold" FontSize="13" Foreground="#38bdf8" VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <TextBlock Text="{Binding ActiveLevelName, StringFormat='The scenario tag for \'{0}\' has not been compiled yet by Tool. Sapien scenario mode requires a compiled .scenario tag to place and bind engine-native entities.'}"
+                                           TextWrapping="Wrap" FontSize="11" Foreground="#e2e8f0"/>
+                                <TextBlock Text="Would you like to 1-Click compile the map with Tool-Fast now, or open Sapien in ForgeWorks sandbox mode?"
+                                           TextWrapping="Wrap" FontSize="11" Foreground="#94a3b8"/>
+                                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,8,0,0">
+                                    <Button Command="{Binding CompileAndEnterSapienCommand}" Background="#0284c7" Foreground="White" FontWeight="Bold" Padding="12,6">
+                                        <TextBlock Text="🚀 1-Click Compile &amp; Enter Sapien"/>
+                                    </Button>
+                                    <Button Command="{Binding DismissSapienPromptCommand}" Background="#334155" Foreground="#f1f5f9" Padding="10,6">
+                                        <TextBlock Text="🎭 Open Sandbox Mode"/>
+                                    </Button>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <!-- 2. FULL GUERILLA TAG EDITOR STUDIO (Visible in Guerilla mode) -->
+                <Border BorderBrush="#1f242d" BorderThickness="1" Margin="4" Background="#14161a" CornerRadius="6" ClipToBounds="True"
+                        IsVisible="{Binding IsGuerillaTab}">
+                    <Grid RowDefinitions="Auto,*">
+                        <!-- Guerilla Mode Studio Top Bar -->
+                        <Border Grid.Row="0" Background="#1c1f26" BorderBrush="#282d38" BorderThickness="0,0,0,1" Padding="10,6">
+                            <Grid ColumnDefinitions="Auto,*,Auto">
+                                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                    <Button Command="{Binding SetEditModeCommand}" Background="#2563eb" Foreground="White" FontWeight="Bold" Padding="8,4">
+                                        <TextBlock Text="🌐 Back to 3D Viewport"/>
+                                    </Button>
+                                    <Border Background="#0284c7" CornerRadius="4" Padding="6,2">
+                                        <TextBlock Text="{Binding ActiveTagDocument.TagGroupMagic, FallbackValue='scnr'}" FontWeight="Bold" FontSize="11" Foreground="White"/>
+                                    </Border>
+                                    <TextBlock Text="GUERILLA TAG STUDIO" FontWeight="Bold" FontSize="12" Foreground="#f8fafc" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding ActiveTagDocument.FilePath}" FontSize="10" Foreground="#94a3b8" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <Button Command="{Binding OpenTagEditorWindowCommand}" Background="#1e293b" Foreground="#38bdf8" Padding="6,4">
+                                        <TextBlock Text="🗗 Floating Window"/>
+                                    </Button>
+                                    <Button Command="{Binding RefreshGuerillaTagDocumentCommand}" Background="#27272a" Foreground="#e4e4e7" Padding="6,4">
+                                        <TextBlock Text="🔄 Reload"/>
+                                    </Button>
+                                    <Button Command="{Binding SaveActiveTagToDiskCommand}" Background="#059669" Foreground="White" FontWeight="Bold" Padding="8,4" ToolTip.Tip="Save and commit this tag definition to disk">
+                                        <TextBlock Text="💾 Save / Commit Tag"/>
+                                    </Button>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <!-- Guerilla Studio Tabs -->
+                        <TabControl Grid.Row="1" Margin="6">
+                            <!-- TAB 1: HEADER FIELDS & VALUES -->
+                            <TabItem Header="📋 Tag Header Fields">
+                                <Grid RowDefinitions="Auto,*" Margin="4">
+                                    <Border Grid.Row="0" Background="#181b22" CornerRadius="4" Padding="10,6" Margin="0,0,0,8">
+                                        <Grid ColumnDefinitions="*,*,*,*">
+                                            <StackPanel Grid.Column="0">
+                                                <TextBlock Text="Magic Group:" FontSize="10" Foreground="#64748b"/>
+                                                <TextBlock Text="{Binding ActiveTagDocument.TagGroupMagic}" FontWeight="Bold" FontSize="12" Foreground="#38bdf8"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1">
+                                                <TextBlock Text="Engine Checksum:" FontSize="10" Foreground="#64748b"/>
+                                                <TextBlock Text="{Binding ActiveTagDocument.EngineChecksum, StringFormat='0x{0:X8}'}" FontWeight="Bold" FontSize="12" Foreground="#4ade80"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="2">
+                                                <TextBlock Text="Header Size:" FontSize="10" Foreground="#64748b"/>
+                                                <TextBlock Text="{Binding ActiveTagDocument.HeaderSize, StringFormat='{}{0} bytes'}" FontWeight="Bold" FontSize="12" Foreground="#f8fafc"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="3">
+                                                <TextBlock Text="File Size:" FontSize="10" Foreground="#64748b"/>
+                                                <TextBlock Text="{Binding ActiveTagDocument.FileSizeBytes, StringFormat='{}{0:N0} bytes'}" FontWeight="Bold" FontSize="12" Foreground="#fbbf24"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+
+                                    <ListBox Grid.Row="1" ItemsSource="{Binding ActiveTagDocument.HeaderFields}" Background="#0f1013" BorderBrush="#222630" BorderThickness="1" CornerRadius="4">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate x:DataType="tags:TagFieldDefinition">
+                                                <Border BorderBrush="#1c202a" BorderThickness="0,0,0,1" Padding="8,6">
+                                                    <Grid ColumnDefinitions="45,150,110,140,*">
+                                                        <TextBlock Grid.Column="0" Text="{Binding Offset, StringFormat='0x{0:X2}'}" FontSize="10" Foreground="#64748b" VerticalAlignment="Center"/>
+                                                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,6,0">
+                                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="11" Foreground="#f8fafc"/>
+                                                            <TextBlock Text="{Binding Category}" FontSize="9" Foreground="#64748b"/>
+                                                        </StackPanel>
+                                                        <Border Grid.Column="2" Background="#181b22" CornerRadius="3" Padding="4,2" HorizontalAlignment="Left" VerticalAlignment="Center">
+                                                            <TextBlock Text="{Binding TypeName}" FontSize="10" Foreground="#38bdf8"/>
+                                                        </Border>
+                                                        <TextBox Grid.Column="3" Text="{Binding Value}" Height="24" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                                        <TextBlock Grid.Column="4" Text="{Binding Description}" FontSize="10" Foreground="#94a3b8" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </Grid>
+                            </TabItem>
+
+                            <!-- TAB 2: TAG REFLEXIVES -->
+                            <TabItem Header="🧬 Tag Reflexives">
+                                <Grid RowDefinitions="Auto,*" Margin="4">
+                                    <TextBlock Grid.Row="0" Text="Halo 3 Tag Reflexives (Nested Tag Blocks)" FontSize="11" Foreground="#94a3b8" Margin="0,0,0,8"/>
+                                    <ListBox Grid.Row="1" ItemsSource="{Binding ActiveTagDocument.Reflexives}" Background="#0f1013" BorderBrush="#222630" BorderThickness="1" CornerRadius="4">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate x:DataType="tags:TagReflexiveDefinition">
+                                                <Border BorderBrush="#1c202a" BorderThickness="0,0,0,1" Padding="10,8">
+                                                    <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+                                                        <StackPanel Grid.Column="0" Spacing="2">
+                                                            <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="12" Foreground="#f8fafc"/>
+                                                            <TextBlock Text="{Binding HeaderOffset, StringFormat='Header Offset: 0x{0:X4}'}" FontSize="9" Foreground="#64748b"/>
+                                                        </StackPanel>
+                                                        <Border Grid.Column="1" Background="#1e293b" CornerRadius="4" Padding="8,4" Margin="4,0">
+                                                            <TextBlock Text="{Binding ElementCount, StringFormat='Count: {0}'}" FontSize="10" FontWeight="Bold" Foreground="#4ade80"/>
+                                                        </Border>
+                                                        <Border Grid.Column="2" Background="#1e293b" CornerRadius="4" Padding="8,4" Margin="4,0">
+                                                            <TextBlock Text="{Binding ElementSize, StringFormat='Size: 0x{0:X2}'}" FontSize="10" Foreground="#38bdf8"/>
+                                                        </Border>
+                                                        <Border Grid.Column="3" Background="#1e293b" CornerRadius="4" Padding="8,4" Margin="4,0">
+                                                            <TextBlock Text="{Binding ElementDataOffset, StringFormat='Data: 0x{0:X4}'}" FontSize="10" Foreground="#fbbf24"/>
+                                                        </Border>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </Grid>
+                            </TabItem>
+
+                            <!-- TAB 3: SCENARIO INSTANCES -->
+                            <TabItem Header="🎭 Scenario Placement Reflexives">
+                                <Grid ColumnDefinitions="*,*,*" Margin="4">
+                                    <Border Grid.Column="0" Background="#181b22" CornerRadius="4" Padding="8" Margin="0,0,4,0">
+                                        <Grid RowDefinitions="Auto,Auto,*">
+                                            <TextBlock Grid.Row="0" Text="Player Starting Locations" FontWeight="Bold" FontSize="11" Foreground="#38bdf8"/>
+                                            <Button Grid.Row="1" Command="{Binding AddSpawnCommand}" Content="+ Add Spawn" Margin="0,4,0,6"/>
+                                            <ListBox Grid.Row="2" ItemsSource="{Binding Spawns}" Background="#0f1013">
+                                                <ListBox.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border BorderBrush="#1c202a" BorderThickness="0,0,0,1" Padding="4">
+                                                            <StackPanel Spacing="1">
+                                                                <TextBlock Text="{Binding Position, StringFormat='Pos: ({0:F0})'}" FontSize="10" Foreground="#f8fafc"/>
+                                                                <TextBlock Text="{Binding FacingAngle, StringFormat='Facing: {0:F0}°'}" FontSize="9" Foreground="#94a3b8"/>
+                                                                <TextBlock Text="{Binding TeamDesignator, StringFormat='Team: {0}'}" FontSize="9" Foreground="#4ade80"/>
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ListBox.ItemTemplate>
+                                            </ListBox>
+                                        </Grid>
+                                    </Border>
+
+                                    <Border Grid.Column="1" Background="#181b22" CornerRadius="4" Padding="8" Margin="2,0">
+                                        <Grid RowDefinitions="Auto,Auto,*">
+                                            <TextBlock Grid.Row="0" Text="Netgame Equipment" FontWeight="Bold" FontSize="11" Foreground="#38bdf8"/>
+                                            <Button Grid.Row="1" Command="{Binding AddEquipmentCommand}" Content="+ Add Equipment" Margin="0,4,0,6"/>
+                                            <ListBox Grid.Row="2" ItemsSource="{Binding Equipment}" Background="#0f1013">
+                                                <ListBox.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border BorderBrush="#1c202a" BorderThickness="0,0,0,1" Padding="4">
+                                                            <StackPanel Spacing="1">
+                                                                <TextBlock Text="{Binding ItemTagPath}" FontSize="9" FontWeight="SemiBold" Foreground="#f8fafc"/>
+                                                                <TextBlock Text="{Binding Position, StringFormat='Pos: ({0:F0})'}" FontSize="9" Foreground="#94a3b8"/>
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ListBox.ItemTemplate>
+                                            </ListBox>
+                                        </Grid>
+                                    </Border>
+
+                                    <Border Grid.Column="2" Background="#181b22" CornerRadius="4" Padding="8" Margin="4,0,0,0">
+                                        <Grid RowDefinitions="Auto,Auto,*">
+                                            <TextBlock Grid.Row="0" Text="Trigger &amp; Kill Volumes" FontWeight="Bold" FontSize="11" Foreground="#38bdf8"/>
+                                            <Button Grid.Row="1" Command="{Binding AddKillVolumeCommand}" Content="+ Add Kill Volume" Margin="0,4,0,6"/>
+                                            <ListBox Grid.Row="2" ItemsSource="{Binding Volumes}" Background="#0f1013">
+                                                <ListBox.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border BorderBrush="#1c202a" BorderThickness="0,0,0,1" Padding="4">
+                                                            <StackPanel Spacing="1">
+                                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="10" Foreground="#f8fafc"/>
+                                                                <TextBlock Text="{Binding VolumeType, StringFormat='Type: {0}'}" FontSize="9" Foreground="#ef4444"/>
+                                                                <TextBlock Text="{Binding Position, StringFormat='Pos: ({0:F0})'}" FontSize="9" Foreground="#94a3b8"/>
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ListBox.ItemTemplate>
+                                            </ListBox>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
+                            </TabItem>
+                        </TabControl>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- RIGHT PANEL: BLOCKBENCH OUTLINER & TRANSFORM ELEMENT INSPECTOR -->
+            <Border Grid.Column="2" Background="#17191e" BorderBrush="#252932" BorderThickness="1,0,0,0">
+                <Grid RowDefinitions="*,Auto,*">
+
+                    <!-- TOP HALF: OUTLINER / SCENE HIERARCHY (BLOCKBENCH STYLE) -->
+                    <Grid Grid.Row="0" RowDefinitions="Auto,*" Margin="6">
+                        <!-- Outliner Header Toolbar -->
+                        <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,6">
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="OUTLINER" FontWeight="Bold" FontSize="12" Foreground="#38bdf8"/>
+                                <TextBlock Text="SCENE" FontSize="10" Foreground="#64748b" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4">
+                                <Button Command="{Binding AddSpawnCommand}" Background="#27272a" Padding="5,2" ToolTip.Tip="Add Player Spawn">
+                                    <TextBlock Text="+ Spawn" FontSize="10"/>
+                                </Button>
+                                <Button Command="{Binding AddEquipmentCommand}" Background="#27272a" Padding="5,2" ToolTip.Tip="Add Assault Rifle">
+                                    <TextBlock Text="+ Weapon" FontSize="10"/>
+                                </Button>
+                                <Button Command="{Binding ToggleSelectedNodeVisibilityCommand}" Background="#27272a" Padding="5,2" ToolTip.Tip="Toggle Node Visibility">
+                                    <TextBlock Text="👁️" FontSize="10"/>
+                                </Button>
+                                <Button Command="{Binding DeleteSelectedNodeCommand}" Background="#27272a" Padding="5,2" ToolTip.Tip="Delete Selected Node">
+                                    <TextBlock Text="🗑️" FontSize="10"/>
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- Outliner TreeView (b_levelroot, z_portals, Sapien Entities, Markers) -->
+                        <TreeView Grid.Row="1" ItemsSource="{Binding SceneGraph.TopLevelNodes}" SelectedItem="{Binding SelectedSceneNode}" Background="#121316" BorderBrush="#1f242d" BorderThickness="1" CornerRadius="4">
+                            <TreeView.ItemTemplate>
+                                <TreeDataTemplate ItemsSource="{Binding Children}" x:DataType="geom:SceneNode">
+                                    <Grid ColumnDefinitions="Auto,*,Auto,Auto" Margin="0,2" Opacity="{Binding DisplayOpacity}">
+                                        <TextBlock Grid.Column="0" Text="{Binding Icon}" Margin="0,0,6,0" VerticalAlignment="Center" FontSize="11"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding Name}" FontWeight="SemiBold" FontSize="11" Foreground="#f8fafc" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding StatsSummary}" FontSize="9" Foreground="#64748b" Margin="8,0,4,0" VerticalAlignment="Center"/>
+                                        <Button Grid.Column="3" 
+                                                Command="{Binding ((vm:MainViewModel)DataContext).ToggleNodeVisibilityDirectCommand, RelativeSource={RelativeSource AncestorType=TreeView}}" 
+                                                CommandParameter="{Binding}"
+                                                Background="Transparent" BorderThickness="0" Padding="4,1" Margin="2,0,0,0" ToolTip.Tip="Toggle Visibility (Show / Hide)">
+                                            <TextBlock Text="{Binding VisibilityIcon}" FontSize="10"/>
+                                        </Button>
+                                    </Grid>
+                                </TreeDataTemplate>
+                            </TreeView.ItemTemplate>
+                        </TreeView>
+                    </Grid>
+
+                    <GridSplitter Grid.Row="1" Height="4" Background="#252932" HorizontalAlignment="Stretch"/>
+
+                    <!-- BOTTOM HALF: TRANSFORM & ELEMENT INSPECTOR / LINTER -->
+                    <Border Grid.Row="2" Background="#17191e" Margin="6,0,6,6">
+                        <TabControl>
+                            <!-- TRANSFORM & PROPERTIES -->
+                            <TabItem Header="Transform &amp; Element">
+                                <ScrollViewer Margin="4">
+                                    <StackPanel Spacing="8">
+                                        <TextBlock Text="Transform Element" FontWeight="Bold" FontSize="11" Foreground="#38bdf8"/>
+
+                                        <Border Background="#121316" CornerRadius="4" Padding="8">
+                                            <StackPanel Spacing="6">
+                                                <TextBlock Text="Node Name:" FontSize="10" Foreground="#94a3b8"/>
+                                                <TextBox Text="{Binding SelectedSceneNode.Name, FallbackValue='b_levelroot'}"/>
+
+                                                <TextBlock Text="Position (X, Y, Z):" FontSize="10" Foreground="#94a3b8" Margin="0,4,0,0"/>
+                                                <Grid ColumnDefinitions="*,*,*">
+                                                    <NumericUpDown Grid.Column="0" Value="{Binding SelectedSceneNode.PosX, FallbackValue=0}" Margin="0,0,2,0"/>
+                                                    <NumericUpDown Grid.Column="1" Value="{Binding SelectedSceneNode.PosY, FallbackValue=0}" Margin="2,0,2,0"/>
+                                                    <NumericUpDown Grid.Column="2" Value="{Binding SelectedSceneNode.PosZ, FallbackValue=0}" Margin="2,0,0,0"/>
+                                                </Grid>
+
+                                                <TextBlock Text="Material Name (1:1 Blam):" FontSize="10" Foreground="#94a3b8" Margin="0,4,0,0"/>
+                                                <TextBox Text="{Binding ActiveMeshMaterialName, Mode=TwoWay}"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- Model Markers List (Authentic Halo 3) -->
+                                        <Border Background="#121316" CornerRadius="4" Padding="8">
+                                            <StackPanel Spacing="4">
+                                                <TextBlock Text="Model Markers (# / $)" FontWeight="SemiBold" FontSize="10" Foreground="#38bdf8"/>
+                                                <ListBox ItemsSource="{Binding Markers}" SelectedItem="{Binding SelectedMarker}" Height="80">
+                                                    <ListBox.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Grid ColumnDefinitions="*,Auto">
+                                                                <TextBlock Grid.Column="0" Text="{Binding Name}" FontSize="10" Foreground="#f1f5f9"/>
+                                                                <TextBlock Grid.Column="1" Text="{Binding Position, StringFormat='({0:F0})'}" FontSize="9" Foreground="#94a3b8"/>
+                                                            </Grid>
+                                                        </DataTemplate>
+                                                    </ListBox.ItemTemplate>
+                                                </ListBox>
+                                            </StackPanel>
+                                        </Border>
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </TabItem>
+
+                            <!-- GEOMETRY LINTER & ERROR FIXER -->
+                            <TabItem Header="🛠️ Errors &amp; Fixer">
+                                <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="4">
+                                    <StackPanel Grid.Row="0" Spacing="4" Margin="0,0,0,4">
+                                        <TextBlock Text="Pre-Flight Geo Checker" FontWeight="Bold" FontSize="11" Foreground="#38bdf8"/>
+                                        <TextBlock Text="Detects open edges, degenerate triangles, and unsealed clusters." FontSize="10" Foreground="#94a3b8"/>
+                                        <CheckBox Content="Scan Selected Mesh Only" IsChecked="{Binding ScanSelectedMeshOnly}" FontSize="10" Foreground="#cbd5e1" Margin="0,2,0,0"/>
+                                    </StackPanel>
+
+                                    <Button Grid.Row="1" Command="{Binding RunLinterCommand}" Background="#2563eb" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="0,0,0,6">
+                                        <TextBlock Text="🔍 Scan Geometry Now"/>
+                                    </Button>
+
+                                    <ListBox Grid.Row="2" ItemsSource="{Binding LintIssues}" Background="#121316">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border BorderBrush="#1e242d" BorderThickness="0,0,0,1" Padding="4,6">
+                                                    <StackPanel Spacing="2">
+                                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                                            <TextBlock Text="{Binding Severity}" FontWeight="Bold" FontSize="10" Foreground="#ef4444"/>
+                                                            <TextBlock Text="{Binding Category}" FontWeight="SemiBold" FontSize="11" Foreground="#f8fafc"/>
+                                                        </StackPanel>
+                                                        <TextBlock Text="{Binding Description}" TextWrapping="Wrap" FontSize="9" Foreground="#94a3b8"/>
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+
+                                    <!-- 1-Click Repair and Swampthing Fix in Fixer tab -->
+                                    <Grid Grid.Row="3" ColumnDefinitions="*,*" Margin="0,6,0,0">
+                                        <Button Grid.Column="0" Command="{Binding SwampthingFixAllCommand}" Background="#0284c7" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="0,0,2,0" ToolTip.Tip="Use Swampthing algorithm to seal water open edges and weld boundaries">
+                                            <TextBlock Text="🌾 Swampthing Fix"/>
+                                        </Button>
+                                        <Button Grid.Column="1" Command="{Binding AutoRepairAllCommand}" Background="#059669" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="2,0,0,0" ToolTip.Tip="Auto-weld vertices, dissolve degenerates and cap boundary holes">
+                                            <TextBlock Text="🛠️ Fix All Geo"/>
+                                        </Button>
+                                    </Grid>
+                                </Grid>
+                            </TabItem>
+
+                            <!-- GUERILLA IN-MEMORY TAG MUTATOR -->
+                            <TabItem Header="🧬 Tag Mutation">
+                                <ScrollViewer Margin="4">
+                                    <StackPanel Spacing="6">
+                                        <TextBlock Text="Guerilla In-Memory Reflexives" FontWeight="Bold" FontSize="11" Foreground="#38bdf8"/>
+                                        <TextBlock Text="{Binding ActiveTagDocument.FilePath, StringFormat='File: {0}'}" FontSize="10" Foreground="#94a3b8"/>
+
+                                        <ItemsControl ItemsSource="{Binding ActiveTagDocument.Reflexives}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Background="#121316" CornerRadius="4" Padding="6" Margin="0,2">
+                                                        <Grid ColumnDefinitions="*,Auto">
+                                                            <TextBlock Grid.Column="0" Text="{Binding Name}" FontSize="10" Foreground="#f8fafc"/>
+                                                            <TextBlock Grid.Column="1" Text="{Binding ElementCount, StringFormat='[{0}]'}" FontSize="10" Foreground="#4ade80"/>
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+
+                                        <Button Command="{Binding SaveScenarioTagCommand}" Background="#2563eb" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="0,6,0,0">
+                                            <TextBlock Text="💾 Commit Tag Mutation to EK"/>
+                                        </Button>
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </TabItem>
+                        </TabControl>
+                    </Border>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- 4. BOTTOM PANEL: TOOL-FAST STREAMING COMPILER CONSOLE -->
+        <Border Grid.Row="3" Background="#111317" BorderBrush="#252932" BorderThickness="0,1,0,0" Padding="8,6">
+            <Grid RowDefinitions="Auto,*">
+                <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,4">
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="🖥️ TOOL-FAST STREAMING COMPILER &amp; EXPORTER" FontWeight="Bold" FontSize="10" Foreground="#94a3b8" VerticalAlignment="Center"/>
+                        <ProgressBar IsIndeterminate="{Binding IsCompiling}" Width="90" Height="8" VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
+                        <Button Command="{Binding SetupMapFoldersCommand}" Background="#0284c7" Foreground="White" FontWeight="Bold" Padding="8,2" FontSize="10" ToolTip.Tip="Setup all required folders and scenario tag for active map in H3EK">
+                            <TextBlock Text="📁 Setup Map Folders"/>
+                        </Button>
+                        <Button Command="{Binding CompileStructureCommand}" Background="#059669" Foreground="White" FontWeight="Bold" Padding="10,2" FontSize="10" ToolTip.Tip="Compile structure BSP and build cache map file">
+                            <TextBlock Text="⚡ 1-Click Fast Compile"/>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+                <TextBox Grid.Row="1" Text="{Binding CompileLog}" IsReadOnly="True" FontFamily="Consolas, Monospace" FontSize="10" Background="#090a0c" Foreground="#4ade80" BorderBrush="#1f242d"/>
+            </Grid>
+        </Border>
+
+        <!-- 5. STATUS BAR FOOTER -->
+        <Border Grid.Row="4" Background="#0c0d10" Padding="12,3">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" Foreground="#94a3b8" FontSize="10"/>
+                <TextBlock Grid.Column="1" Text="Apex-Halo ForgeWorks Studio v1.0 | Halo 3 Blam! Engine Suite" Foreground="#475569" FontSize="9"/>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

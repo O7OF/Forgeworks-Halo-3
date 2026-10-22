@@ -1,0 +1,15 @@
+Reclaimer:
+  page: reclaimer
+  authors:
+    - Gravemind2401
+  workflows:
+    - from:
+        - h1/map
+        - h2/map
+        - h3/map
+      to:
+        - JMS
+        - collada
+        - AMF
+        - obj
+        - tif

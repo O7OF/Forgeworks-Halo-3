@@ -1,0 +1,15 @@
+---
+title: multiplayer_scenario_description
+stub: true
+about: 'tag:h1/multiplayer_scenario_description'
+thanks:
+  SnowyMouse: Invader tag definitions
+  MosesOfEgypt: Tag structure research
+keywords:
+  - mply
+---
+...
+
+# Structure and fields
+
+{% tagStruct "h1/multiplayer_scenario_description" /%}

@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ForgeWorks.Blam/ForgeWorks.Blam.csproj" />
+    <Project Path="src/ForgeWorks.Core/ForgeWorks.Core.csproj" />
+    <Project Path="src/ForgeWorks.UI/ForgeWorks.UI.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ForgeWorks.Tests/ForgeWorks.Tests.csproj" />
+  </Folder>
+</Solution>

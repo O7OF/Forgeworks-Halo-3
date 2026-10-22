@@ -1,0 +1,46 @@
+@use "constants";
+@use "global";
+@use "forms";
+@use "tables";
+@use "utility";
+@use "../lib/components";
+
+@font-face {
+  font-family: ConvectionRegular;
+  src: local("Convection"), url("/assets/ConvectionRegular.ttf");
+  font-weight: normal;
+}
+
+:root {
+  --bg: #{constants.$bg-dark};
+  --fg: #{constants.$fg-dark};
+  --fg-code: #{constants.$fg-code-dark};
+  --fg-faded: #{constants.$fg-faded-dark};
+  --fg-strong: #{constants.$fg-strong-dark};
+  --bg-overlay: #{constants.$bg-overlay-dark};
+  --bg-inset: #{constants.$bg-inset-dark};
+  --bg-sidebar: #{constants.$bg-sidebar-dark};
+  --border-color: #{constants.$border-color-dark};
+  --fg-link: #{constants.$fg-link-dark};
+  --padding-xl: #{constants.$padding-xl-desktop};
+  --padding-lg: #{constants.$padding-lg-desktop};
+  --padding-md: #{constants.$padding-md-desktop};
+  --padding-sm: #{constants.$padding-sm-desktop};
+}
+
+html[data-theme="light"] {
+  --bg: #{constants.$bg-light};
+  --fg: #{constants.$fg-light};
+  --fg-code: #{constants.$fg-code-light};
+  --fg-faded: #{constants.$fg-faded-light};
+  --fg-strong: #{constants.$fg-strong-light};
+  --bg-overlay: #{constants.$bg-overlay-light};
+  --bg-inset: #{constants.$bg-inset-light};
+  --bg-sidebar: #{constants.$bg-sidebar-light};
+  --border-color: #{constants.$border-color-light};
+  --fg-link: #{constants.$fg-link-light};
+
+  .c20-logo::before {
+    filter: brightness(0%);
+  }
+}

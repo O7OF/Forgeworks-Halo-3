@@ -1,0 +1,15 @@
+---
+title: input_device_defaults
+stub: true
+about: 'tag:h1/input_device_defaults'
+thanks:
+  SnowyMouse: Invader tag definitions
+  MosesOfEgypt: Tag structure research
+keywords:
+  - devc
+---
+...
+
+# Structure and fields
+
+{% tagStruct "h1/input_device_defaults" /%}

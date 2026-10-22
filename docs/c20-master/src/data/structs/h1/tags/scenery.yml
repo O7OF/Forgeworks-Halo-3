@@ -1,0 +1,39 @@
+entry_type: Scenery
+imports:
+  h1/tags/object:
+    - BasicObject
+type_defs:
+  H1ASceneryFlags:
+    class: bitfield
+    size: 4
+    bits:
+      - name: off_in_pegasus
+        meta:
+          pegasus_only: true
+        comments:
+          en: >-
+            Presumably hides the scenery in MCC "Pegasus", the censored Chinese
+            release of the game. This flag is now unused in modern versions.
+  Scenery:
+    class: struct
+    extends:
+      type: Object
+    meta:
+      tag_id: scen
+      postprocess_hek_data: true
+      pre_compile: true
+      post_compile: true
+    comments:
+      en: >
+        Fixed decoration objects like boulders, plants, and crates. Placed in
+        the level using [Sapien](~h1-sapien).
+    assert_size: 508
+    fields:
+      - name: flags
+        type: H1ASceneryFlags
+        meta:
+          h1a_only: true
+        comments:
+          en: This field is padding in legacy Halo. It is visible in [H1A Guerilla](~h1-guerilla).
+      - type: pad
+        size: 124

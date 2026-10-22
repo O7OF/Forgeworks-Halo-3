@@ -1,0 +1,134 @@
+@use "constants";
+
+.table-wrapper {
+  overflow-x: auto;
+  clear: both;
+
+  &.no-clear {
+    clear: none;
+  }
+}
+
+.table-nav {
+  display: flex;
+  gap: var(--padding-sm);
+  align-items: center;
+
+  @include constants.mobile {
+    flex-direction: column;
+    align-items: baseline;
+  }
+}
+
+table {
+  border-collapse: collapse;
+  margin-bottom: var(--padding-sm);
+  width: 100%;
+
+  pre {
+    white-space: pre;
+    overflow-x: auto;
+    width: 0;
+    min-width: 100%;
+  }
+
+  &.no-clear, .no-clear & {
+    width: auto;
+  }
+
+  &.wrap-pre td pre {
+    word-break: break-word;
+  }
+
+  td, th {
+    padding: var(--padding-sm);
+    border: 1px solid var(--border-color);;
+    vertical-align: top;
+
+    *:first-child {
+      margin-top: 0;
+    }
+    *:last-child {
+      margin-bottom: 0;
+    }
+  }
+  th {
+    text-align: left;
+    background: var(--bg-overlay);
+  }
+
+  tr.filtered {
+    display: none;
+  }
+}
+
+table.type-def {
+  background: var(--bg);
+  box-shadow: none;
+  transition: box-shadow constants.$transition-time;
+
+  & {
+    margin-bottom: 0;
+  }
+
+  tr.field-type-TagDependency {
+    background: constants.$bg-tag-minor;
+  }
+
+  tr.field-type-ptr32, tr.field-type-ptr64, tr.field-type-TagDataOffset {
+    background: constants.$bg-info;
+  }
+
+  tr.field-type-Block {
+    .field-name {
+      text-transform: uppercase;
+      font-weight: bold;
+    }
+  }
+
+  & &:hover {
+    box-shadow: 0 0 0 2px rgba(constants.$logo-color, 0.35);
+  }
+
+  .embedded-type {
+    background: var(--bg-inset);
+  }
+
+  td.field-type {
+    word-wrap: anywhere;
+  }
+
+  tr.field-type-pad, tr.field-meta-cache_only, tr.field-meta-unused, tr.field-meta-hidden {
+    color: var(--fg-faded);
+    .field-meta {
+      border-color: var(--fg-faded);
+    }
+    & a {
+      opacity: 0.5;
+    }
+
+    //ugh -- we want the embedded tables for boring fields to also be boring
+    & + tr.embedded-type {
+      color: var(--fg-faded);
+      .field-meta {
+        border-color: var(--fg-faded);
+      }
+      & a {
+        opacity: 0.5;
+      }
+    }
+  }
+}
+
+.field-metas {
+  list-style: none;
+  padding: 0;
+  margin-top: 0;
+}
+
+.field-meta {
+  display: inline-block;
+  border-radius: constants.$border-radius;
+  border: 1px solid var(--fg);
+  padding: 0 0.2em;
+}

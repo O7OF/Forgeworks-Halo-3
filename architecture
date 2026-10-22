@@ -1,0 +1,214 @@
++-------------------------------------------------------------------------------------------------------+
+|                                        FORGEWORKS DESKTOP SHELL                                       |
+|                               (C# / .NET 9 + Avalonia UI / ImGui Docking)                             |
++-------------------------------------------------------------------------------------------------------+
+     |                                           |                                           |
+     v                                           v                                           v
++-----------------------+               +-----------------------+               +-----------------------+
+|  BRUSH & CSG SUBSYSTEM|               |   3D VIEWPORT ENGINE  |               |  TAG SYSTEM SUBSYSTEM |
+| (Blockbench/Hammer UI)|               |  (Silk.NET / Vulkan)  |               | (Guerilla/Sapien Core)|
+|                       |               |                       |               |                       |
+| - Polylib / Half-Edge |               | - Blam Cluster Culling|               | - XML/TagDef Registry |
+| - UV Projection Plane |<------------->| - Blam Shader PBR     |<------------->| - In-Memory Binary Tag|
+| - Hull Extrusion/CSG  |  Sync Buffers | - Gizmo Transforms    |  Live Palette |   Reflexive Engine    |
+| - Convex Decomposer   |               | - Portal/Volume Planes|               | - Virtual File System |
++-----------------------+               +-----------------------+               +-----------------------+
+     |                                                                                       |
+     | Brush Geometry, Markers, Materials                                                    | Tag Definitions
+     v                                                                                       v
++-------------------------------------------------------------------------------------------------------+
+|                                    GEOMETRY COMPILATION INTERMEDIARY                                  |
+|                                                                                                       |
+| +-----------------------------------------------+   +-----------------------------------------------+ |
+| |             JMS / ASS EXPORT STAGE            |   |               TAG PATCHING STAGE              | |
+| |                                               |   |                                               | |
+| | 1. Triangulate & Convex Decomposition (V-HACD)|   | 1. Generate/Verify Material Tag References    | |
+| | 2. Material Name Encoding (e.g. %!+collision) |   | 2. Sync Netgame Equipment / Spawns to `scnr`  | |
+| | 3. Node Hierarchy Setup (Frame / Root)        |   | 3. Write Cluster Portals to `sbsp` tag data   | |
+| | 4. Serialization: IEEE-754 Text Stream Format |   | 4. Update Palette Dependencies                | |
+| +-----------------------------------------------+   +-----------------------------------------------+ |
++-------------------------------------------------------------------------------------------------------+
+     |                                                                                       |
+     | Writes: `levels/test/models/test.jms`                                                 | Writes: `tags/levels/test/test.scenario`
+     v                                                                                       v
++-------------------------------------------------------------------------------------------------------+
+|                                      TOOL / BUILD PIPELINE WRAPPER                                    |
+|                                  (`tool_fast.exe` / Invader Tool Subprocess)                          |
+|                                                                                                       |
+| [1. Import Structure]  -> tool_fast.exe structure levels/test test                                    |
+| [2. Compile Lightmaps] -> tool_fast.exe light levels/test test 1 0.1                                  |
+| [3. Package Cache]     -> tool_fast.exe build-cache-file levels/test\test                             |
++-------------------------------------------------------------------------------------------------------+
+                                                     |
+                                                     v
+                                          +---------------------+
+                                          | Output: `test.map`  |
+                                          |   (Direct to MCC)   |
+                                          +---------------------+
+
+
+Data Flow Specification1. Brush Geometry & CSG to JMS PipelineThe pipeline transforms unconstrained user brush volumes into a strictly indexed, single-node or multi-node Blam! Jointed Model Skeleton (.JMS) file.+------------------+      +---------------------+      +------------------------+      +-------------------+
+|  CSG Half-Edge   | ---> | Triangular Splitting| ---> |   Material Semantic    | ---> | JMS Node & Face   |
+|  Primitives (B-Rep)     |  & Planar Weld      |      |   Prefix Resolver      |      | Serializer (v8290)|
++------------------+      +---------------------+      +------------------------+      +-------------------+
+Step 1: Geometry NormalizationCoordinate Conversion: Convert right-handed Y-up (standard DCC space) to Blam! standard: Right-handed Z-up ($X = \text{Forward}$, $Y = \text{Left}$, $Z = \text{Up}$), scaled by engine world units ($1\text{ World Unit} \approx 10\text{ feet} = 3.048\text{ meters}$).Convex Decomposition: Non-convex brushes are split into convex components using an internal BSP splitter to guarantee valid lightmap unwrapping and collision generation during tool execution.Weld Phase: Vertices sharing identical spatial coordinates ($E = 1 \times 10^{-5}$) are collapsed, but split when smoothing groups or UV seams diverge.Step 2: Halo Material Semantic EncodingMaterials mapped to faces in the editor assign physical properties using Blam! prefix tags before writing out the material list in the JMS stream:PrefixEngine InterpretationExample Applied Material<none>Renderable surface with collisionconcrete_wall!Render-only (no collision)!glass_decorative~Collision-only (invisible geometry)~invis_barrier%Two-sided lighting evaluation%leaf_canopy*Skybox projection*sky_dome+Special markers (ladder, portal, exact)+ladder_rungStep 3: JMS v8290 Specification StreamingThe pipeline formats text directly into the standard JMS version string (Halo 2/Halo 3 baseline):8290
+<node_checksum>
+<node_count>
+<node_name>
+<first_child_node_index> <next_sibling_node_index> <parent_node_index>
+<translation: X Y Z>
+<rotation: I J K W>
+<material_count>
+<material_name> <material_shader_tag_path>
+<vertex_count>
+<node_index> <position: X Y Z> <normal: I J K> <tangent: I J K> <binormal: I J K> <texture_coords: U V> [extra UVs...]
+<triangle_count>
+<material_index> <vertex_0> <vertex_1> <vertex_2>
+2. Binary Tag Introspection & Patching PipelineThe Tag Engine loads binary .tag files without relying on external editor executables by consuming structural definitions (schema plugins) matching the target engine generation.+--------------------+      +--------------------+      +--------------------+      +--------------------+
+| XML / Schema       | ---> | Tag Stream Memory  | ---> | Reflexive Pointer  | ---> | High-Level Property|
+| Definition Layouts |      | Mapping (Header)   |      | Resolving & Shifts |      | Mutation Engine    |
++--------------------+      +--------------------+      +--------------------+      +--------------------+
+Step 1: Header Ingestion & ValidationHalo .tag files follow this binary memory footprint on disk:[0x00 - 0x24] Engine Magic & Header Metadata
+[0x24 - 0x28] Tag Group Magic (4-char ASCII code reversed, e.g., 'rncs' for scnr)
+[0x28 - 0x30] Tag Group Identifier & Checksum
+[0x30 - 0x34] Header Size
+[0x34 - End ] Root Reflexive Data Block
+Step 2: Dynamic Reflexive ExpansionA Blam! reflexive struct contains:int32_t count: Number of elements.uint32_t offset: File offset pointing to contiguous element data.When ForgeWorks injects a spawn point into the scenario's netgame_equipment or player_starting_profile blocks:Locate root block offset defined by schema.Read the reflexive element count and pointer.Append or alter serialized payload at EOF or inside virtual layout blocks.Shift all subordinate stream pointers by the size of the injected block:$$\Delta \text{Offset} = \text{Element Count} \times \text{Element Struct Size}$$Fix file size attributes in the root header and regenerate header Adler-32 / CRC checksums.Core Data Models (C# Implementation)1. JMS Geometry Stream SerializerC#using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Numerics;
+
+public sealed class JmsExporter
+{
+    public record JmsVertex(
+        Vector3 Position,
+        Vector3 Normal,
+        Vector2 UV,
+        int NodeIndex = 0
+    );
+
+    public record JmsTriangle(int MaterialIndex, int V0, int V1, int V2);
+
+    public record JmsMesh(
+        List<string> Materials,
+        List<JmsVertex> Vertices,
+        List<JmsTriangle> Triangles
+    );
+
+    public static void ExportToStream(Stream destination, JmsMesh mesh, string nodeName = "frame root")
+    {
+        using var writer = new StreamWriter(destination, leaveOpen: true);
+        var inv = CultureInfo.InvariantCulture;
+
+        // JMS Version Header for standard H2/H3 Tool
+        writer.WriteLine("8290");
+        writer.WriteLine("35179"); // Structure node checksum
+        writer.WriteLine("1");     // Node count (Static BSP uses 1 root node)
+        
+        // Node 0 definition
+        writer.WriteLine(nodeName);
+        writer.WriteLine("-1 -1 -1"); // First child, next sibling, parent
+        writer.WriteLine(string.Format(inv, "{0:F6} {1:F6} {2:F6}", 0.0f, 0.0f, 0.0f));
+        writer.WriteLine(string.Format(inv, "{0:F6} {1:F6} {2:F6} {3:F6}", 0.0f, 0.0f, 0.0f, 1.0f));
+
+        // Material Table
+        writer.WriteLine(mesh.Materials.Count.ToString());
+        foreach (var mat in mesh.Materials)
+        {
+            // Format: <material_name> <shader_tag_path>
+            writer.WriteLine($"{mat}\t<none>");
+        }
+
+        // Marker Table
+        writer.WriteLine("0");
+
+        // Vertex Table
+        writer.WriteLine(mesh.Vertices.Count.ToString());
+        foreach (var v in mesh.Vertices)
+        {
+            // Node, Pos(X,Y,Z), Normal(I,J,K), Tangent(I,J,K), Binormal(I,J,K), UV(U,V)
+            writer.WriteLine(string.Format(inv,
+                "{0}\t{1:F6}\t{2:F6}\t{3:F6}\t{4:F6}\t{5:F6}\t{6:F6}\t1.000000\t0.000000\t0.000000\t0.000000\t1.000000\t0.000000\t{7:F6}\t{8:F6}\t0",
+                v.NodeIndex,
+                v.Position.X, v.Position.Y, v.Position.Z,
+                v.Normal.X, v.Normal.Y, v.Normal.Z,
+                v.UV.X, 1.0f - v.UV.Y)); // Flip V for Blam engine convention
+        }
+
+        // Triangle / Face Table
+        writer.WriteLine(mesh.Triangles.Count.ToString());
+        foreach (var t in mesh.Triangles)
+        {
+            writer.WriteLine($"{t.MaterialIndex}\t{t.V0}\t{t.V1}\t{t.V2}");
+        }
+    }
+}
+2. Binary Tag Reflexive & Header ParserC#using System;
+using System.IO;
+using System.Text;
+
+public sealed class BlamTagReader : IDisposable
+{
+    private readonly BinaryReader _reader;
+
+    public string GroupMagic { get; private set; } = string.Empty;
+    public uint EngineChecksum { get; private set; }
+    public uint RootOffset { get; private set; }
+
+    public BlamTagReader(Stream stream)
+    {
+        _reader = new BinaryReader(stream, Encoding.ASCII, leaveOpen: true);
+        ReadHeader();
+    }
+
+    private void ReadHeader()
+    {
+        _reader.BaseStream.Seek(0x24, SeekOrigin.Begin);
+        
+        // 4-Character tag group (e.g. 'scnr', 'mat ', 'sbsp')
+        byte[] magicBytes = _reader.ReadBytes(4);
+        Array.Reverse(magicBytes); // Blam uses reversed endian identifier checks on disk
+        GroupMagic = Encoding.ASCII.GetString(magicBytes);
+
+        EngineChecksum = _reader.ReadUInt32();
+        
+        _reader.BaseStream.Seek(0x30, SeekOrigin.Begin);
+        uint headerSize = _reader.ReadUInt32();
+        RootOffset = 0x40; // Base position for post-header data
+    }
+
+    public record TagBlockPointer(int Count, uint DataOffset);
+
+    public TagBlockPointer ReadReflexive(long streamPosition)
+    {
+        _reader.BaseStream.Seek(streamPosition, SeekOrigin.Begin);
+        int count = _reader.ReadInt32();
+        uint offset = _reader.ReadUInt32();
+        return new TagBlockPointer(count, offset);
+    }
+
+    public string ReadTagReference(long streamPosition)
+    {
+        _reader.BaseStream.Seek(streamPosition, SeekOrigin.Begin);
+        byte[] groupBytes = _reader.ReadBytes(4);
+        Array.Reverse(groupBytes);
+        string group = Encoding.ASCII.GetString(groupBytes);
+        
+        uint pathOffset = _reader.ReadUInt32();
+        int pathLength = _reader.ReadInt32();
+
+        if (pathOffset == 0 || pathLength <= 0) 
+            return string.Empty;
+
+        long previousPos = _reader.BaseStream.Position;
+        _reader.BaseStream.Seek(pathOffset, SeekOrigin.Begin);
+        byte[] pathBytes = _reader.ReadBytes(pathLength - 1); // Null-terminated string
+        _reader.BaseStream.Seek(previousPos, SeekOrigin.Begin);
+
+        return Encoding.UTF8.GetString(pathBytes);
+    }
+
+    public void Dispose() => _reader.Dispose();
+}
+Step-by-Step Execution Verification PlanTo validate the initial integration loop:Geometry Unit Test:Instantiate a simple box brush: 8 vertices, 12 triangles.Tag the bottom 2 triangles with material concrete and remaining 10 triangles with !glass.Export using JmsExporter.ExportToStream().Verify with tool_fast.exe structure that valid .scenario_structure_bsp tags are built without non-planar or degenerate face warnings.Tag Introspection Test:Open any retail Halo scenario tag (levels\multi\beavercreek\beavercreek.scenario).Run BlamTagReader to assert that GroupMagic == "scnr".Read the reflexive block for player_starting_profile (offset depends on exact H2 vs H3 schema version); confirm element count matches known Sapien counts.
