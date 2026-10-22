@@ -2,7 +2,7 @@
 
 An all-in-one desktop environment for Halo 3 modding and level creation, combining:
 - **Procedural Level Design & 3D Blockout**: Rapid CSG brush work, corridor/room generation, and displacement terrain.
-- **Scenario Viewport**: Interactive 3D placement of scenario objects, spawn points, objective markers, and trigger volumes.
+
 - **Tag Pipeline & Reflection**: Direct tag introspection, mutation, and MCC-compliant format export (`.ass`, `.jms`, `.scenario`).
 
 ## Architecture & Solution Structure
