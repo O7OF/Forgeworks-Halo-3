@@ -2902,22 +2902,22 @@ public partial class MainViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    public void ImportObj()
+    public async Task ImportObj()
     {
         var (dataDir, _, _) = ToolFastCompiler.SetupLevelDirectories(EkPath, ActiveLevelName);
         string objPath = Path.Combine(dataDir, $"{ActiveLevelName}.obj");
         if (File.Exists(objPath))
         {
-            ImportGeometryFile(objPath);
+            await ImportGeometryFile(objPath);
         }
         else
         {
-            ImportGeometryFile();
+            await ImportGeometryFile();
         }
     }
 
     [RelayCommand]
-    public void ImportGeometryFile(string? path = null)
+    public async Task ImportGeometryFile(string? path = null)
     {
         if (string.IsNullOrWhiteSpace(path))
         {
@@ -2931,7 +2931,9 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
-        PushHistoryState($"Import Geometry {Path.GetFileName(path)}");
+        string fileName = Path.GetFileName(path);
+        StatusMessage = $"Importing {fileName}...";
+        PushHistoryState($"Import Geometry {fileName}");
         var options = new GeometryImportOptions
         {
             DefaultMaterial = SelectedShader?.MaterialName ?? "river riverworld_ground",
@@ -2941,11 +2943,11 @@ public partial class MainViewModel : ViewModelBase
 
         try
         {
-            var imported = UniversalGeometryImporter.Import(path, options);
+            var imported = await Task.Run(() => UniversalGeometryImporter.Import(path, options));
             foreach (var m in imported) SceneGraph.AddGeometryMesh(m);
             if (imported.Count > 0)
             {
-                SetActiveMesh(imported[0], $"Imported {imported.Count} mesh(es) from '{Path.GetFileName(path)}' into b_levelroot.");
+                SetActiveMesh(imported[0], $"Imported {imported.Count} mesh(es) from '{fileName}' into b_levelroot.");
             }
 
             // Custom Shaders & Texture Auto-Generation for imported model
@@ -2954,12 +2956,15 @@ public partial class MainViewModel : ViewModelBase
                 try
                 {
                     string modelDir = Path.GetDirectoryName(path) ?? "";
-                    var shaderResults = CustomShaderBuilder.SetupCustomShadersForModel(
-                        EkPath,
-                        ActiveLevelName,
+                    string ek = EkPath;
+                    string lvl = ActiveLevelName;
+                    var cat = _catalog;
+                    var shaderResults = await Task.Run(() => CustomShaderBuilder.SetupCustomShadersForModel(
+                        ek,
+                        lvl,
                         imported,
                         modelDir,
-                        _catalog);
+                        cat));
 
                     if (shaderResults.Count > 0)
                     {
@@ -3019,9 +3024,9 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
-    [RelayCommand] public void ImportFbx() => ImportGeometryFile();
-    [RelayCommand] public void ImportGltf() => ImportGeometryFile();
-    [RelayCommand] public void ImportRmf() => ImportGeometryFile();
+    [RelayCommand] public async Task ImportFbx() => await ImportGeometryFile();
+    [RelayCommand] public async Task ImportGltf() => await ImportGeometryFile();
+    [RelayCommand] public async Task ImportRmf() => await ImportGeometryFile();
 
     // =========================================================================
     // PROCEDURAL ROCKS & FOLIAGE SUITE (PYTHON TOOLKIT PORT)

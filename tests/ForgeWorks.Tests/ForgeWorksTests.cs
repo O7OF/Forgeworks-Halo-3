@@ -2440,6 +2440,43 @@ public class ForgeWorksTests
         Assert.True(openProp.MaterialName.StartsWith("!"), "Non-manifold prop material must be tagged with '!' render-only");
         Assert.True(openProp.MaterialSlots[0].StartsWith("!"), "Material slot must be tagged with '!' render-only");
     }
+
+    [Fact]
+    public void ImportJungleObj_RunsFastAndWithoutHangs()
+    {
+        string path = @"C:\Users\Chey1\Documents\Jungle.obj";
+        if (!File.Exists(path)) return;
+
+        var options = new GeometryImportOptions
+        {
+            DefaultMaterial = "river riverworld_ground",
+            ScaleFactor = 1.0f,
+            ConvertYUpToZUp = true
+        };
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var imported = UniversalGeometryImporter.Import(path, options);
+        long tImport = sw.ElapsedMilliseconds;
+
+        sw.Restart();
+        var issues = GeometryLinter.LintScene(imported);
+        long tLint = sw.ElapsedMilliseconds;
+
+        sw.Restart();
+        int repaired = 0;
+        foreach (var m in imported)
+        {
+            var rep = GeometryAutoRepair.RepairAllErrors(m);
+            repaired += rep.VerticesWelded + rep.DuplicateFacesRemoved;
+        }
+        long tRepair = sw.ElapsedMilliseconds;
+
+        Assert.NotEmpty(imported);
+        Assert.NotNull(issues);
+        Assert.True(tImport < 2000, $"Import took {tImport}ms (expected < 2000ms)");
+        Assert.True(tLint < 1500, $"LintScene took {tLint}ms (expected < 1500ms)");
+        Assert.True(tRepair < 2000, $"RepairAllErrors took {tRepair}ms (expected < 2000ms)");
+    }
 }
 
 

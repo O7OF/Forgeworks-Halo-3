@@ -54,7 +54,7 @@ public partial class MainWindow : Window
                         string? localPath = file.TryGetLocalPath();
                         if (!string.IsNullOrEmpty(localPath))
                         {
-                            vm.ImportGeometryFile(localPath);
+                            await vm.ImportGeometryFile(localPath);
                         }
                     }
                 }

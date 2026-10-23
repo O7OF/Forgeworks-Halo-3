@@ -28,6 +28,7 @@ public sealed class GeometryLinter
     public const float MinEdgeLengthSq = MinEdgeLength * MinEdgeLength;
     public const float MinTriangleArea = 1e-4f;
     public const float BoundsLimit = 150000.0f;
+    public const int MaxCategoryIssues = 500;
 
     public static List<LintIssue> LintScene(IEnumerable<MeshObject> meshes, MeshObject? selectedMeshOnly = null, List<string>? materialNames = null)
     {
@@ -43,30 +44,33 @@ public sealed class GeometryLinter
         if (selectedMeshOnly == null)
         {
             var openIssues = allIssues.FindAll(i => i.Category == "Open Edge" && i.SegmentA.HasValue && i.SegmentB.HasValue);
-            if (openIssues.Count > 0)
+            // Limit stitching check to reasonable boundary count (if tens of thousands of open edges, mesh is un-welded)
+            if (openIssues.Count > 0 && openIssues.Count <= 10000)
             {
-                var stitchedIssues = new HashSet<LintIssue>();
-                const float cellSize = 10.0f;
-                var spatialGrid = new Dictionary<(int, int, int), List<LintIssue>>();
+                var stitched = new bool[openIssues.Count];
+                const float cellSize = 2.0f;
+                var spatialGrid = new Dictionary<(int, int, int), List<int>>();
 
                 (int, int, int) GetCell(Vector3 p) =>
                     ((int)MathF.Floor(p.X / cellSize), (int)MathF.Floor(p.Y / cellSize), (int)MathF.Floor(p.Z / cellSize));
 
-                foreach (var a in openIssues)
+                for (int i = 0; i < openIssues.Count; i++)
                 {
+                    var a = openIssues[i];
                     var mid = (a.SegmentA!.Value + a.SegmentB!.Value) * 0.5f;
                     var cell = GetCell(mid);
                     if (!spatialGrid.TryGetValue(cell, out var list))
                     {
-                        list = new List<LintIssue>(4);
+                        list = new List<int>(4);
                         spatialGrid[cell] = list;
                     }
-                    list.Add(a);
+                    list.Add(i);
                 }
 
-                foreach (var a in openIssues)
+                for (int i = 0; i < openIssues.Count; i++)
                 {
-                    if (stitchedIssues.Contains(a)) continue;
+                    if (stitched[i]) continue;
+                    var a = openIssues[i];
                     var a0 = a.SegmentA!.Value;
                     var a1 = a.SegmentB!.Value;
                     var mid = (a0 + a1) * 0.5f;
@@ -81,17 +85,18 @@ public sealed class GeometryLinter
                             {
                                 if (spatialGrid.TryGetValue((cx + dx, cy + dy, cz + dz), out var bucket))
                                 {
-                                    foreach (var b in bucket)
+                                    foreach (int j in bucket)
                                     {
-                                        if (ReferenceEquals(a, b) || stitchedIssues.Contains(b)) continue;
+                                        if (i == j || stitched[j]) continue;
+                                        var b = openIssues[j];
                                         var b0 = b.SegmentA!.Value;
                                         var b1 = b.SegmentB!.Value;
 
                                         if ((Vector3.DistanceSquared(a0, b1) < 0.05f && Vector3.DistanceSquared(a1, b0) < 0.05f) ||
                                             (Vector3.DistanceSquared(a0, b0) < 0.05f && Vector3.DistanceSquared(a1, b1) < 0.05f))
                                         {
-                                            stitchedIssues.Add(a);
-                                            stitchedIssues.Add(b);
+                                            stitched[i] = true;
+                                            stitched[j] = true;
                                             matched = true;
                                             break;
                                         }
@@ -102,9 +107,18 @@ public sealed class GeometryLinter
                     }
                 }
 
-                if (stitchedIssues.Count > 0)
+                var stitchedSet = new HashSet<LintIssue>(ReferenceEqualityComparer.Instance);
+                for (int i = 0; i < openIssues.Count; i++)
                 {
-                    allIssues.RemoveAll(i => stitchedIssues.Contains(i));
+                    if (stitched[i])
+                    {
+                        stitchedSet.Add(openIssues[i]);
+                    }
+                }
+
+                if (stitchedSet.Count > 0)
+                {
+                    allIssues.RemoveAll(i => stitchedSet.Contains(i));
                 }
             }
         }
@@ -139,6 +153,11 @@ public sealed class GeometryLinter
 
         var seenFaces = new Dictionary<(int, int, int), int>();
 
+        int degenTriCount = 0;
+        int degenFaceCount = 0;
+        int shortEdgeCount = 0;
+        int overlapCount = 0;
+
         // 1. Degenerate Triangles, Degenerate Faces, Short Collision Edges, Overlapping Surfaces
         for (int i = 0; i < mesh.Triangles.Count; i++)
         {
@@ -147,13 +166,17 @@ public sealed class GeometryLinter
             // 1a. Degenerate Triangle: identical indices
             if (tri.V0 == tri.V1 || tri.V1 == tri.V2 || tri.V0 == tri.V2)
             {
-                var p = mesh.Vertices[tri.V0].Position;
-                issues.Add(new LintIssue(
-                    LintSeverity.Error,
-                    "Degenerate Triangle",
-                    $"Triangle #{i} on '{mesh.Name}' has duplicate vertex indices ({tri.V0}, {tri.V1}, {tri.V2})",
-                    p,
-                    i));
+                degenTriCount++;
+                if (degenTriCount <= MaxCategoryIssues)
+                {
+                    var p = mesh.Vertices[tri.V0].Position;
+                    issues.Add(new LintIssue(
+                        LintSeverity.Error,
+                        "Degenerate Triangle",
+                        $"Triangle #{i} on '{mesh.Name}' has duplicate vertex indices ({tri.V0}, {tri.V1}, {tri.V2})",
+                        p,
+                        i));
+                }
                 continue;
             }
 
@@ -167,12 +190,16 @@ public sealed class GeometryLinter
             float area = cross.Length() * 0.5f;
             if (area < MinTriangleArea)
             {
-                issues.Add(new LintIssue(
-                    LintSeverity.Error,
-                    "Degenerate Triangle",
-                    $"Triangle #{i} on '{mesh.Name}' has near-zero surface area ({area:E3} < {MinTriangleArea})",
-                    center,
-                    i));
+                degenTriCount++;
+                if (degenTriCount <= MaxCategoryIssues)
+                {
+                    issues.Add(new LintIssue(
+                        LintSeverity.Error,
+                        "Degenerate Triangle",
+                        $"Triangle #{i} on '{mesh.Name}' has near-zero surface area ({area:E3} < {MinTriangleArea})",
+                        center,
+                        i));
+                }
             }
 
             // 1c. Degenerate Face: needle sliver or collinear vertices
@@ -182,12 +209,16 @@ public sealed class GeometryLinter
             float perimeter = e0 + e1 + e2;
             if (area > 1e-6f && (perimeter * perimeter / area) > 400.0f)
             {
-                issues.Add(new LintIssue(
-                    LintSeverity.Error,
-                    "Degenerate Face",
-                    $"Triangle #{i} on '{mesh.Name}' is an extreme needle sliver (perimeter²/area = {(perimeter * perimeter / area):F1} > 400)",
-                    center,
-                    i));
+                degenFaceCount++;
+                if (degenFaceCount <= MaxCategoryIssues)
+                {
+                    issues.Add(new LintIssue(
+                        LintSeverity.Error,
+                        "Degenerate Face",
+                        $"Triangle #{i} on '{mesh.Name}' is an extreme needle sliver (perimeter²/area = {(perimeter * perimeter / area):F1} > 400)",
+                        center,
+                        i));
+                }
             }
 
             bool isCollideable = mesh.IsTriangleCollideable(tri);
@@ -196,27 +227,39 @@ public sealed class GeometryLinter
             {
                 if (e0 < MinEdgeLength)
                 {
-                    issues.Add(new LintIssue(
-                        LintSeverity.Warning,
-                        "Short Collision Edge",
-                        $"Triangle #{i} on '{mesh.Name}' contains short edge (V0-V1: {e0:F3} < {MinEdgeLength} units)",
-                        (p0 + p1) * 0.5f, i, p0, p1));
+                    shortEdgeCount++;
+                    if (shortEdgeCount <= MaxCategoryIssues)
+                    {
+                        issues.Add(new LintIssue(
+                            LintSeverity.Warning,
+                            "Short Collision Edge",
+                            $"Triangle #{i} on '{mesh.Name}' contains short edge (V0-V1: {e0:F3} < {MinEdgeLength} units)",
+                            (p0 + p1) * 0.5f, i, p0, p1));
+                    }
                 }
                 if (e1 < MinEdgeLength)
                 {
-                    issues.Add(new LintIssue(
-                        LintSeverity.Warning,
-                        "Short Collision Edge",
-                        $"Triangle #{i} on '{mesh.Name}' contains short edge (V1-V2: {e1:F3} < {MinEdgeLength} units)",
-                        (p1 + p2) * 0.5f, i, p1, p2));
+                    shortEdgeCount++;
+                    if (shortEdgeCount <= MaxCategoryIssues)
+                    {
+                        issues.Add(new LintIssue(
+                            LintSeverity.Warning,
+                            "Short Collision Edge",
+                            $"Triangle #{i} on '{mesh.Name}' contains short edge (V1-V2: {e1:F3} < {MinEdgeLength} units)",
+                            (p1 + p2) * 0.5f, i, p1, p2));
+                    }
                 }
                 if (e2 < MinEdgeLength)
                 {
-                    issues.Add(new LintIssue(
-                        LintSeverity.Warning,
-                        "Short Collision Edge",
-                        $"Triangle #{i} on '{mesh.Name}' contains short edge (V2-V0: {e2:F3} < {MinEdgeLength} units)",
-                        (p2 + p0) * 0.5f, i, p2, p0));
+                    shortEdgeCount++;
+                    if (shortEdgeCount <= MaxCategoryIssues)
+                    {
+                        issues.Add(new LintIssue(
+                            LintSeverity.Warning,
+                            "Short Collision Edge",
+                            $"Triangle #{i} on '{mesh.Name}' contains short edge (V2-V0: {e2:F3} < {MinEdgeLength} units)",
+                            (p2 + p0) * 0.5f, i, p2, p0));
+                    }
                 }
 
                 // 1e. Overlapping Surfaces: coincident face check
@@ -228,11 +271,15 @@ public sealed class GeometryLinter
 
                 if (seenFaces.TryGetValue(key, out int existingTri))
                 {
-                    issues.Add(new LintIssue(
-                        LintSeverity.Error,
-                        "Overlapping Surfaces",
-                        $"Triangle #{i} overlaps identical surface polygon with Triangle #{existingTri} on '{mesh.Name}'",
-                        center, i));
+                    overlapCount++;
+                    if (overlapCount <= MaxCategoryIssues)
+                    {
+                        issues.Add(new LintIssue(
+                            LintSeverity.Error,
+                            "Overlapping Surfaces",
+                            $"Triangle #{i} overlaps identical surface polygon with Triangle #{existingTri} on '{mesh.Name}'",
+                            center, i));
+                    }
                 }
                 else
                 {
@@ -245,23 +292,72 @@ public sealed class GeometryLinter
             }
         }
 
+        Vector3 rootPos = mesh.Vertices.Count > 0 ? mesh.Vertices[0].Position : Vector3.Zero;
+        if (degenTriCount > MaxCategoryIssues)
+        {
+            issues.Add(new LintIssue(
+                LintSeverity.Error,
+                "Degenerate Triangle",
+                $"Mesh '{mesh.Name}' contains {degenTriCount:N0} degenerate triangles (showing first {MaxCategoryIssues}). Use 'Fix All Geo (Swampthing)' to repair.",
+                rootPos));
+        }
+        if (degenFaceCount > MaxCategoryIssues)
+        {
+            issues.Add(new LintIssue(
+                LintSeverity.Error,
+                "Degenerate Face",
+                $"Mesh '{mesh.Name}' contains {degenFaceCount:N0} needle sliver faces (showing first {MaxCategoryIssues}). Use 'Fix All Geo (Swampthing)' to repair.",
+                rootPos));
+        }
+        if (shortEdgeCount > MaxCategoryIssues)
+        {
+            issues.Add(new LintIssue(
+                LintSeverity.Warning,
+                "Short Collision Edge",
+                $"Mesh '{mesh.Name}' contains {shortEdgeCount:N0} short collision edges (showing first {MaxCategoryIssues}). Use 'Fix All Geo (Swampthing)' to repair.",
+                rootPos));
+        }
+        if (overlapCount > MaxCategoryIssues)
+        {
+            issues.Add(new LintIssue(
+                LintSeverity.Error,
+                "Overlapping Surfaces",
+                $"Mesh '{mesh.Name}' contains {overlapCount:N0} duplicate/overlapping faces (showing first {MaxCategoryIssues}). Use 'Fix All Geo (Swampthing)' to repair.",
+                rootPos));
+        }
+
         // 2. Vertex Bounds Check
+        int outOfBoundsCount = 0;
         for (int i = 0; i < mesh.Vertices.Count; i++)
         {
             var pos = mesh.Vertices[i].Position;
             if (MathF.Abs(pos.X) > BoundsLimit || MathF.Abs(pos.Y) > BoundsLimit || MathF.Abs(pos.Z) > BoundsLimit)
             {
-                issues.Add(new LintIssue(
-                    LintSeverity.Error,
-                    "Out of Bounds",
-                    $"Vertex #{i} on '{mesh.Name}' at ({pos.X:F1}, {pos.Y:F1}, {pos.Z:F1}) exceeds the ±150,000 JMS bounding volume limit",
-                    pos,
-                    i));
+                outOfBoundsCount++;
+                if (outOfBoundsCount <= MaxCategoryIssues)
+                {
+                    issues.Add(new LintIssue(
+                        LintSeverity.Error,
+                        "Out of Bounds",
+                        $"Vertex #{i} on '{mesh.Name}' at ({pos.X:F1}, {pos.Y:F1}, {pos.Z:F1}) exceeds the ±150,000 JMS bounding volume limit",
+                        pos,
+                        i));
+                }
             }
+        }
+        if (outOfBoundsCount > MaxCategoryIssues)
+        {
+            issues.Add(new LintIssue(
+                LintSeverity.Error,
+                "Out of Bounds",
+                $"Mesh '{mesh.Name}' contains {outOfBoundsCount:N0} vertices exceeding the ±150,000 JMS bounding limit (showing first {MaxCategoryIssues}).",
+                rootPos));
         }
 
         // 3. Open Edges, Ambiguous Connections & Leaky Connections (Collideable BSP)
         var openEdgeList = new List<((int vA, int vB), Vector3 midPoint)>();
+        int openEdgeCount = 0;
+        int ambiguousEdgeCount = 0;
 
         if (mesh.CheckIsCollideable())
         {
@@ -273,42 +369,110 @@ public sealed class GeometryLinter
 
                 if (linkedTris.Count == 1)
                 {
-                    openEdgeList.Add((kvp.Key, midPoint));
-                    issues.Add(new LintIssue(
-                        LintSeverity.Error,
-                        "Open Edge",
-                        $"Edge between vertices {vA} and {vB} on '{mesh.Name}' is open (linked to only 1 face). Halo BSP requires sealed-world geometry.",
-                        midPoint, -1, mesh.Vertices[vA].Position, mesh.Vertices[vB].Position));
+                    openEdgeCount++;
+                    if (openEdgeCount <= MaxCategoryIssues)
+                    {
+                        openEdgeList.Add((kvp.Key, midPoint));
+                        issues.Add(new LintIssue(
+                            LintSeverity.Error,
+                            "Open Edge",
+                            $"Edge between vertices {vA} and {vB} on '{mesh.Name}' is open (linked to only 1 face). Halo BSP requires sealed-world geometry.",
+                            midPoint, -1, mesh.Vertices[vA].Position, mesh.Vertices[vB].Position));
+                    }
                 }
                 else if (linkedTris.Count > 2)
                 {
-                    issues.Add(new LintIssue(
-                        LintSeverity.Error,
-                        "Ambiguous Connection",
-                        $"Edge between vertices {vA} and {vB} on '{mesh.Name}' is shared by {linkedTris.Count} faces (> 2). Causes Tool 'Couldn't update edge'.",
-                        midPoint, -1, mesh.Vertices[vA].Position, mesh.Vertices[vB].Position));
-                }
-            }
-
-            // 3b. Leaky Connection Detection (open edges in close proximity forming unsealed slits)
-            for (int i = 0; i < openEdgeList.Count; i++)
-            {
-                var (edgeA, midA) = openEdgeList[i];
-                for (int j = i + 1; j < openEdgeList.Count; j++)
-                {
-                    var (edgeB, midB) = openEdgeList[j];
-                    if (edgeA.vA == edgeB.vA || edgeA.vA == edgeB.vB || edgeA.vB == edgeB.vA || edgeA.vB == edgeB.vB)
-                        continue;
-
-                    float distSq = (midA - midB).LengthSquared();
-                    if (distSq > 0.0025f && distSq <= 144.0f) // 0.05 < distance <= 12.0 units
+                    ambiguousEdgeCount++;
+                    if (ambiguousEdgeCount <= MaxCategoryIssues)
                     {
                         issues.Add(new LintIssue(
                             LintSeverity.Error,
-                            "Leaky Connection",
-                            $"Unwelded seam gap ({MathF.Sqrt(distSq):F2} units) between edges ({edgeA.vA}-{edgeA.vB}) and ({edgeB.vA}-{edgeB.vB}) on '{mesh.Name}'. Causes lightmap and collision leaks.",
-                            (midA + midB) * 0.5f, -1, midA, midB));
-                        break;
+                            "Ambiguous Connection",
+                            $"Edge between vertices {vA} and {vB} on '{mesh.Name}' is shared by {linkedTris.Count} faces (> 2). Causes Tool 'Couldn't update edge'.",
+                            midPoint, -1, mesh.Vertices[vA].Position, mesh.Vertices[vB].Position));
+                    }
+                }
+            }
+
+            if (openEdgeCount > MaxCategoryIssues)
+            {
+                issues.Add(new LintIssue(
+                    LintSeverity.Error,
+                    "Open Edge",
+                    $"Mesh '{mesh.Name}' contains {openEdgeCount:N0} open boundary edges (showing first {MaxCategoryIssues}). Halo BSP requires sealed-world geometry; use 'Fix All Geo (Swampthing)' to auto-repair.",
+                    rootPos));
+            }
+            if (ambiguousEdgeCount > MaxCategoryIssues)
+            {
+                issues.Add(new LintIssue(
+                    LintSeverity.Error,
+                    "Ambiguous Connection",
+                    $"Mesh '{mesh.Name}' contains {ambiguousEdgeCount:N0} non-manifold edges shared by >2 faces (showing first {MaxCategoryIssues}). Use 'Fix All Geo (Swampthing)' to repair.",
+                    rootPos));
+            }
+
+            // 3b. Leaky Connection Detection using 3D Spatial Grid (O(N) instead of O(N^2))
+            if (openEdgeList.Count > 0)
+            {
+                const float cellSize = 12.0f;
+                const float maxSearchDistSq = 144.0f;
+                var spatialGrid = new Dictionary<(int, int, int), List<int>>();
+                (int, int, int) GetCell(Vector3 p) =>
+                    ((int)MathF.Floor(p.X / cellSize), (int)MathF.Floor(p.Y / cellSize), (int)MathF.Floor(p.Z / cellSize));
+
+                for (int i = 0; i < openEdgeList.Count; i++)
+                {
+                    var cell = GetCell(openEdgeList[i].midPoint);
+                    if (!spatialGrid.TryGetValue(cell, out var list))
+                    {
+                        list = new List<int>(4);
+                        spatialGrid[cell] = list;
+                    }
+                    list.Add(i);
+                }
+
+                var reportedSeams = new HashSet<int>();
+                int leakyCount = 0;
+                for (int i = 0; i < openEdgeList.Count && leakyCount < MaxCategoryIssues; i++)
+                {
+                    if (reportedSeams.Contains(i)) continue;
+                    var (edgeA, midA) = openEdgeList[i];
+                    var (cx, cy, cz) = GetCell(midA);
+
+                    bool matched = false;
+                    for (int dx = -1; dx <= 1 && !matched; dx++)
+                    {
+                        for (int dy = -1; dy <= 1 && !matched; dy++)
+                        {
+                            for (int dz = -1; dz <= 1 && !matched; dz++)
+                            {
+                                if (spatialGrid.TryGetValue((cx + dx, cy + dy, cz + dz), out var bucket))
+                                {
+                                    foreach (int j in bucket)
+                                    {
+                                        if (j == i || reportedSeams.Contains(j)) continue;
+                                        var (edgeB, midB) = openEdgeList[j];
+                                        if (edgeA.vA == edgeB.vA || edgeA.vA == edgeB.vB || edgeA.vB == edgeB.vA || edgeA.vB == edgeB.vB)
+                                            continue;
+
+                                        float distSq = (midA - midB).LengthSquared();
+                                        if (distSq > 0.0025f && distSq <= maxSearchDistSq)
+                                        {
+                                            leakyCount++;
+                                            issues.Add(new LintIssue(
+                                                LintSeverity.Error,
+                                                "Leaky Connection",
+                                                $"Unwelded seam gap ({MathF.Sqrt(distSq):F2} units) between edges ({edgeA.vA}-{edgeA.vB}) and ({edgeB.vA}-{edgeB.vB}) on '{mesh.Name}'. Causes lightmap and collision leaks.",
+                                                (midA + midB) * 0.5f, -1, midA, midB));
+                                            reportedSeams.Add(i);
+                                            reportedSeams.Add(j);
+                                            matched = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -320,6 +484,7 @@ public sealed class GeometryLinter
         float minDot = MathF.Cos(MaxCoplanarDeg * MathF.PI / 180.0f);
         float maxDot = MathF.Cos(MinCoplanarDeg * MathF.PI / 180.0f);
 
+        int coplanarCount = 0;
         foreach (var kvp in edgeMap)
         {
             var linkedTris = kvp.Value;
@@ -331,16 +496,28 @@ public sealed class GeometryLinter
                 float dot = Vector3.Dot(norm0, norm1);
                 if (dot >= minDot && dot <= maxDot)
                 {
-                    float angleDeg = MathF.Acos(Math.Clamp(dot, -1.0f, 1.0f)) * (180.0f / MathF.PI);
-                    var (vA, vB) = kvp.Key;
-                    Vector3 midPoint = (mesh.Vertices[vA].Position + mesh.Vertices[vB].Position) * 0.5f;
-                    issues.Add(new LintIssue(
-                        LintSeverity.Warning,
-                        "Nearly Coplanar Surface",
-                        $"Faces #{linkedTris[0]} and #{linkedTris[1]} differ by {angleDeg:F2}° (nearly coplanar: 0.02° - 1.5°). Warning triggers Phantom BSP in Tool.",
-                        midPoint, -1, mesh.Vertices[vA].Position, mesh.Vertices[vB].Position));
+                    coplanarCount++;
+                    if (coplanarCount <= MaxCategoryIssues)
+                    {
+                        float angleDeg = MathF.Acos(Math.Clamp(dot, -1.0f, 1.0f)) * (180.0f / MathF.PI);
+                        var (vA, vB) = kvp.Key;
+                        Vector3 midPoint = (mesh.Vertices[vA].Position + mesh.Vertices[vB].Position) * 0.5f;
+                        issues.Add(new LintIssue(
+                            LintSeverity.Warning,
+                            "Nearly Coplanar Surface",
+                            $"Faces #{linkedTris[0]} and #{linkedTris[1]} differ by {angleDeg:F2}° (nearly coplanar: 0.02° - 1.5°). Warning triggers Phantom BSP in Tool.",
+                            midPoint, -1, mesh.Vertices[vA].Position, mesh.Vertices[vB].Position));
+                    }
                 }
             }
+        }
+        if (coplanarCount > MaxCategoryIssues)
+        {
+            issues.Add(new LintIssue(
+                LintSeverity.Warning,
+                "Nearly Coplanar Surface",
+                $"Mesh '{mesh.Name}' contains {coplanarCount:N0} nearly coplanar surfaces (showing first {MaxCategoryIssues}). Warning triggers Phantom BSP in Tool.",
+                rootPos));
         }
 
         // 5. Water UV Compliance
