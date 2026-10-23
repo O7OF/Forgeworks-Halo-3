@@ -47,6 +47,23 @@ public sealed class SceneNode : INotifyPropertyChanged
         }
     }
 
+    private bool _isSelected = false;
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set
+        {
+            if (_isSelected != value)
+            {
+                _isSelected = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(SelectionBackground));
+            }
+        }
+    }
+
+    public string SelectionBackground => IsSelected ? "#1e3a5f" : "Transparent";
+
     public double DisplayOpacity => IsVisible ? 1.0 : 0.4;
     public string VisibilityIcon => IsVisible ? "👁️" : "🕶️";
 
@@ -200,6 +217,76 @@ public sealed class SceneContainer
     {
         LevelRoot.Children.Clear();
         PortalsRoot.Children.Clear();
+    }
+
+    /// <summary>
+    /// Clears the entire scene hierarchy (geometry, portals, entities, and markers).
+    /// </summary>
+    public void ClearAll()
+    {
+        LevelRoot.Children.Clear();
+        PortalsRoot.Children.Clear();
+        EntitiesRoot.Children.Clear();
+        MarkersRoot.Children.Clear();
+    }
+
+    /// <summary>
+    /// Returns a flat list of all nodes in depth-first order.
+    /// </summary>
+    public System.Collections.Generic.List<SceneNode> GetAllNodesFlat()
+    {
+        var list = new System.Collections.Generic.List<SceneNode>();
+        void Traverse(SceneNode node)
+        {
+            list.Add(node);
+            foreach (var child in node.Children)
+                Traverse(child);
+        }
+        Traverse(Root);
+        return list;
+    }
+
+    /// <summary>
+    /// Collects all nodes that are currently marked selected.
+    /// </summary>
+    public System.Collections.Generic.List<SceneNode> GetSelectedNodes()
+    {
+        var selected = new System.Collections.Generic.List<SceneNode>();
+        foreach (var node in GetAllNodesFlat())
+        {
+            if (node.IsSelected)
+                selected.Add(node);
+        }
+        return selected;
+    }
+
+    /// <summary>
+    /// Clears selection flag on all scene nodes.
+    /// </summary>
+    public void ClearSelection()
+    {
+        foreach (var node in GetAllNodesFlat())
+        {
+            node.IsSelected = false;
+        }
+    }
+
+    /// <summary>
+    /// Selects a contiguous range of nodes between two nodes (Shift-Select).
+    /// </summary>
+    public void SelectRange(SceneNode start, SceneNode end)
+    {
+        var flat = GetAllNodesFlat();
+        int idxA = flat.IndexOf(start);
+        int idxB = flat.IndexOf(end);
+        if (idxA == -1 || idxB == -1) return;
+
+        int min = Math.Min(idxA, idxB);
+        int max = Math.Max(idxA, idxB);
+        for (int i = min; i <= max; i++)
+        {
+            flat[i].IsSelected = true;
+        }
     }
 
     /// <summary>

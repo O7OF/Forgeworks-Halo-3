@@ -10,6 +10,10 @@ public enum BrushPrimitiveType
     HollowRoom,
     WedgeRamp,
     Cylinder,
+    Sphere,
+    Cone,
+    Torus,
+    Plane,
     ArchDoorway
 }
 
@@ -278,6 +282,156 @@ public static class CsgBrushBuilder
         return mesh;
     }
 
+    public static MeshObject CreateSphere(float radius, int rings, int sectors, Vector3 location, string material = "base concrete", int materialIndex = 0)
+    {
+        var mesh = new MeshObject($"brush_sphere_{Guid.NewGuid().ToString()[..4]}");
+        mesh.MaterialName = material;
+        mesh.IsCollideable = true;
+
+        rings = Math.Max(4, rings);
+        sectors = Math.Max(4, sectors);
+
+        for (int r = 0; r <= rings; r++)
+        {
+            float v = (float)r / rings;
+            float phi = v * MathF.PI;
+
+            for (int s = 0; s <= sectors; s++)
+            {
+                float u = (float)s / sectors;
+                float theta = u * MathF.Tau;
+
+                float x = MathF.Sin(phi) * MathF.Cos(theta);
+                float y = MathF.Sin(phi) * MathF.Sin(theta);
+                float z = MathF.Cos(phi);
+
+                Vector3 n = new(x, y, z);
+                Vector3 p = n * radius + location;
+                mesh.Vertices.Add(new Vertex(p, n, new Vector2(u, v)));
+            }
+        }
+
+        for (int r = 0; r < rings; r++)
+        {
+            for (int s = 0; s < sectors; s++)
+            {
+                int first = r * (sectors + 1) + s;
+                int second = first + sectors + 1;
+
+                mesh.Triangles.Add(new Triangle(first, second, first + 1, materialIndex));
+                mesh.Triangles.Add(new Triangle(second, second + 1, first + 1, materialIndex));
+            }
+        }
+
+        mesh.RecalculateNormals();
+        return mesh;
+    }
+
+    public static MeshObject CreateCone(float radius, float height, int segments, Vector3 location, string material = "base concrete", int materialIndex = 0)
+    {
+        var mesh = new MeshObject($"brush_cone_{Guid.NewGuid().ToString()[..4]}");
+        mesh.MaterialName = material;
+        mesh.IsCollideable = true;
+
+        segments = Math.Max(3, segments);
+        var apex = location + new Vector3(0, 0, height);
+        var baseCenter = location;
+
+        int apexIdx = mesh.Vertices.Count;
+        mesh.Vertices.Add(new Vertex(apex, Vector3.UnitZ, new Vector2(0.5f, 0.5f)));
+
+        int baseCenterIdx = mesh.Vertices.Count;
+        mesh.Vertices.Add(new Vertex(baseCenter, -Vector3.UnitZ, new Vector2(0.5f, 0.5f)));
+
+        int ringStart = mesh.Vertices.Count;
+        for (int i = 0; i < segments; i++)
+        {
+            float a = i * MathF.Tau / segments;
+            var pos = location + new Vector3(MathF.Cos(a) * radius, MathF.Sin(a) * radius, 0);
+            mesh.Vertices.Add(new Vertex(pos, Vector3.Normalize(pos - location), new Vector2(MathF.Cos(a) * 0.5f + 0.5f, MathF.Sin(a) * 0.5f + 0.5f)));
+        }
+
+        for (int i = 0; i < segments; i++)
+        {
+            int next = (i + 1) % segments;
+            // Side
+            mesh.Triangles.Add(new Triangle(apexIdx, ringStart + i, ringStart + next, materialIndex));
+            // Base cap
+            mesh.Triangles.Add(new Triangle(baseCenterIdx, ringStart + next, ringStart + i, materialIndex));
+        }
+
+        mesh.RecalculateNormals();
+        return mesh;
+    }
+
+    public static MeshObject CreateTorus(float majorRadius, float minorRadius, int majorSegments, int minorSegments, Vector3 location, string material = "base concrete", int materialIndex = 0)
+    {
+        var mesh = new MeshObject($"brush_torus_{Guid.NewGuid().ToString()[..4]}");
+        mesh.MaterialName = material;
+        mesh.IsCollideable = true;
+
+        majorSegments = Math.Max(6, majorSegments);
+        minorSegments = Math.Max(4, minorSegments);
+
+        for (int i = 0; i <= majorSegments; i++)
+        {
+            float u = (float)i / majorSegments;
+            float phi = u * MathF.Tau;
+
+            for (int j = 0; j <= minorSegments; j++)
+            {
+                float v = (float)j / minorSegments;
+                float theta = v * MathF.Tau;
+
+                float x = (majorRadius + minorRadius * MathF.Cos(theta)) * MathF.Cos(phi);
+                float y = (majorRadius + minorRadius * MathF.Cos(theta)) * MathF.Sin(phi);
+                float z = minorRadius * MathF.Sin(theta);
+
+                Vector3 p = new Vector3(x, y, z) + location;
+                Vector3 centerRing = new Vector3(MathF.Cos(phi), MathF.Sin(phi), 0) * majorRadius + location;
+                Vector3 n = Vector3.Normalize(p - centerRing);
+
+                mesh.Vertices.Add(new Vertex(p, n, new Vector2(u, v)));
+            }
+        }
+
+        for (int i = 0; i < majorSegments; i++)
+        {
+            for (int j = 0; j < minorSegments; j++)
+            {
+                int first = i * (minorSegments + 1) + j;
+                int second = first + minorSegments + 1;
+
+                mesh.Triangles.Add(new Triangle(first, second, first + 1, materialIndex));
+                mesh.Triangles.Add(new Triangle(second, second + 1, first + 1, materialIndex));
+            }
+        }
+
+        mesh.RecalculateNormals();
+        return mesh;
+    }
+
+    public static MeshObject CreatePlane(Vector2 size, Vector3 location, string material = "base concrete", int materialIndex = 0)
+    {
+        var mesh = new MeshObject($"brush_plane_{Guid.NewGuid().ToString()[..4]}");
+        mesh.MaterialName = material;
+        mesh.IsCollideable = true;
+
+        float hx = size.X * 0.5f;
+        float hy = size.Y * 0.5f;
+
+        mesh.Vertices.Add(new Vertex(location + new Vector3(-hx, -hy, 0), Vector3.UnitZ, new Vector2(0, 0)));
+        mesh.Vertices.Add(new Vertex(location + new Vector3( hx, -hy, 0), Vector3.UnitZ, new Vector2(1, 0)));
+        mesh.Vertices.Add(new Vertex(location + new Vector3( hx,  hy, 0), Vector3.UnitZ, new Vector2(1, 1)));
+        mesh.Vertices.Add(new Vertex(location + new Vector3(-hx,  hy, 0), Vector3.UnitZ, new Vector2(0, 1)));
+
+        mesh.Triangles.Add(new Triangle(0, 1, 2, materialIndex));
+        mesh.Triangles.Add(new Triangle(0, 2, 3, materialIndex));
+
+        mesh.RecalculateNormals();
+        return mesh;
+    }
+
     public static MeshObject CreatePlanarPortal(string name, float width, float height, Vector3 location)
     {
         var mesh = new MeshObject(name);
@@ -310,6 +464,10 @@ public static class CsgBrushBuilder
             BrushPrimitiveType.Box => CreateBox(config.Size, config.Location, config.MaterialName, config.MaterialIndex, config.TextureScale),
             BrushPrimitiveType.WedgeRamp => CreateWedge(config.Size, config.Location, config.MaterialName, config.MaterialIndex),
             BrushPrimitiveType.Cylinder => CreateCylinder(config.Size.X * 0.5f, config.Size.Z, config.Segments, config.Location, config.MaterialIndex),
+            BrushPrimitiveType.Sphere => CreateSphere(config.Size.X * 0.5f, config.Segments, config.Segments, config.Location, config.MaterialName, config.MaterialIndex),
+            BrushPrimitiveType.Cone => CreateCone(config.Size.X * 0.5f, config.Size.Z, config.Segments, config.Location, config.MaterialName, config.MaterialIndex),
+            BrushPrimitiveType.Torus => CreateTorus(config.Size.X * 0.5f, config.WallThickness, config.Segments, config.Segments / 2, config.Location, config.MaterialName, config.MaterialIndex),
+            BrushPrimitiveType.Plane => CreatePlane(new Vector2(config.Size.X, config.Size.Y), config.Location, config.MaterialName, config.MaterialIndex),
             BrushPrimitiveType.HollowRoom => CreateHollowRoom(config.Size, config.WallThickness, config.DoorWidth, config.DoorHeight, config.Location, config.MaterialIndex),
             _ => CreateBox(config.Size, config.Location, config.MaterialName, config.MaterialIndex)
         };

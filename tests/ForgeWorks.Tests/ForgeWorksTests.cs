@@ -2034,7 +2034,147 @@ public class ForgeWorksTests
         var bspInfo = new FileInfo(bspTag);
         Assert.True(bspInfo.Length > 100000, $"Compiled BSP must be valid non-empty file (size: {bspInfo.Length} bytes)");
     }
+
+    [Fact]
+    public void UniversalGeometryImporter_SupportedFormats_IncludesTargetExtensions()
+    {
+        var exts = UniversalGeometryImporter.SupportedExtensions;
+        Assert.Contains(".obj", exts);
+        Assert.Contains(".fbx", exts);
+        Assert.Contains(".gltf", exts);
+        Assert.Contains(".glb", exts);
+        Assert.Contains(".ass", exts);
+        Assert.Contains(".jms", exts);
+        Assert.Contains(".rmf", exts);
+        Assert.Contains(".map", exts);
+    }
+
+    [Fact]
+    public void CsgBrushBuilder_NewPrimitives_GenerateValidGeometry()
+    {
+        var sphere = CsgBrushBuilder.CreateSphere(50.0f, 8, 8, Vector3.Zero);
+        Assert.NotEmpty(sphere.Vertices);
+        Assert.NotEmpty(sphere.Triangles);
+
+        var cone = CsgBrushBuilder.CreateCone(50.0f, 100.0f, 12, Vector3.Zero);
+        Assert.NotEmpty(cone.Vertices);
+        Assert.NotEmpty(cone.Triangles);
+
+        var torus = CsgBrushBuilder.CreateTorus(80.0f, 20.0f, 12, 8, Vector3.Zero);
+        Assert.NotEmpty(torus.Vertices);
+        Assert.NotEmpty(torus.Triangles);
+
+        var plane = CsgBrushBuilder.CreatePlane(new Vector2(200.0f, 200.0f), Vector3.Zero);
+        Assert.Equal(2, plane.Triangles.Count);
+    }
+
+    [Fact]
+    public void MeshModelingEngine_ExtrudeFaces_CreatesValidSideWalls()
+    {
+        var cube = CsgBrushBuilder.CreateBox(new Vector3(100, 100, 100), Vector3.Zero);
+        int initialTris = cube.Triangles.Count; // 12
+        int initialVerts = cube.Vertices.Count;
+
+        // Select the first 2 triangles (e.g. top face)
+        var selected = new List<int> { 0, 1 };
+        var newFaces = MeshModelingEngine.ExtrudeFaces(cube, selected, distance: 50.0f);
+
+        Assert.Equal(2, newFaces.Count);
+        Assert.True(cube.Triangles.Count > initialTris);
+        Assert.True(cube.Vertices.Count > initialVerts);
+    }
+
+    [Fact]
+    public void MeshModelingEngine_InsetFaces_CreatesInsetFaces()
+    {
+        var cube = CsgBrushBuilder.CreateBox(new Vector3(100, 100, 100), Vector3.Zero);
+        int initialTris = cube.Triangles.Count;
+
+        var selected = new List<int> { 0 };
+        var newCaps = MeshModelingEngine.InsetFaces(cube, selected, insetAmount: 10.0f);
+
+        Assert.Single(newCaps);
+        Assert.Equal(initialTris + 6, cube.Triangles.Count); // 1 tri replaced by 1 center cap + 3 quads (6 tris)
+    }
+
+    [Fact]
+    public void MeshModelingEngine_LoopCutMesh_SplitsGeometryAlongPlane()
+    {
+        var cube = CsgBrushBuilder.CreateBox(new Vector3(100, 100, 100), Vector3.Zero);
+        int initialTris = cube.Triangles.Count;
+
+        int splits = MeshModelingEngine.LoopCutMesh(cube, Vector3.Zero, Vector3.UnitZ);
+
+        Assert.True(splits > 0);
+        Assert.True(cube.Triangles.Count > initialTris);
+    }
+
+    [Fact]
+    public void MeshModelingEngine_DissolveFaces_RemovesSelectedGeometry()
+    {
+        var cube = CsgBrushBuilder.CreateBox(new Vector3(100, 100, 100), Vector3.Zero);
+        int initialTris = cube.Triangles.Count;
+
+        int removed = MeshModelingEngine.DeleteFaces(cube, new List<int> { 0, 1 });
+
+        Assert.Equal(2, removed);
+        Assert.Equal(initialTris - 2, cube.Triangles.Count);
+    }
+
+    [Fact]
+    public void ToolLimitGuard_DetectsOversizedMesh_AndPartitionsWithPortals()
+    {
+        var massiveMesh = new MeshObject("massive_hallway");
+        // Create 65,000 dummy triangles
+        for (int i = 0; i < 65000; i++)
+        {
+            float z = (i / 1000f);
+            int v0 = massiveMesh.Vertices.Count;
+            massiveMesh.Vertices.Add(new Vertex(new Vector3(0, 0, z), Vector3.UnitZ));
+            massiveMesh.Vertices.Add(new Vertex(new Vector3(10, 0, z), Vector3.UnitZ));
+            massiveMesh.Vertices.Add(new Vertex(new Vector3(10, 10, z), Vector3.UnitZ));
+            massiveMesh.Triangles.Add(new Triangle(v0, v0 + 1, v0 + 2));
+        }
+
+        var report = ToolLimitGuard.AuditScene(new List<MeshObject> { massiveMesh });
+        Assert.True(report.NeedsAutoPartitioning);
+        Assert.Equal(1, report.OversizedMeshCount);
+
+        var partitioned = ToolLimitGuard.PartitionOversizedMeshes(new List<MeshObject> { massiveMesh }, out var portals);
+        Assert.True(partitioned.Count >= 2);
+        Assert.NotEmpty(portals);
+        Assert.All(portals, p => Assert.StartsWith("+portal", p.MaterialName));
+    }
+
+    [Fact]
+    public void SceneGraph_ShiftMultiSelect_AndClearAll_BehaveCorrectly()
+    {
+        var scene = new SceneContainer();
+        var m1 = new MeshObject("Mesh1");
+        var m2 = new MeshObject("Mesh2");
+        var m3 = new MeshObject("Mesh3");
+
+        var n1 = scene.AddGeometryMesh(m1);
+        var n2 = scene.AddGeometryMesh(m2);
+        var n3 = scene.AddGeometryMesh(m3);
+
+        scene.SelectRange(n1, n3);
+        var selected = scene.GetSelectedNodes();
+        Assert.Equal(3, selected.Count);
+        Assert.True(n1.IsSelected);
+        Assert.True(n2.IsSelected);
+        Assert.True(n3.IsSelected);
+
+        scene.ClearSelection();
+        Assert.Empty(scene.GetSelectedNodes());
+
+        scene.ClearAll();
+        Assert.False(scene.HasAnyGeometryNodes);
+        Assert.Empty(scene.EntitiesRoot.Children);
+        Assert.Empty(scene.MarkersRoot.Children);
+    }
 }
+
 
 
 

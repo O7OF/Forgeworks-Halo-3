@@ -51,6 +51,26 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private GizmoMode _gizmoMode = GizmoMode.Translate;
     partial void OnGizmoModeChanged(GizmoMode value) => OverlayVersion++;
 
+    // Sub-Element Selection (Object, Vertex, Edge, Face - Blockbench / Blender style)
+    [ObservableProperty] private SubElementSelectionMode _selectionMode = SubElementSelectionMode.Object;
+    public ObservableCollection<int> SelectedFaceIndices { get; } = new();
+    public ObservableCollection<SceneNode> SelectedSceneNodes { get; } = new();
+
+    // Modeling Parameters (Extrude, Inset, Loop Cut)
+    [ObservableProperty] private float _extrudeDistance = 50.0f;
+    [ObservableProperty] private float _insetDistance = 15.0f;
+    [ObservableProperty] private float _loopCutPosition = 0.5f;
+    [ObservableProperty] private int _loopCutAxis = 2; // 0=X, 1=Y, 2=Z
+
+    public event Action? RequestImportFileDialog;
+
+    partial void OnSelectionModeChanged(SubElementSelectionMode value)
+    {
+        SelectedFaceIndices.Clear();
+        OverlayVersion++;
+        StatusMessage = $"Selection Mode: {value} (1: Object, 2: Vertex, 3: Edge, 4: Face)";
+    }
+
     // Verified Shaders filter toggle
     [ObservableProperty] private bool _showVerifiedShadersOnly = false;
 
@@ -987,6 +1007,50 @@ public partial class MainViewModel : ViewModelBase
 
     public void TranslateSelectedEntity(Vector3 delta)
     {
+        // 1. Face selection translation (DCC face grab mode)
+        if (SelectionMode == SubElementSelectionMode.Face && SelectedFaceIndices.Count > 0 && ActiveMesh != null)
+        {
+            var faceVerts = new HashSet<int>();
+            foreach (int fIdx in SelectedFaceIndices)
+            {
+                if (fIdx >= 0 && fIdx < ActiveMesh.Triangles.Count)
+                {
+                    var t = ActiveMesh.Triangles[fIdx];
+                    faceVerts.Add(t.V0); faceVerts.Add(t.V1); faceVerts.Add(t.V2);
+                }
+            }
+            foreach (int vIdx in faceVerts)
+            {
+                ActiveMesh.Vertices[vIdx].Position += delta;
+            }
+            if (ActiveGizmoPosition.HasValue) ActiveGizmoPosition += delta;
+            ActiveMesh.RecalculateNormals();
+            MeshVersion++;
+            StatusMessage = $"Translated {SelectedFaceIndices.Count} selected face(s) by ({delta.X:F0}, {delta.Y:F0}, {delta.Z:F0})";
+            return;
+        }
+
+        // 2. Multi-selected nodes translation
+        if (SelectedSceneNodes.Count > 1)
+        {
+            foreach (var node in SelectedSceneNodes)
+            {
+                if (node.Mesh != null)
+                {
+                    for (int i = 0; i < node.Mesh.Vertices.Count; i++)
+                        node.Mesh.Vertices[i].Position += delta;
+                    node.Mesh.RecalculateNormals();
+                }
+                node.Position += delta;
+            }
+            if (ActiveGizmoPosition.HasValue) ActiveGizmoPosition += delta;
+            MeshVersion++;
+            OverlayVersion++;
+            StatusMessage = $"Moved {SelectedSceneNodes.Count} selected objects.";
+            return;
+        }
+
+        // 3. Single entity selection
         if (SelectedSpawn != null)
         {
             int idx = Spawns.IndexOf(SelectedSpawn);
@@ -1046,6 +1110,67 @@ public partial class MainViewModel : ViewModelBase
 
     public void ScaleSelectedEntity(float factor, int axis)
     {
+        // 1. Face selection scaling (DCC face scale mode)
+        if (SelectionMode == SubElementSelectionMode.Face && SelectedFaceIndices.Count > 0 && ActiveMesh != null && ActiveGizmoPosition.HasValue)
+        {
+            Vector3 origin = ActiveGizmoPosition.Value;
+            var faceVerts = new HashSet<int>();
+            foreach (int fIdx in SelectedFaceIndices)
+            {
+                if (fIdx >= 0 && fIdx < ActiveMesh.Triangles.Count)
+                {
+                    var t = ActiveMesh.Triangles[fIdx];
+                    faceVerts.Add(t.V0); faceVerts.Add(t.V1); faceVerts.Add(t.V2);
+                }
+            }
+            foreach (int vIdx in faceVerts)
+            {
+                var p = ActiveMesh.Vertices[vIdx].Position - origin;
+                if (axis == 1) p.X *= factor;
+                else if (axis == 2) p.Y *= factor;
+                else if (axis == 3) p.Z *= factor;
+                else p *= factor;
+                ActiveMesh.Vertices[vIdx].Position = origin + p;
+            }
+            ActiveMesh.RecalculateNormals();
+            MeshVersion++;
+            StatusMessage = $"Scaled {SelectedFaceIndices.Count} selected face(s) (Axis: {axis}, Factor: {factor:F2})";
+            return;
+        }
+
+        // 2. Multi-selected nodes scaling
+        if (SelectedSceneNodes.Count > 1 && ActiveGizmoPosition.HasValue)
+        {
+            Vector3 origin = ActiveGizmoPosition.Value;
+            foreach (var node in SelectedSceneNodes)
+            {
+                if (node.Mesh != null)
+                {
+                    for (int i = 0; i < node.Mesh.Vertices.Count; i++)
+                    {
+                        var p = node.Mesh.Vertices[i].Position - origin;
+                        if (axis == 1) p.X *= factor;
+                        else if (axis == 2) p.Y *= factor;
+                        else if (axis == 3) p.Z *= factor;
+                        else p *= factor;
+                        node.Mesh.Vertices[i].Position = origin + p;
+                    }
+                    node.Mesh.RecalculateNormals();
+                }
+                var np = node.Position - origin;
+                if (axis == 1) np.X *= factor;
+                else if (axis == 2) np.Y *= factor;
+                else if (axis == 3) np.Z *= factor;
+                else np *= factor;
+                node.Position = origin + np;
+            }
+            MeshVersion++;
+            OverlayVersion++;
+            StatusMessage = $"Scaled {SelectedSceneNodes.Count} selected objects.";
+            return;
+        }
+
+        // 3. Single mesh or entity scaling
         if (ActiveMesh != null && ActiveGizmoPosition.HasValue)
         {
             Vector3 origin = ActiveGizmoPosition.Value;
@@ -1766,6 +1891,19 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     public void ToggleSelectedNodeVisibility()
     {
+        if (SelectedSceneNodes.Count > 1)
+        {
+            bool anyVis = SelectedSceneNodes.Any(n => n.IsVisible);
+            foreach (var n in SelectedSceneNodes)
+            {
+                n.IsVisible = !anyVis;
+            }
+            MeshVersion++;
+            OverlayVersion++;
+            StatusMessage = $"Toggled visibility for {SelectedSceneNodes.Count} selected nodes.";
+            return;
+        }
+
         if (SelectedSceneNode != null)
         {
             SelectedSceneNode.IsVisible = !SelectedSceneNode.IsVisible;
@@ -1787,28 +1925,331 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
+    private SceneNode? _lastSelectedNode;
+
+    public void HandleNodeClicked(SceneNode node, bool isShiftDown, bool isCtrlDown)
+    {
+        if (isShiftDown && _lastSelectedNode != null)
+        {
+            SceneGraph.SelectRange(_lastSelectedNode, node);
+            SelectedSceneNodes.Clear();
+            foreach (var n in SceneGraph.GetSelectedNodes())
+                SelectedSceneNodes.Add(n);
+
+            SelectedSceneNode = node;
+            StatusMessage = $"Multi-selected {SelectedSceneNodes.Count} nodes in Outliner.";
+        }
+        else if (isCtrlDown)
+        {
+            node.IsSelected = !node.IsSelected;
+            if (node.IsSelected)
+            {
+                if (!SelectedSceneNodes.Contains(node)) SelectedSceneNodes.Add(node);
+                SelectedSceneNode = node;
+            }
+            else
+            {
+                SelectedSceneNodes.Remove(node);
+                if (SelectedSceneNode == node) SelectedSceneNode = SelectedSceneNodes.LastOrDefault();
+            }
+            _lastSelectedNode = node;
+            StatusMessage = $"Selected {SelectedSceneNodes.Count} node(s).";
+        }
+        else
+        {
+            SceneGraph.ClearSelection();
+            SelectedSceneNodes.Clear();
+            node.IsSelected = true;
+            SelectedSceneNodes.Add(node);
+            SelectedSceneNode = node;
+            _lastSelectedNode = node;
+        }
+
+        UpdateMultiSelectionGizmo();
+    }
+
+    public void UpdateMultiSelectionGizmo()
+    {
+        if (SelectedSceneNodes.Count > 1)
+        {
+            Vector3 center = Vector3.Zero;
+            int count = 0;
+            foreach (var n in SelectedSceneNodes)
+            {
+                if (n.Mesh != null)
+                {
+                    var (bMin, bMax) = CsgBooleanEngine.ComputeBounds(n.Mesh);
+                    center += (bMin + bMax) * 0.5f;
+                    count++;
+                }
+                else
+                {
+                    center += n.Position;
+                    count++;
+                }
+            }
+            if (count > 0) ActiveGizmoPosition = center / count;
+        }
+        else if (SelectedSceneNode?.Mesh != null)
+        {
+            var (bMin, bMax) = CsgBooleanEngine.ComputeBounds(SelectedSceneNode.Mesh);
+            ActiveGizmoPosition = (bMin + bMax) * 0.5f;
+        }
+    }
+
+    [RelayCommand]
+    public void ClearScene()
+    {
+        PushHistoryState("Clear Scene");
+        SceneGraph.ClearAll();
+        Spawns.Clear();
+        Equipment.Clear();
+        Volumes.Clear();
+        Markers.Clear();
+        SelectedFaceIndices.Clear();
+        SelectedSceneNodes.Clear();
+        SelectedSceneNode = null;
+        ActiveMesh = null;
+        ActiveGizmoPosition = null;
+        MeshVersion++;
+        OverlayVersion++;
+        RunLinter();
+        StatusMessage = "Scene cleared completely. All geometry, entities, and markers reset.";
+    }
+
     [RelayCommand]
     public void DeleteSelectedNode()
     {
-        if (SelectedSceneNode == null) return;
-        PushHistoryState($"Delete Node {SelectedSceneNode.Name}");
-        var node = SelectedSceneNode;
-
-        if (SceneGraph.LevelRoot.Children.Remove(node) ||
-            SceneGraph.PortalsRoot.Children.Remove(node) ||
-            SceneGraph.EntitiesRoot.Children.Remove(node) ||
-            SceneGraph.MarkersRoot.Children.Remove(node))
+        if (SelectedSceneNodes.Count > 1)
         {
-            if (node.TagPayload is PlayerStartingLocation s) Spawns.Remove(s);
-            if (node.TagPayload is NetgameEquipment eq) Equipment.Remove(eq);
-            if (node.TagPayload is TriggerVolume vol) Volumes.Remove(vol);
-            if (node.TagPayload is ModelMarker m) Markers.Remove(m);
+            PushHistoryState($"Delete {SelectedSceneNodes.Count} Nodes");
+            var nodes = SelectedSceneNodes.ToList();
+            foreach (var n in nodes)
+            {
+                DeleteSingleNode(n);
+            }
+            SelectedSceneNodes.Clear();
+            SelectedSceneNode = null;
+            ActiveGizmoPosition = null;
+            MeshVersion++;
+            OverlayVersion++;
+            StatusMessage = $"Deleted {nodes.Count} selected nodes from scene.";
+            return;
+        }
 
+        if (SelectedSceneNode != null)
+        {
+            PushHistoryState($"Delete Node {SelectedSceneNode.Name}");
+            var node = SelectedSceneNode;
+            DeleteSingleNode(node);
+            SelectedSceneNodes.Remove(node);
             SelectedSceneNode = null;
             ActiveGizmoPosition = null;
             MeshVersion++;
             OverlayVersion++;
             StatusMessage = $"Removed node '{node.Name}' from scene hierarchy.";
+        }
+    }
+
+    private void DeleteSingleNode(SceneNode node)
+    {
+        SceneGraph.LevelRoot.Children.Remove(node);
+        SceneGraph.PortalsRoot.Children.Remove(node);
+        SceneGraph.EntitiesRoot.Children.Remove(node);
+        SceneGraph.MarkersRoot.Children.Remove(node);
+
+        if (node.TagPayload is PlayerStartingLocation s) Spawns.Remove(s);
+        if (node.TagPayload is NetgameEquipment eq) Equipment.Remove(eq);
+        if (node.TagPayload is TriggerVolume vol) Volumes.Remove(vol);
+        if (node.TagPayload is ModelMarker m) Markers.Remove(m);
+    }
+
+    // =========================================================================
+    // PRIMITIVES SPAWNING SUITE (BLOCKBENCH / GODOT STYLE)
+    // =========================================================================
+
+    [RelayCommand]
+    public void SpawnPrimitive(BrushPrimitiveType type)
+    {
+        PushHistoryState($"Spawn {type}");
+        var cfg = new BrushConfig
+        {
+            Type = type,
+            Size = new Vector3(BrushSizeX, BrushSizeY, BrushSizeZ),
+            WallThickness = BrushWallThickness,
+            Segments = BrushCylinderSegments,
+            Location = SnapToGround(0, 0, BrushSizeZ * 0.5f),
+            MaterialName = SelectedShader?.MaterialName ?? "base concrete"
+        };
+        var mesh = CsgBrushBuilder.BuildFromConfig(cfg);
+        var node = SceneGraph.AddGeometryMesh(mesh);
+        HandleNodeClicked(node, false, false);
+        SetActiveMesh(mesh, $"Spawned {type} primitive at ({cfg.Location.X:F0}, {cfg.Location.Y:F0}, {cfg.Location.Z:F0}).");
+    }
+
+    [RelayCommand] public void SpawnCube() => SpawnPrimitive(BrushPrimitiveType.Box);
+    [RelayCommand] public void SpawnCylinder() => SpawnPrimitive(BrushPrimitiveType.Cylinder);
+    [RelayCommand] public void SpawnSphere() => SpawnPrimitive(BrushPrimitiveType.Sphere);
+    [RelayCommand] public void SpawnCone() => SpawnPrimitive(BrushPrimitiveType.Cone);
+    [RelayCommand] public void SpawnTorus() => SpawnPrimitive(BrushPrimitiveType.Torus);
+    [RelayCommand] public void SpawnPlane() => SpawnPrimitive(BrushPrimitiveType.Plane);
+    [RelayCommand] public void SpawnWedge() => SpawnPrimitive(BrushPrimitiveType.WedgeRamp);
+    [RelayCommand] public void SpawnHollowRoom() => SpawnPrimitive(BrushPrimitiveType.HollowRoom);
+
+    // =========================================================================
+    // SUB-ELEMENT MODELING TOOLS (FACE EXTRUDE, INSET, LOOP CUT, DISSOLVE)
+    // =========================================================================
+
+    [RelayCommand] public void SetSelectionModeObject() => SelectionMode = SubElementSelectionMode.Object;
+    [RelayCommand] public void SetSelectionModeVertex() => SelectionMode = SubElementSelectionMode.Vertex;
+    [RelayCommand] public void SetSelectionModeEdge() => SelectionMode = SubElementSelectionMode.Edge;
+    [RelayCommand] public void SetSelectionModeFace() => SelectionMode = SubElementSelectionMode.Face;
+
+    public void UpdateFaceSelectionGizmo()
+    {
+        if (ActiveMesh == null || SelectedFaceIndices.Count == 0) return;
+        Vector3 center = Vector3.Zero;
+        int count = 0;
+        foreach (int fIdx in SelectedFaceIndices)
+        {
+            if (fIdx >= 0 && fIdx < ActiveMesh.Triangles.Count)
+            {
+                var t = ActiveMesh.Triangles[fIdx];
+                center += ActiveMesh.Vertices[t.V0].Position;
+                center += ActiveMesh.Vertices[t.V1].Position;
+                center += ActiveMesh.Vertices[t.V2].Position;
+                count += 3;
+            }
+        }
+        if (count > 0) ActiveGizmoPosition = center / count;
+    }
+
+    [RelayCommand]
+    public void ExtrudeSelectedFaces()
+    {
+        if (ActiveMesh == null || SelectedFaceIndices.Count == 0)
+        {
+            StatusMessage = "No faces selected to extrude. Click a face in Face Mode (4) first.";
+            return;
+        }
+        PushHistoryState($"Extrude {SelectedFaceIndices.Count} Faces");
+        var newFaces = MeshModelingEngine.ExtrudeFaces(ActiveMesh, SelectedFaceIndices, ExtrudeDistance);
+        SelectedFaceIndices.Clear();
+        foreach (int f in newFaces) SelectedFaceIndices.Add(f);
+        UpdateFaceSelectionGizmo();
+        MeshVersion++;
+        RunLinter();
+        StatusMessage = $"Extruded {newFaces.Count} face(s) by {ExtrudeDistance:F0} units along normal.";
+    }
+
+    [RelayCommand]
+    public void InsetSelectedFaces()
+    {
+        if (ActiveMesh == null || SelectedFaceIndices.Count == 0)
+        {
+            StatusMessage = "No faces selected to inset. Click a face in Face Mode (4) first.";
+            return;
+        }
+        PushHistoryState($"Inset {SelectedFaceIndices.Count} Faces");
+        var newCaps = MeshModelingEngine.InsetFaces(ActiveMesh, SelectedFaceIndices, InsetDistance);
+        SelectedFaceIndices.Clear();
+        foreach (int f in newCaps) SelectedFaceIndices.Add(f);
+        UpdateFaceSelectionGizmo();
+        MeshVersion++;
+        RunLinter();
+        StatusMessage = $"Inset {newCaps.Count} face(s) by {InsetDistance:F0} units.";
+    }
+
+    [RelayCommand]
+    public void DissolveSelectedFaces()
+    {
+        if (ActiveMesh == null || SelectedFaceIndices.Count == 0)
+        {
+            StatusMessage = "No faces selected to dissolve.";
+            return;
+        }
+        PushHistoryState($"Dissolve {SelectedFaceIndices.Count} Faces");
+        int removed = MeshModelingEngine.DeleteFaces(ActiveMesh, SelectedFaceIndices);
+        SelectedFaceIndices.Clear();
+        ActiveGizmoPosition = null;
+        MeshVersion++;
+        RunLinter();
+        StatusMessage = $"Dissolved / deleted {removed} face(s).";
+    }
+
+    [RelayCommand]
+    public void FlipSelectedNormals()
+    {
+        if (ActiveMesh == null || SelectedFaceIndices.Count == 0)
+        {
+            StatusMessage = "No faces selected to flip normals.";
+            return;
+        }
+        PushHistoryState($"Flip Normals on {SelectedFaceIndices.Count} Faces");
+        MeshModelingEngine.FlipNormals(ActiveMesh, SelectedFaceIndices);
+        MeshVersion++;
+        StatusMessage = $"Flipped normals on {SelectedFaceIndices.Count} face(s).";
+    }
+
+    [RelayCommand]
+    public void SubdivideSelectedFaces()
+    {
+        if (ActiveMesh == null || SelectedFaceIndices.Count == 0)
+        {
+            StatusMessage = "No faces selected to subdivide.";
+            return;
+        }
+        PushHistoryState($"Subdivide {SelectedFaceIndices.Count} Faces");
+        int added = MeshModelingEngine.SubdivideFaces(ActiveMesh, SelectedFaceIndices);
+        SelectedFaceIndices.Clear();
+        MeshVersion++;
+        RunLinter();
+        StatusMessage = $"Subdivided selected faces (+{added} triangles).";
+    }
+
+    [RelayCommand]
+    public void LoopCutActiveMesh()
+    {
+        if (ActiveMesh == null)
+        {
+            StatusMessage = "No active mesh to loop cut.";
+            return;
+        }
+        PushHistoryState("Loop Cut Mesh");
+        var (bMin, bMax) = CsgBooleanEngine.ComputeBounds(ActiveMesh);
+        Vector3 cutPoint = Vector3.Lerp(bMin, bMax, Math.Clamp(LoopCutPosition, 0.05f, 0.95f));
+        Vector3 cutNormal = LoopCutAxis switch
+        {
+            0 => Vector3.UnitX,
+            1 => Vector3.UnitY,
+            _ => Vector3.UnitZ
+        };
+        int splits = MeshModelingEngine.LoopCutMesh(ActiveMesh, cutPoint, cutNormal);
+        MeshVersion++;
+        RunLinter();
+        StatusMessage = $"Loop cut applied along {(LoopCutAxis == 0 ? "X" : LoopCutAxis == 1 ? "Y" : "Z")} axis ({splits} edge splits).";
+    }
+
+    [RelayCommand]
+    public void AuditToolGeometryLimits()
+    {
+        var levelMeshes = SceneGraph.GetLevelMeshes();
+        var report = ToolLimitGuard.AuditScene(levelMeshes);
+        if (report.NeedsAutoPartitioning)
+        {
+            PushHistoryState("Auto-Partition Oversized Meshes");
+            var partitioned = ToolLimitGuard.PartitionOversizedMeshes(levelMeshes, out var portals);
+            SceneGraph.ClearGeometry();
+            foreach (var m in partitioned) SceneGraph.AddGeometryMesh(m);
+            foreach (var p in portals) SceneGraph.AddPortalMesh(p);
+            MeshVersion++;
+            OverlayVersion++;
+            RunLinter();
+            StatusMessage = $"Tool Limit Guard: Partitioned {report.OversizedMeshCount} oversized mesh(es) into {partitioned.Count} sub-clusters with {portals.Count} cluster portals (+portal). Safe for H3 Tool!";
+        }
+        else
+        {
+            StatusMessage = $"Tool Limit Guard: All meshes within H3 Tool uint16 safe limits ({report.TotalTriangles:N0} tris across {report.TotalMeshes} meshes).";
         }
     }
 
@@ -2229,15 +2670,60 @@ public partial class MainViewModel : ViewModelBase
     {
         var (dataDir, _, _) = ToolFastCompiler.SetupLevelDirectories(EkPath, ActiveLevelName);
         string objPath = Path.Combine(dataDir, $"{ActiveLevelName}.obj");
-        if (!File.Exists(objPath))
+        if (File.Exists(objPath))
         {
-            StatusMessage = $"File not found: {objPath}";
+            ImportGeometryFile(objPath);
+        }
+        else
+        {
+            ImportGeometryFile();
+        }
+    }
+
+    [RelayCommand]
+    public void ImportGeometryFile(string? path = null)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            RequestImportFileDialog?.Invoke();
             return;
         }
-        var imported = ObjImporter.ImportFromFile(objPath);
-        foreach (var m in imported) SceneGraph.AddGeometryMesh(m);
-        if (imported.Count > 0) SetActiveMesh(imported[0], $"Imported {imported.Count} meshes from OBJ: {objPath}");
+
+        if (!File.Exists(path))
+        {
+            StatusMessage = $"File not found: {path}";
+            return;
+        }
+
+        PushHistoryState($"Import Geometry {Path.GetFileName(path)}");
+        var options = new GeometryImportOptions
+        {
+            DefaultMaterial = SelectedShader?.MaterialName ?? "river riverworld_ground",
+            ScaleFactor = 1.0f,
+            ConvertYUpToZUp = true
+        };
+
+        try
+        {
+            var imported = UniversalGeometryImporter.Import(path, options);
+            foreach (var m in imported) SceneGraph.AddGeometryMesh(m);
+            if (imported.Count > 0)
+            {
+                SetActiveMesh(imported[0], $"Imported {imported.Count} mesh(es) from '{Path.GetFileName(path)}' into b_levelroot.");
+            }
+            MeshVersion++;
+            OverlayVersion++;
+            RunLinter();
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Import error ({Path.GetExtension(path)}): {ex.Message}";
+        }
     }
+
+    [RelayCommand] public void ImportFbx() => ImportGeometryFile();
+    [RelayCommand] public void ImportGltf() => ImportGeometryFile();
+    [RelayCommand] public void ImportRmf() => ImportGeometryFile();
 
     // =========================================================================
     // PROCEDURAL ROCKS & FOLIAGE SUITE (PYTHON TOOLKIT PORT)

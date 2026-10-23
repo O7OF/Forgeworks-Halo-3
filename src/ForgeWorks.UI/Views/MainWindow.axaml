@@ -70,12 +70,28 @@
                     <Menu Background="Transparent">
                         <MenuItem Header="File" Foreground="#d1d5db" FontSize="11">
                             <MenuItem Header="New Level Canvas" Command="{Binding GenerateTerrainCommand}"/>
+                            <MenuItem Header="🧹 Clear Scene (Empty Canvas)" Command="{Binding ClearSceneCommand}"/>
                             <Separator/>
-                            <MenuItem Header="Import">
+                            <MenuItem Header="Import 3D Geometry">
+                                <MenuItem Header="Open File (Auto-Detect: .obj, .fbx, .gltf, .glb, .ass, .rmf, .map)..." Command="{Binding ImportGeometryFileCommand}"/>
+                                <Separator/>
+                                <MenuItem Header="Import .FBX Autodesk Filmbox..." Command="{Binding ImportFbxCommand}"/>
+                                <MenuItem Header="Import .GLTF / .GLB Khronos 3D..." Command="{Binding ImportGltfCommand}"/>
+                                <MenuItem Header="Import .RMF / .MAP Valve Hammer Brush..." Command="{Binding ImportRmfCommand}"/>
+                                <MenuItem Header="Import .OBJ Wavefront..." Command="{Binding ImportObjCommand}"/>
                                 <MenuItem Header="Import .ASS Amalgam Scene..." Command="{Binding ImportAssCommand}"/>
                                 <MenuItem Header="Import .JMS Jointed Model..." Command="{Binding ImportJmsCommand}"/>
-                                <MenuItem Header="Import .OBJ Wavefront..." Command="{Binding ImportObjCommand}"/>
                                 <MenuItem Header="Import Tool WRL Error Wire..." Command="{Binding ImportWrlCommand}"/>
+                            </MenuItem>
+                            <MenuItem Header="Spawn Primitive (Blockbench / Blender)">
+                                <MenuItem Header="Spawn Cube / Box" Command="{Binding SpawnCubeCommand}"/>
+                                <MenuItem Header="Spawn Cylinder Pillar" Command="{Binding SpawnCylinderCommand}"/>
+                                <MenuItem Header="Spawn Sphere" Command="{Binding SpawnSphereCommand}"/>
+                                <MenuItem Header="Spawn Cone" Command="{Binding SpawnConeCommand}"/>
+                                <MenuItem Header="Spawn Torus Ring" Command="{Binding SpawnTorusCommand}"/>
+                                <MenuItem Header="Spawn Plane / Floor" Command="{Binding SpawnPlaneCommand}"/>
+                                <MenuItem Header="Spawn Wedge Ramp" Command="{Binding SpawnWedgeCommand}"/>
+                                <MenuItem Header="Spawn Hollow Room" Command="{Binding SpawnHollowRoomCommand}"/>
                             </MenuItem>
                             <MenuItem Header="Export">
                                 <MenuItem Header="Export .ASS to H3EK Structure Folder..." Command="{Binding ExportAssCommand}"/>
@@ -91,6 +107,18 @@
                         <MenuItem Header="Edit" Foreground="#d1d5db" FontSize="11">
                             <MenuItem Header="Undo" Command="{Binding UndoCommand}" InputGesture="Ctrl+Z"/>
                             <MenuItem Header="Redo" Command="{Binding RedoCommand}" InputGesture="Ctrl+Y"/>
+                            <Separator/>
+                            <MenuItem Header="Selection Mode: Object (1)" Command="{Binding SetSelectionModeObjectCommand}"/>
+                            <MenuItem Header="Selection Mode: Vertex (2)" Command="{Binding SetSelectionModeVertexCommand}"/>
+                            <MenuItem Header="Selection Mode: Edge (3)" Command="{Binding SetSelectionModeEdgeCommand}"/>
+                            <MenuItem Header="Selection Mode: Face (4)" Command="{Binding SetSelectionModeFaceCommand}"/>
+                            <Separator/>
+                            <MenuItem Header="Extrude Selected Faces (E)" Command="{Binding ExtrudeSelectedFacesCommand}"/>
+                            <MenuItem Header="Inset Selected Faces (I)" Command="{Binding InsetSelectedFacesCommand}"/>
+                            <MenuItem Header="Loop Cut Mesh (K)" Command="{Binding LoopCutActiveMeshCommand}"/>
+                            <MenuItem Header="Dissolve / Delete Faces (X)" Command="{Binding DissolveSelectedFacesCommand}"/>
+                            <MenuItem Header="Flip Face Normals" Command="{Binding FlipSelectedNormalsCommand}"/>
+                            <MenuItem Header="Subdivide Faces" Command="{Binding SubdivideSelectedFacesCommand}"/>
                             <Separator/>
                             <MenuItem Header="🌾 Swampthing Fix Open Edges &amp; Welds" Command="{Binding SwampthingFixAllCommand}"/>
                             <MenuItem Header="1-Click Fix All Errors (Weld + Dissolve + Cap)" Command="{Binding AutoRepairAllCommand}"/>
@@ -118,6 +146,8 @@
                             <MenuItem Header="Reset Viewport Camera" Command="{Binding FrameViewCommand}"/>
                         </MenuItem>
                         <MenuItem Header="Halo 3 Tools" Foreground="#d1d5db" FontSize="11">
+                            <MenuItem Header="🛡️ Audit Tool Geometry Limits &amp; Auto-Partition" Command="{Binding AuditToolGeometryLimitsCommand}"/>
+                            <Separator/>
                             <MenuItem Header="Generate Watertight Sky Dome (+sky)" Command="{Binding GenerateWatertightSkyDomeCommand}"/>
                             <MenuItem Header="Seal Map Watertight (+sky)" Command="{Binding SealMapWatertightCommand}"/>
                             <MenuItem Header="Generate Cluster Portal Quad (+portal)" Command="{Binding GeneratePortalCommand}"/>
@@ -281,44 +311,87 @@
                 </StackPanel>
 
                 <!-- Center: Contextual Ribbon based on WorkbenchModeIndex -->
-                <!-- Mode 0: EDIT / CSG BLOCKOUT -->
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center" VerticalAlignment="Center"
+                <!-- Mode 0: EDIT / CSG BLOCKOUT & DCC MODELING SUITE (BLOCKBENCH & BLENDER STYLE) -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center" VerticalAlignment="Center"
                             IsVisible="{Binding WorkbenchModeIndex, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=0}">
-                    <TextBlock Text="BRUSH:" FontSize="10" FontWeight="Bold" Foreground="#38bdf8" VerticalAlignment="Center"/>
-                    <ComboBox SelectedIndex="{Binding BrushPrimitiveTypeIndex}" Height="26" Width="120" FontSize="11">
-                        <ComboBoxItem Content="Cube / Box"/>
-                        <ComboBoxItem Content="Hollow Room"/>
-                        <ComboBoxItem Content="Wedge Ramp"/>
-                        <ComboBoxItem Content="Cylinder Pillar"/>
-                    </ComboBox>
-                    <Button Command="{Binding CreateBrushCommand}" Background="#27272a" Foreground="#e4e4e7" ToolTip.Tip="Create new brush primitive">
-                        <TextBlock Text="+ Add"/>
-                    </Button>
-                    <Button Command="{Binding MergeBrushWithActiveMeshCommand}" Background="#27272a" Foreground="#4ade80" ToolTip.Tip="CSG Boolean Union into active BSP">
-                        <TextBlock Text="∪ Union"/>
-                    </Button>
-                    <Button Command="{Binding CarveDoorwayCommand}" Background="#27272a" Foreground="#a78bfa" ToolTip.Tip="Carve doorway volume">
-                        <TextBlock Text="✂️ Door"/>
-                    </Button>
-                    <Button Command="{Binding CarveTrenchCommand}" Background="#27272a" Foreground="#f472b6" ToolTip.Tip="Carve tactical trench">
-                        <TextBlock Text="⛏️ Trench"/>
-                    </Button>
+                    
+                    <!-- 1. Sub-Element Selection Modes (1, 2, 3, 4) -->
+                    <Border Background="#1b2029" BorderBrush="#2e3846" BorderThickness="1" CornerRadius="4" Padding="2">
+                        <StackPanel Orientation="Horizontal" Spacing="2">
+                            <Button Command="{Binding SetSelectionModeObjectCommand}" Background="#27272a" Foreground="#38bdf8" FontWeight="SemiBold" Padding="5,2" ToolTip.Tip="Object Mode (1) - Transform whole objects">
+                                <TextBlock Text="📦 Obj (1)" FontSize="10"/>
+                            </Button>
+                            <Button Command="{Binding SetSelectionModeVertexCommand}" Background="#27272a" Foreground="#a78bfa" FontWeight="SemiBold" Padding="5,2" ToolTip.Tip="Vertex Mode (2) - Select and move vertices">
+                                <TextBlock Text="• Vtx (2)" FontSize="10"/>
+                            </Button>
+                            <Button Command="{Binding SetSelectionModeEdgeCommand}" Background="#27272a" Foreground="#34d399" FontWeight="SemiBold" Padding="5,2" ToolTip.Tip="Edge Mode (3) - Select edges">
+                                <TextBlock Text="— Edge (3)" FontSize="10"/>
+                            </Button>
+                            <Button Command="{Binding SetSelectionModeFaceCommand}" Background="#27272a" Foreground="#fbbf24" FontWeight="SemiBold" Padding="5,2" ToolTip.Tip="Face Mode (4) - Click faces to select, extrude (E), inset (I), dissolve (X)">
+                                <TextBlock Text="▲ Face (4)" FontSize="10"/>
+                            </Button>
+                        </StackPanel>
+                    </Border>
+
                     <Separator Width="1" Height="18" Background="#334155" Margin="2,0"/>
-                    <Button Command="{Binding DuplicateSelectedObjectCommand}" Background="#27272a" Foreground="#fbbf24" FontWeight="SemiBold" ToolTip.Tip="Duplicate selected object (Ctrl+D)">
-                        <TextBlock Text="📋 Duplicate"/>
-                    </Button>
-                    <Button Command="{Binding SmoothActiveMeshCommand}" Background="#27272a" Foreground="#38bdf8" FontWeight="SemiBold" ToolTip.Tip="Laplacian Smooth active mesh elevation">
-                        <TextBlock Text="🌊 Smooth"/>
-                    </Button>
-                    <Button Command="{Binding AutoRepairActiveMeshCommand}" Background="#059669" Foreground="White" FontWeight="Bold" ToolTip.Tip="Directly fix open edges, cap holes &amp; weld seams on active mesh">
-                        <TextBlock Text="🛠️ Fix Mesh"/>
-                    </Button>
+
+                    <!-- 2. DCC Face Operations -->
+                    <Border Background="#1f182c" BorderBrush="#3f2762" BorderThickness="1" CornerRadius="4" Padding="2">
+                        <StackPanel Orientation="Horizontal" Spacing="2">
+                            <Button Command="{Binding ExtrudeSelectedFacesCommand}" Background="#27272a" Foreground="#f59e0b" FontWeight="Bold" Padding="5,2" ToolTip.Tip="Extrude Selected Face(s) along Normal (E)">
+                                <TextBlock Text="⤢ Extrude (E)" FontSize="10"/>
+                            </Button>
+                            <Button Command="{Binding InsetSelectedFacesCommand}" Background="#27272a" Foreground="#fbbf24" FontWeight="Bold" Padding="5,2" ToolTip.Tip="Inset Selected Face(s) (I)">
+                                <TextBlock Text="⧉ Inset (I)" FontSize="10"/>
+                            </Button>
+                            <Button Command="{Binding LoopCutActiveMeshCommand}" Background="#27272a" Foreground="#38bdf8" FontWeight="Bold" Padding="5,2" ToolTip.Tip="Loop Cut Plane Slice (K) - Divides mesh along bounding axis">
+                                <TextBlock Text="✂ Loop Cut (K)" FontSize="10"/>
+                            </Button>
+                            <Button Command="{Binding DissolveSelectedFacesCommand}" Background="#27272a" Foreground="#f87171" FontWeight="Bold" Padding="5,2" ToolTip.Tip="Dissolve / Delete Selected Faces (X / Delete)">
+                                <TextBlock Text="🗑 Dissolve (X)" FontSize="10"/>
+                            </Button>
+                            <Button Command="{Binding FlipSelectedNormalsCommand}" Background="#27272a" Foreground="#e4e4e7" Padding="4,2" ToolTip.Tip="Flip Selected Face Normals">
+                                <TextBlock Text="🔄 Flip" FontSize="10"/>
+                            </Button>
+                            <Button Command="{Binding SubdivideSelectedFacesCommand}" Background="#27272a" Foreground="#c084fc" Padding="4,2" ToolTip.Tip="Subdivide Selected Faces into Triangles">
+                                <TextBlock Text="🪓 Subdiv" FontSize="10"/>
+                            </Button>
+                        </StackPanel>
+                    </Border>
+
                     <Separator Width="1" Height="18" Background="#334155" Margin="2,0"/>
-                    <Button Command="{Binding GenerateWatertightSkyDomeCommand}" Background="#0369a1" Foreground="White" FontWeight="SemiBold" ToolTip.Tip="Enclose map in 100% sealed watertight +sky dome">
-                        <TextBlock Text="🌐 Watertight Sky"/>
+
+                    <!-- 3. Spawn Primitives Quick Menu -->
+                    <Button Background="#0284c7" Foreground="White" FontWeight="Bold" Padding="6,3" ToolTip.Tip="Spawn 3D Primitives (Cube, Cylinder, Sphere, Cone, Torus, Plane, Room)">
+                        <StackPanel Orientation="Horizontal" Spacing="3">
+                            <TextBlock Text="+ Primitive ▾" FontSize="10"/>
+                        </StackPanel>
+                        <Button.Flyout>
+                            <MenuFlyout Placement="Bottom">
+                                <MenuItem Header="Spawn Cube / Box" Command="{Binding SpawnCubeCommand}"/>
+                                <MenuItem Header="Spawn Cylinder Pillar" Command="{Binding SpawnCylinderCommand}"/>
+                                <MenuItem Header="Spawn Sphere" Command="{Binding SpawnSphereCommand}"/>
+                                <MenuItem Header="Spawn Cone" Command="{Binding SpawnConeCommand}"/>
+                                <MenuItem Header="Spawn Torus Ring" Command="{Binding SpawnTorusCommand}"/>
+                                <MenuItem Header="Spawn Plane / Floor" Command="{Binding SpawnPlaneCommand}"/>
+                                <MenuItem Header="Spawn Wedge Ramp" Command="{Binding SpawnWedgeCommand}"/>
+                                <MenuItem Header="Spawn Hollow Room" Command="{Binding SpawnHollowRoomCommand}"/>
+                            </MenuFlyout>
+                        </Button.Flyout>
                     </Button>
-                    <Button Command="{Binding GeneratePortalCommand}" Background="#1e293b" Foreground="#38bdf8" ToolTip.Tip="Generate cluster portal quad under z_portals">
-                        <TextBlock Text="🚪 Portal"/>
+
+                    <!-- CSG Boolean Operations -->
+                    <Button Command="{Binding MergeBrushWithActiveMeshCommand}" Background="#27272a" Foreground="#4ade80" Padding="5,2" ToolTip.Tip="CSG Boolean Union brush into active BSP">
+                        <TextBlock Text="∪ Union" FontSize="10"/>
+                    </Button>
+                    <Button Command="{Binding CarveDoorwayCommand}" Background="#27272a" Foreground="#a78bfa" Padding="5,2" ToolTip.Tip="Carve doorway volume">
+                        <TextBlock Text="✂️ Door" FontSize="10"/>
+                    </Button>
+                    <Button Command="{Binding DuplicateSelectedObjectCommand}" Background="#27272a" Foreground="#fbbf24" FontWeight="SemiBold" Padding="5,2" ToolTip.Tip="Duplicate selected object (Ctrl+D)">
+                        <TextBlock Text="📋 Dup" FontSize="10"/>
+                    </Button>
+                    <Button Command="{Binding AuditToolGeometryLimitsCommand}" Background="#1e293b" Foreground="#38bdf8" BorderBrush="#0284c7" BorderThickness="1" Padding="5,2" ToolTip.Tip="Tool Limit Guard: Inspect triangles against H3 Tool's 65,535 cluster limits and auto-partition with +portal">
+                        <TextBlock Text="🛡️ Limits" FontSize="10" FontWeight="Bold"/>
                     </Button>
                 </StackPanel>
 
@@ -1080,19 +1153,25 @@
                             <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <TextBlock Text="OUTLINER" FontWeight="Bold" FontSize="12" Foreground="#38bdf8"/>
                                 <TextBlock Text="SCENE" FontSize="10" Foreground="#64748b" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding SelectedSceneNodes.Count, StringFormat='({0} sel)'}" 
+                                           FontSize="9" Foreground="#38bdf8" VerticalAlignment="Center"
+                                           IsVisible="{Binding SelectedSceneNodes.Count}"/>
                             </StackPanel>
                             
-                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4">
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="3">
+                                <Button Command="{Binding ClearSceneCommand}" Background="#dc2626" Foreground="White" FontWeight="Bold" Padding="5,2" ToolTip.Tip="Clear Scene (Remove all geometry and reset canvas)">
+                                    <TextBlock Text="🧹 Clear" FontSize="10"/>
+                                </Button>
                                 <Button Command="{Binding AddSpawnCommand}" Background="#27272a" Padding="5,2" ToolTip.Tip="Add Player Spawn">
                                     <TextBlock Text="+ Spawn" FontSize="10"/>
                                 </Button>
                                 <Button Command="{Binding AddEquipmentCommand}" Background="#27272a" Padding="5,2" ToolTip.Tip="Add Assault Rifle">
                                     <TextBlock Text="+ Weapon" FontSize="10"/>
                                 </Button>
-                                <Button Command="{Binding ToggleSelectedNodeVisibilityCommand}" Background="#27272a" Padding="5,2" ToolTip.Tip="Toggle Node Visibility">
+                                <Button Command="{Binding ToggleSelectedNodeVisibilityCommand}" Background="#27272a" Padding="5,2" ToolTip.Tip="Toggle Selected Node(s) Visibility">
                                     <TextBlock Text="👁️" FontSize="10"/>
                                 </Button>
-                                <Button Command="{Binding DeleteSelectedNodeCommand}" Background="#27272a" Padding="5,2" ToolTip.Tip="Delete Selected Node">
+                                <Button Command="{Binding DeleteSelectedNodeCommand}" Background="#27272a" Padding="5,2" ToolTip.Tip="Delete Selected Node(s)">
                                     <TextBlock Text="🗑️" FontSize="10"/>
                                 </Button>
                             </StackPanel>
@@ -1102,17 +1181,19 @@
                         <TreeView Grid.Row="1" ItemsSource="{Binding SceneGraph.TopLevelNodes}" SelectedItem="{Binding SelectedSceneNode}" Background="#121316" BorderBrush="#1f242d" BorderThickness="1" CornerRadius="4">
                             <TreeView.ItemTemplate>
                                 <TreeDataTemplate ItemsSource="{Binding Children}" x:DataType="geom:SceneNode">
-                                    <Grid ColumnDefinitions="Auto,*,Auto,Auto" Margin="0,2" Opacity="{Binding DisplayOpacity}">
-                                        <TextBlock Grid.Column="0" Text="{Binding Icon}" Margin="0,0,6,0" VerticalAlignment="Center" FontSize="11"/>
-                                        <TextBlock Grid.Column="1" Text="{Binding Name}" FontWeight="SemiBold" FontSize="11" Foreground="#f8fafc" VerticalAlignment="Center"/>
-                                        <TextBlock Grid.Column="2" Text="{Binding StatsSummary}" FontSize="9" Foreground="#64748b" Margin="8,0,4,0" VerticalAlignment="Center"/>
-                                        <Button Grid.Column="3" 
-                                                Command="{Binding ((vm:MainViewModel)DataContext).ToggleNodeVisibilityDirectCommand, RelativeSource={RelativeSource AncestorType=TreeView}}" 
-                                                CommandParameter="{Binding}"
-                                                Background="Transparent" BorderThickness="0" Padding="4,1" Margin="2,0,0,0" ToolTip.Tip="Toggle Visibility (Show / Hide)">
-                                            <TextBlock Text="{Binding VisibilityIcon}" FontSize="10"/>
-                                        </Button>
-                                    </Grid>
+                                    <Border Background="{Binding SelectionBackground}" CornerRadius="3" Padding="4,2" PointerPressed="OnOutlinerNodePointerPressed">
+                                        <Grid ColumnDefinitions="Auto,*,Auto,Auto" Opacity="{Binding DisplayOpacity}">
+                                            <TextBlock Grid.Column="0" Text="{Binding Icon}" Margin="0,0,6,0" VerticalAlignment="Center" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding Name}" FontWeight="SemiBold" FontSize="11" Foreground="#f8fafc" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="2" Text="{Binding StatsSummary}" FontSize="9" Foreground="#64748b" Margin="8,0,4,0" VerticalAlignment="Center"/>
+                                            <Button Grid.Column="3" 
+                                                    Command="{Binding ((vm:MainViewModel)DataContext).ToggleNodeVisibilityDirectCommand, RelativeSource={RelativeSource AncestorType=TreeView}}" 
+                                                    CommandParameter="{Binding}"
+                                                    Background="Transparent" BorderThickness="0" Padding="4,1" Margin="2,0,0,0" ToolTip.Tip="Toggle Visibility (Show / Hide)">
+                                                <TextBlock Text="{Binding VisibilityIcon}" FontSize="10"/>
+                                            </Button>
+                                        </Grid>
+                                    </Border>
                                 </TreeDataTemplate>
                             </TreeView.ItemTemplate>
                         </TreeView>

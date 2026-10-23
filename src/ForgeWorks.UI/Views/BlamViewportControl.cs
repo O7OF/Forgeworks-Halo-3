@@ -638,6 +638,36 @@ void main()
             }
         }
 
+        // Sub-element selections (Faces)
+        if (vm.ActiveMesh != null && vm.SelectedFaceIndices.Count > 0)
+        {
+            var faceGold = new Vector4(1.0f, 0.78f, 0.15f, 1.0f);
+            var faceCenterCol = new Vector4(1.0f, 0.95f, 0.3f, 1.0f);
+            foreach (var faceIdx in vm.SelectedFaceIndices)
+            {
+                if (faceIdx >= 0 && faceIdx < vm.ActiveMesh.Triangles.Count)
+                {
+                    var tri = vm.ActiveMesh.Triangles[faceIdx];
+                    var v0 = vm.ActiveMesh.Vertices[tri.V0].Position;
+                    var v1 = vm.ActiveMesh.Vertices[tri.V1].Position;
+                    var v2 = vm.ActiveMesh.Vertices[tri.V2].Position;
+                    var center = (v0 + v1 + v2) / 3.0f;
+                    var n = tri.Normal;
+                    if (n.LengthSquared() > 0.001f) n = Vector3.Normalize(n);
+                    var offset = n * 0.15f;
+
+                    // Outline of face
+                    AddLine(depthBuf, v0 + offset, v1 + offset, faceGold);
+                    AddLine(depthBuf, v1 + offset, v2 + offset, faceGold);
+                    AddLine(depthBuf, v2 + offset, v0 + offset, faceGold);
+
+                    // Cross at center (depth tested and xray)
+                    AddCross(depthBuf, center + offset, markerScale * 0.4f, faceCenterCol);
+                    AddCross(xrayBuf, center + offset, markerScale * 0.25f, faceGold);
+                }
+            }
+        }
+
         _overlayDepthCount = depthBuf.Count / FloatsPerVertex;
         _overlayXrayCount = xrayBuf.Count / FloatsPerVertex;
         depthBuf.AddRange(xrayBuf);
@@ -1120,6 +1150,42 @@ void main()
             }
         }
 
+        bool ctrl = e.KeyModifiers.HasFlag(KeyModifiers.Control);
+
+        // Sub-Element Face Selection in Face Mode (Blockbench / Blender style)
+        if (props.IsLeftButtonPressed && Vm is { } vmFace && vmFace.SelectionMode == SubElementSelectionMode.Face)
+        {
+            var ray = MeshSculptEngine.ScreenPointToRay(
+                new Vector2((float)_lastPointerPos.X, (float)_lastPointerPos.Y),
+                (float)Bounds.Width, (float)Bounds.Height, _camera);
+            if (vmFace.ActiveMesh != null && MeshSculptEngine.RayIntersectsMesh(ray, vmFace.ActiveMesh, out var hitPt, out _, out int hitTri))
+            {
+                if (shift || ctrl)
+                {
+                    if (vmFace.SelectedFaceIndices.Contains(hitTri))
+                        vmFace.SelectedFaceIndices.Remove(hitTri);
+                    else
+                        vmFace.SelectedFaceIndices.Add(hitTri);
+                }
+                else
+                {
+                    vmFace.SelectedFaceIndices.Clear();
+                    vmFace.SelectedFaceIndices.Add(hitTri);
+                }
+                vmFace.UpdateFaceSelectionGizmo();
+                RequestNextFrameRendering();
+                e.Pointer.Capture(this);
+                e.Handled = true;
+                return;
+            }
+            else if (!shift && !ctrl)
+            {
+                vmFace.SelectedFaceIndices.Clear();
+                vmFace.UpdateFaceSelectionGizmo();
+                RequestNextFrameRendering();
+            }
+        }
+
         if (props.IsMiddleButtonPressed || (props.IsRightButtonPressed && shift))
         {
             _isPanning = true;
@@ -1275,6 +1341,26 @@ void main()
 
         switch (e.Key)
         {
+            case Key.D1:
+                vm.SelectionMode = SubElementSelectionMode.Object;
+                vm.StatusMessage = "Selection Mode: Object (1)";
+                e.Handled = true;
+                break;
+            case Key.D2:
+                vm.SelectionMode = SubElementSelectionMode.Vertex;
+                vm.StatusMessage = "Selection Mode: Vertex (2)";
+                e.Handled = true;
+                break;
+            case Key.D3:
+                vm.SelectionMode = SubElementSelectionMode.Edge;
+                vm.StatusMessage = "Selection Mode: Edge (3)";
+                e.Handled = true;
+                break;
+            case Key.D4:
+                vm.SelectionMode = SubElementSelectionMode.Face;
+                vm.StatusMessage = "Selection Mode: Face (4)";
+                e.Handled = true;
+                break;
             case Key.F: vm.FrameView(); e.Handled = true; break;
             case Key.W: 
                 if (vm.IsSculptOrPaintMode) vm.SetEditMode();
@@ -1283,10 +1369,48 @@ void main()
                 e.Handled = true; 
                 break;
             case Key.E: 
-                if (vm.IsSculptOrPaintMode) vm.SetEditMode();
-                vm.GizmoMode = GizmoMode.Rotate; 
-                vm.StatusMessage = "Gizmo Mode: Rotate"; 
-                e.Handled = true; 
+                if (vm.SelectionMode == SubElementSelectionMode.Face && vm.SelectedFaceIndices.Count > 0)
+                {
+                    vm.ExtrudeSelectedFaces();
+                    e.Handled = true;
+                }
+                else
+                {
+                    if (vm.IsSculptOrPaintMode) vm.SetEditMode();
+                    vm.GizmoMode = GizmoMode.Rotate; 
+                    vm.StatusMessage = "Gizmo Mode: Rotate"; 
+                    e.Handled = true; 
+                }
+                break;
+            case Key.I:
+                if (vm.SelectionMode == SubElementSelectionMode.Face && vm.SelectedFaceIndices.Count > 0)
+                {
+                    vm.InsetSelectedFaces();
+                    e.Handled = true;
+                }
+                break;
+            case Key.K:
+                vm.LoopCutActiveMesh();
+                e.Handled = true;
+                break;
+            case Key.X:
+                if (vm.SelectionMode == SubElementSelectionMode.Face && vm.SelectedFaceIndices.Count > 0)
+                {
+                    vm.DissolveSelectedFaces();
+                    e.Handled = true;
+                }
+                break;
+            case Key.Delete:
+                if (vm.SelectionMode == SubElementSelectionMode.Face && vm.SelectedFaceIndices.Count > 0)
+                {
+                    vm.DissolveSelectedFaces();
+                    e.Handled = true;
+                }
+                else
+                {
+                    vm.DeleteSelectedNode();
+                    e.Handled = true;
+                }
                 break;
             case Key.R: 
                 if (vm.IsSculptOrPaintMode) vm.SetEditMode();
