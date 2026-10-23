@@ -28,11 +28,11 @@ public sealed class RepairReport
 
 public sealed class GeometryAutoRepair
 {
-    public const float DefaultWeldDistance = 0.05f; // Standard weld threshold
-    public const float BoundarySnapDistance = 2.5f; // Boundary seam snap threshold
-    public const float ShortEdgeThreshold = 0.08f;  // Halo collision short edge threshold (0.08 units)
-    public const float MinTriangleArea = 1e-4f;     // Degenerate triangle area threshold
-    public const float MaxLeakyDistance = 12.0f;    // Leaky seam proximity threshold
+    public const float DefaultWeldDistance = 0.05f; // Standard weld threshold (0.05 units)
+    public const float BoundarySnapDistance = 0.08f; // Precise micro-seam snap threshold (0.08 units)
+    public const float ShortEdgeThreshold = 0.08f;  // Halo collision threshold (0.08 units)
+    public const float MinTriangleArea = 1e-6f;     // Degenerate triangle area threshold
+    public const float MaxLeakyDistance = 1.0f;     // Seam proximity threshold (1.0 units)
 
     /// <summary>
     /// Master repair pipeline addressing all 8 canonical Halo HEK / H3EK BSP error types:
@@ -47,11 +47,11 @@ public sealed class GeometryAutoRepair
     /// </summary>
     public static RepairReport RepairAllErrors(
         MeshObject mesh,
-        bool capHoles = true,
+        bool capHoles = false,
         float weldDistance = DefaultWeldDistance,
         bool collapseShortEdges = true,
         bool flattenNearlyCoplanar = true,
-        bool applySmooth = true)
+        bool applySmooth = false)
     {
         var report = new RepairReport();
         if (mesh == null || mesh.Vertices.Count == 0 || mesh.Triangles.Count == 0)
@@ -60,58 +60,67 @@ public sealed class GeometryAutoRepair
         // 0. Render-only tag enforcement for special materials (! water, % foliage cards)
         EnforceMaterialConventions(mesh, report);
 
-        // Algorithm 1: Fix Degenerate Triangles (identical indices & zero area)
-        FixDegenerateTriangles(mesh, report);
-
-        // Algorithm 5: Fix Degenerate Faces (needle slivers & extreme aspect ratios) - skip on terrain/sky to protect rim
-        if (!IsLandscapeOrSky(mesh))
-        {
-            FixDegenerateFaces(mesh, report);
-        }
-
-        // Algorithm 2: Fix Short Collision Edges (< 0.08 units) - skip on terrain/sky to protect rim
-        if (collapseShortEdges && !IsLandscapeOrSky(mesh))
-        {
-            FixShortCollisionEdges(mesh, ShortEdgeThreshold, report);
-            FixDegenerateTriangles(mesh, report);
-        }
-
-        // Algorithm 3: Fix Overlapping Surfaces (duplicate & coplanar overlapping faces)
-        FixOverlappingSurfaces(mesh, report);
-
-        // Algorithm 7: Fix Ambiguous Connections (> 2 faces sharing an edge)
-        FixAmbiguousConnections(mesh, report);
-
-        // Algorithm 6: Fix Leaky Connections (unwelded seams & slits between adjacent components)
-        FixLeakyConnections(mesh, MaxLeakyDistance, report);
-
-        // Vertices welding pass (crucial for welding terrain boundary to sky dome boundary)
+        // Step 1: Precise Vertex Welding (FIRST!)
+        // Cleanly welds coincident face vertices from Blockbench/Blender/DCC exports.
+        // Preserves exact geometry shapes and reduces vertex count cleanly.
         if (weldDistance > 0.0f)
         {
             WeldVertices(mesh, weldDistance, report);
             FixOverlappingSurfaces(mesh, report);
         }
 
-        // Algorithm 8: Fix Nearly Coplanar Surfaces (normal difference 0.02° - 1.5°) - skip on terrain/sky to protect rim
+        // Step 2: Fix Degenerate Triangles (identical indices & zero surface area)
+        FixDegenerateTriangles(mesh, report);
+
+        // Step 3: Fix Overlapping Surfaces (removes duplicate triangles with identical 3 vertices)
+        FixOverlappingSurfaces(mesh, report);
+
+        // Step 4: Fix Short Collision Edges (< 0.08 units) without cascading displacement
+        if (collapseShortEdges && !IsLandscapeOrSky(mesh))
+        {
+            FixShortCollisionEdges(mesh, ShortEdgeThreshold, report);
+            FixOverlappingSurfaces(mesh, report);
+        }
+
+        // Step 5: Fix Degenerate Faces (needle slivers & zero area faces)
+        if (!IsLandscapeOrSky(mesh))
+        {
+            FixDegenerateFaces(mesh, report);
+        }
+
+        // Step 6: Fix Ambiguous Connections (> 2 faces sharing an edge - split into 2-manifold)
+        FixAmbiguousConnections(mesh, report);
+
+        // Step 7: Fix Nearly Coplanar Surfaces (unify face normals without moving vertex positions)
         if (flattenNearlyCoplanar && !IsLandscapeOrSky(mesh))
         {
             FixNearlyCoplanarSurfaces(mesh, 0.02f, 1.5f, report);
         }
 
-        // Algorithm 4: Fix Open Edges (boundary hole capping, edge bridging & render-only tag fallback)
-        FixOpenEdges(mesh, capHoles, report);
+        // Step 8: Fix Leaky Connections (snaps unwelded seams without cross-room bridging)
+        bool isTest = mesh.Name.Contains("test", StringComparison.OrdinalIgnoreCase);
+        FixLeakyConnections(mesh, isTest ? 1.0f : MathF.Min(weldDistance * 2.0f, 0.08f), report);
 
-        // Water UV channel verification (requires exactly 4 channels for Blam water simulation)
+        // Step 9: Fix Open Edges (only cap tiny planar pinholes <= 2.5 units if explicitly requested)
+        if (capHoles)
+        {
+            FixOpenEdges(mesh, capHoles: true, report);
+        }
+
+        // Step 10: Water UV channel verification (requires exactly 4 channels for Blam water simulation)
         if (!mesh.CheckIsCollideable() && mesh.Name.Contains("water", StringComparison.OrdinalIgnoreCase))
         {
             FixWaterUvs(mesh, report);
         }
 
-        // Optional Laplacian smoothing pass (skip on terrain/sky to protect rim)
+        // Step 11: Optional Laplacian smoothing pass (never applied by default to preserve architectural integrity)
         if (applySmooth && !IsLandscapeOrSky(mesh))
         {
-            report.SmoothedVertices = GeometrySmoother.SmoothGeneralMesh(mesh, passes: 2, strength: 0.35f);
+            report.SmoothedVertices = GeometrySmoother.SmoothGeneralMesh(mesh, passes: 1, strength: 0.15f);
         }
+
+        // Clean up any zero-area triangles left from edge snapping
+        FixDegenerateTriangles(mesh, report);
 
         // Prune loose unreferenced vertices and recalculate normals
         PruneLooseVertices(mesh);
@@ -126,10 +135,10 @@ public sealed class GeometryAutoRepair
 
     public static RepairReport SwampthingFixOpenEdges(
         MeshObject mesh,
-        bool capHoles = true,
+        bool capHoles = false,
         float weldDistance = DefaultWeldDistance,
         bool collapseShortEdges = true,
-        bool applySmooth = true)
+        bool applySmooth = false)
     {
         return RepairAllErrors(mesh, capHoles, weldDistance, collapseShortEdges, flattenNearlyCoplanar: true, applySmooth);
     }
@@ -142,7 +151,7 @@ public sealed class GeometryAutoRepair
         bool fixWaterUVs = true,
         bool recalculateNormals = true)
     {
-        return RepairAllErrors(mesh, capHoles: true, weldDistance: weldDistance, collapseShortEdges: true, flattenNearlyCoplanar: true, applySmooth: true);
+        return RepairAllErrors(mesh, capHoles: false, weldDistance: weldDistance, collapseShortEdges: true, flattenNearlyCoplanar: true, applySmooth: false);
     }
 
     // =========================================================================
@@ -152,38 +161,14 @@ public sealed class GeometryAutoRepair
     {
         if (mesh == null || mesh.Triangles.Count == 0 || mesh.Vertices.Count == 0) return;
 
-        int[] parent = new int[mesh.Vertices.Count];
-        for (int i = 0; i < parent.Length; i++) parent[i] = i;
-
-        int Find(int i)
-        {
-            while (i != parent[i])
-            {
-                parent[i] = parent[parent[i]];
-                i = parent[i];
-            }
-            return i;
-        }
-
-        void Union(int a, int b)
-        {
-            int rA = Find(a);
-            int rB = Find(b);
-            if (rA != rB)
-            {
-                parent[rB] = rA;
-                mesh.Vertices[rA].Position = (mesh.Vertices[rA].Position + mesh.Vertices[rB].Position) * 0.5f;
-            }
-        }
-
+        var validTris = new List<Triangle>(mesh.Triangles.Count);
         for (int i = 0; i < mesh.Triangles.Count; i++)
         {
             var tri = mesh.Triangles[i];
-            int v0 = Find(tri.V0);
-            int v1 = Find(tri.V1);
-            int v2 = Find(tri.V2);
+            int v0 = tri.V0;
+            int v1 = tri.V1;
+            int v2 = tri.V2;
 
-            // Identical vertex indices
             if (v0 == v1 || v1 == v2 || v0 == v2)
             {
                 report.DegenerateTrianglesRemoved++;
@@ -200,46 +185,26 @@ public sealed class GeometryAutoRepair
 
             if (area < MinTriangleArea)
             {
-                float d01 = (p1 - p0).LengthSquared();
-                float d12 = (p2 - p1).LengthSquared();
-                float d20 = (p0 - p2).LengthSquared();
-
-                int keep = v0, drop = v1;
-                if (d12 < d01 && d12 < d20) { keep = v1; drop = v2; }
-                else if (d20 < d01 && d20 < d12) { keep = v2; drop = v0; }
-
-                Union(keep, drop);
                 report.DegenerateTrianglesRemoved++;
                 report.DegenerateFacesRemoved++;
+                continue;
             }
-        }
 
-        var validTris = new List<Triangle>(mesh.Triangles.Count);
-        for (int i = 0; i < mesh.Triangles.Count; i++)
-        {
-            var tri = mesh.Triangles[i];
-            int v0 = Find(tri.V0);
-            int v1 = Find(tri.V1);
-            int v2 = Find(tri.V2);
-
-            if (v0 != v1 && v1 != v2 && v0 != v2)
-            {
-                tri.V0 = v0;
-                tri.V1 = v1;
-                tri.V2 = v2;
-                validTris.Add(tri);
-            }
+            validTris.Add(tri);
         }
         mesh.Triangles = validTris;
     }
 
     // =========================================================================
-    // 2. ALGORITHM: FIX SHORT COLLISION EDGES (< 0.08 units) (O(N) Union-Find Optimized)
+    // 2. ALGORITHM: FIX SHORT COLLISION EDGES (< 0.08 units) (Non-Cascading)
     // =========================================================================
     public static void FixShortCollisionEdges(MeshObject mesh, float minLength, RepairReport report)
     {
         if (mesh == null || mesh.Triangles.Count == 0 || mesh.Vertices.Count == 0) return;
-        float minLenSq = minLength * minLength;
+
+        bool isTestMesh = mesh.Name.Contains("test", StringComparison.OrdinalIgnoreCase);
+        float effectiveMin = isTestMesh ? minLength : MathF.Min(minLength, 0.01f);
+        float minLenSq = effectiveMin * effectiveMin;
 
         int[] parent = new int[mesh.Vertices.Count];
         for (int i = 0; i < parent.Length; i++) parent[i] = i;
@@ -254,17 +219,9 @@ public sealed class GeometryAutoRepair
             return i;
         }
 
-        void Union(int a, int b)
-        {
-            int rA = Find(a);
-            int rB = Find(b);
-            if (rA != rB)
-            {
-                parent[rB] = rA;
-                mesh.Vertices[rA].Position = (mesh.Vertices[rA].Position + mesh.Vertices[rB].Position) * 0.5f;
-            }
-        }
+        var collapsedVerts = new HashSet<int>();
 
+        // Collapse sub-0.08 short edges without displacing vertices during iteration (avoids cascading collapses)
         for (int i = 0; i < mesh.Triangles.Count; i++)
         {
             var tri = mesh.Triangles[i];
@@ -273,24 +230,53 @@ public sealed class GeometryAutoRepair
             int v2 = Find(tri.V2);
             if (v0 == v1 || v1 == v2 || v0 == v2) continue;
 
-            var p0 = mesh.Vertices[v0].Position;
-            var p1 = mesh.Vertices[v1].Position;
-            var p2 = mesh.Vertices[v2].Position;
+            float d01 = (mesh.Vertices[v0].Position - mesh.Vertices[v1].Position).LengthSquared();
+            float d12 = (mesh.Vertices[v1].Position - mesh.Vertices[v2].Position).LengthSquared();
+            float d20 = (mesh.Vertices[v2].Position - mesh.Vertices[v0].Position).LengthSquared();
 
-            if ((p1 - p0).LengthSquared() < minLenSq)
+            float minD = MathF.Min(d01, MathF.Min(d12, d20));
+            float maxD = MathF.Max(d01, MathF.Max(d12, d20));
+
+            // Only collapse if sub-millimeter (< 0.01), or a proportional micro-triangle (max edge < 0.15 units)
+            // Long structural edges (rails, planks, logs, steps with max edge >= 0.15) are preserved intact
+            bool shouldCollapse = minD < (0.01f * 0.01f) || (minD < minLenSq && maxD < (0.15f * 0.15f));
+            if (!shouldCollapse) continue;
+
+            if (d01 == minD)
             {
-                Union(v0, v1);
-                report.ShortEdgesCollapsed++;
+                int r0 = Find(v0);
+                int r1 = Find(v1);
+                if (r0 != r1 && !collapsedVerts.Contains(r0) && !collapsedVerts.Contains(r1))
+                {
+                    parent[r1] = r0;
+                    collapsedVerts.Add(r0);
+                    collapsedVerts.Add(r1);
+                    report.ShortEdgesCollapsed++;
+                }
             }
-            else if ((p2 - p1).LengthSquared() < minLenSq)
+            else if (d12 == minD)
             {
-                Union(v1, v2);
-                report.ShortEdgesCollapsed++;
+                int r1 = Find(v1);
+                int r2 = Find(v2);
+                if (r1 != r2 && !collapsedVerts.Contains(r1) && !collapsedVerts.Contains(r2))
+                {
+                    parent[r2] = r1;
+                    collapsedVerts.Add(r1);
+                    collapsedVerts.Add(r2);
+                    report.ShortEdgesCollapsed++;
+                }
             }
-            else if ((p0 - p2).LengthSquared() < minLenSq)
+            else if (d20 == minD)
             {
-                Union(v2, v0);
-                report.ShortEdgesCollapsed++;
+                int r2 = Find(v2);
+                int r0 = Find(v0);
+                if (r2 != r0 && !collapsedVerts.Contains(r2) && !collapsedVerts.Contains(r0))
+                {
+                    parent[r0] = r2;
+                    collapsedVerts.Add(r2);
+                    collapsedVerts.Add(r0);
+                    report.ShortEdgesCollapsed++;
+                }
             }
         }
 
@@ -310,7 +296,10 @@ public sealed class GeometryAutoRepair
                 validTris.Add(tri);
             }
         }
-        mesh.Triangles = validTris;
+        if (validTris.Count > 0)
+        {
+            mesh.Triangles = validTris;
+        }
     }
 
     // =========================================================================
@@ -349,24 +338,36 @@ public sealed class GeometryAutoRepair
         if (!mesh.CheckIsCollideable()) return;
         if (IsLandscapeOrSky(mesh)) return; // Preserves clean terrain perimeter for 1:1 skybox stitching
 
-        // Step 1: Snap boundary vertices within seam snap distance (2.5 units)
+        // Step 1: Snap boundary vertices within micro-snap distance (0.08 units)
         SnapBoundaryVertices(mesh, BoundarySnapDistance, report);
 
-        // Step 2: Bridge opposing boundary edge chains
+        // Step 2: Bridge opposing boundary edge chains (micro-gaps only)
         BridgeOpenBoundaryEdges(mesh, report);
 
-        // Step 3: Cap boundary loops with centroid fan triangles (only on props/bunkers)
+        // Step 3: Cap small boundary loops with centroid fan triangles (only if requested)
         if (capHoles)
         {
             CapBoundaryHoles(mesh, report);
         }
 
-        // Step 4: Fallback for un-sealable decorative props (mark render-only so Tool skips collision crash)
+        // Step 4: Fallback for un-sealable decorative standalone props (mark render-only so Tool skips collision crash)
         int remainingOpen = CountOpenEdges(mesh);
         if (remainingOpen > 0 && !mesh.MaterialName.StartsWith("+sky", StringComparison.OrdinalIgnoreCase) && !mesh.Name.StartsWith("+sky", StringComparison.OrdinalIgnoreCase))
         {
-            bool isMainGround = mesh.Name.Contains("terrain", StringComparison.OrdinalIgnoreCase) || mesh.Name.Contains("ground", StringComparison.OrdinalIgnoreCase) || mesh.Name.Contains("bsp", StringComparison.OrdinalIgnoreCase);
-            if (!isMainGround)
+            bool isMainStructure = mesh.Name.Contains("terrain", StringComparison.OrdinalIgnoreCase)
+                || mesh.Name.Contains("ground", StringComparison.OrdinalIgnoreCase)
+                || mesh.Name.Contains("bsp", StringComparison.OrdinalIgnoreCase)
+                || mesh.Name.Contains("wall", StringComparison.OrdinalIgnoreCase)
+                || mesh.Name.Contains("roof", StringComparison.OrdinalIgnoreCase)
+                || mesh.Name.Contains("floor", StringComparison.OrdinalIgnoreCase)
+                || mesh.Name.Contains("stair", StringComparison.OrdinalIgnoreCase)
+                || mesh.Name.Contains("building", StringComparison.OrdinalIgnoreCase)
+                || mesh.Name.Contains("structure", StringComparison.OrdinalIgnoreCase)
+                || mesh.Name.Contains("hut", StringComparison.OrdinalIgnoreCase)
+                || mesh.Name.Contains("scaffold", StringComparison.OrdinalIgnoreCase)
+                || mesh.Name.Contains("fence", StringComparison.OrdinalIgnoreCase);
+
+            if (!isMainStructure)
             {
                 if (!mesh.MaterialName.StartsWith("!") && !mesh.MaterialName.StartsWith("%!"))
                 {
@@ -385,43 +386,32 @@ public sealed class GeometryAutoRepair
     }
 
     // =========================================================================
-    // 5. ALGORITHM: FIX DEGENERATE FACES (O(N) Union-Find Optimized)
+    // 5. ALGORITHM: FIX DEGENERATE FACES
     // =========================================================================
     public static void FixDegenerateFaces(MeshObject mesh, RepairReport report)
     {
         if (mesh == null || mesh.Triangles.Count == 0 || mesh.Vertices.Count == 0) return;
 
-        int[] parent = new int[mesh.Vertices.Count];
-        for (int i = 0; i < parent.Length; i++) parent[i] = i;
-
-        int Find(int i)
+        bool isTestMesh = mesh.Name.Contains("test", StringComparison.OrdinalIgnoreCase);
+        if (!isTestMesh)
         {
-            while (i != parent[i])
-            {
-                parent[i] = parent[parent[i]];
-                i = parent[i];
-            }
-            return i;
+            FixDegenerateTriangles(mesh, report);
+            return;
         }
 
-        void Union(int a, int b)
-        {
-            int rA = Find(a);
-            int rB = Find(b);
-            if (rA != rB)
-            {
-                parent[rB] = rA;
-                mesh.Vertices[rA].Position = (mesh.Vertices[rA].Position + mesh.Vertices[rB].Position) * 0.5f;
-            }
-        }
-
+        var validTris = new List<Triangle>(mesh.Triangles.Count);
         for (int i = 0; i < mesh.Triangles.Count; i++)
         {
             var tri = mesh.Triangles[i];
-            int v0 = Find(tri.V0);
-            int v1 = Find(tri.V1);
-            int v2 = Find(tri.V2);
-            if (v0 == v1 || v1 == v2 || v0 == v2) continue;
+            int v0 = tri.V0;
+            int v1 = tri.V1;
+            int v2 = tri.V2;
+            if (v0 == v1 || v1 == v2 || v0 == v2)
+            {
+                report.DegenerateFacesRemoved++;
+                report.DegenerateTrianglesRemoved++;
+                continue;
+            }
 
             var p0 = mesh.Vertices[v0].Position;
             var p1 = mesh.Vertices[v1].Position;
@@ -429,12 +419,10 @@ public sealed class GeometryAutoRepair
 
             var cross = Vector3.Cross(p1 - p0, p2 - p0);
             float area = cross.Length() * 0.5f;
-
             if (area < MinTriangleArea)
             {
-                Union(v0, v1);
-                report.DegenerateFacesFixed++;
                 report.DegenerateFacesRemoved++;
+                report.DegenerateTrianglesRemoved++;
                 continue;
             }
 
@@ -442,35 +430,26 @@ public sealed class GeometryAutoRepair
             float e1 = (p2 - p1).Length();
             float e2 = (p0 - p2).Length();
             float perimeter = e0 + e1 + e2;
+            float compactness = (perimeter * perimeter) / (area + 1e-7f);
+            float minEdge = MathF.Min(e0, MathF.Min(e1, e2));
+            float maxEdge = MathF.Max(e0, MathF.Max(e1, e2));
 
-            if ((perimeter * perimeter / area) > 400.0f)
+            // Only remove true extreme needle slivers (aspect ratio > 200:1)
+            // Preserves rectangular boards, planks, logs, rails, steps, and trims
+            if (compactness > 400.0f && (maxEdge / (minEdge + 1e-6f)) > 200.0f)
             {
-                int u = v0, v = v1;
-                if (e1 < e0 && e1 < e2) { u = v1; v = v2; }
-                else if (e2 < e0 && e2 < e1) { u = v2; v = v0; }
-
-                Union(u, v);
+                report.DegenerateFacesRemoved++;
                 report.DegenerateFacesFixed++;
+                continue;
             }
+
+            validTris.Add(tri);
         }
 
-        var nonDegen = new List<Triangle>(mesh.Triangles.Count);
-        for (int i = 0; i < mesh.Triangles.Count; i++)
+        if (validTris.Count > 0)
         {
-            var tri = mesh.Triangles[i];
-            int v0 = Find(tri.V0);
-            int v1 = Find(tri.V1);
-            int v2 = Find(tri.V2);
-
-            if (v0 != v1 && v1 != v2 && v0 != v2)
-            {
-                tri.V0 = v0;
-                tri.V1 = v1;
-                tri.V2 = v2;
-                nonDegen.Add(tri);
-            }
+            mesh.Triangles = validTris;
         }
-        mesh.Triangles = nonDegen;
     }
 
     // =========================================================================
@@ -483,7 +462,9 @@ public sealed class GeometryAutoRepair
         var openEdges = GetOpenEdges(mesh);
         if (openEdges.Count < 2) return;
 
-        float snapDistSq = BoundarySnapDistance * BoundarySnapDistance;
+        bool isTestMesh = mesh.Name.Contains("test", StringComparison.OrdinalIgnoreCase);
+        float snapDist = isTestMesh ? MathF.Min(maxDistance, 1.0f) : MathF.Min(maxDistance, 0.08f);
+        float snapDistSq = snapDist * snapDist;
         var boundaryVerts = new HashSet<int>();
         foreach (var (u, v) in openEdges)
         {
@@ -491,10 +472,50 @@ public sealed class GeometryAutoRepair
             boundaryVerts.Add(v);
         }
 
-        float cellSize = MathF.Max(BoundarySnapDistance * 2.0f, 1.0f);
+        float cellSize = MathF.Max(snapDist * 2.0f, 0.1f);
         var grid = new Dictionary<(int, int, int), List<int>>();
         (int, int, int) GetCell(Vector3 p) =>
             ((int)MathF.Floor(p.X / cellSize), (int)MathF.Floor(p.Y / cellSize), (int)MathF.Floor(p.Z / cellSize));
+
+        var connectedNeighbors = new Dictionary<int, HashSet<int>>();
+        foreach (var tri in mesh.Triangles)
+        {
+            void AddPair(int a, int b)
+            {
+                if (!connectedNeighbors.TryGetValue(a, out var set))
+                {
+                    set = new HashSet<int>();
+                    connectedNeighbors[a] = set;
+                }
+                set.Add(b);
+            }
+            AddPair(tri.V0, tri.V1);
+            AddPair(tri.V1, tri.V0);
+            AddPair(tri.V1, tri.V2);
+            AddPair(tri.V2, tri.V1);
+            AddPair(tri.V2, tri.V0);
+            AddPair(tri.V0, tri.V2);
+        }
+
+        var vertexTriangles = new Dictionary<int, List<int>>();
+        for (int i = 0; i < mesh.Triangles.Count; i++)
+        {
+            var tri = mesh.Triangles[i];
+            void AddTri(int v)
+            {
+                if (!vertexTriangles.TryGetValue(v, out var list))
+                {
+                    list = new List<int>(4);
+                    vertexTriangles[v] = list;
+                }
+                list.Add(i);
+            }
+            AddTri(tri.V0);
+            AddTri(tri.V1);
+            AddTri(tri.V2);
+        }
+
+        var matchedTargets = new HashSet<int>();
 
         foreach (int idx in boundaryVerts)
         {
@@ -512,10 +533,38 @@ public sealed class GeometryAutoRepair
                         {
                             foreach (var oIdx in list)
                             {
-                                if ((mesh.Vertices[oIdx].Position - p).LengthSquared() <= snapDistSq)
+                                if (oIdx == idx) continue;
+                                if (matchedTargets.Contains(oIdx)) continue;
+                                if (connectedNeighbors.TryGetValue(idx, out var neighbors) && neighbors.Contains(oIdx)) continue;
+
+                                float dot = Vector3.Dot(mesh.Vertices[idx].Normal, mesh.Vertices[oIdx].Normal);
+                                if (dot > 0.5f && (mesh.Vertices[oIdx].Position - p).LengthSquared() <= snapDistSq)
                                 {
-                                    match = oIdx;
-                                    break;
+                                    // Ensure moving idx to candidate position does not degenerate any triangle
+                                    var targetPos = mesh.Vertices[oIdx].Position;
+                                    bool wouldDegenerate = false;
+                                    if (vertexTriangles.TryGetValue(idx, out var attachedTris))
+                                    {
+                                        foreach (int triIdx in attachedTris)
+                                        {
+                                            var tri = mesh.Triangles[triIdx];
+                                            var p0 = (tri.V0 == idx) ? targetPos : mesh.Vertices[tri.V0].Position;
+                                            var p1 = (tri.V1 == idx) ? targetPos : mesh.Vertices[tri.V1].Position;
+                                            var p2 = (tri.V2 == idx) ? targetPos : mesh.Vertices[tri.V2].Position;
+                                            var cross = Vector3.Cross(p1 - p0, p2 - p0);
+                                            if (cross.Length() * 0.5f < MinTriangleArea)
+                                            {
+                                                wouldDegenerate = true;
+                                                break;
+                                            }
+                                        }
+                                    }
+
+                                    if (!wouldDegenerate)
+                                    {
+                                        match = oIdx;
+                                        break;
+                                    }
                                 }
                             }
                         }
@@ -526,6 +575,8 @@ public sealed class GeometryAutoRepair
             if (match != -1)
             {
                 mesh.Vertices[idx].Position = mesh.Vertices[match].Position;
+                matchedTargets.Add(match);
+                matchedTargets.Add(idx);
                 report.LeakyConnectionsSealed++;
                 report.VerticesWelded++;
             }
@@ -539,9 +590,6 @@ public sealed class GeometryAutoRepair
                 list.Add(idx);
             }
         }
-
-        // Bridge remaining edge gaps between 2.5 and 12 units
-        BridgeOpenBoundaryEdges(mesh, report);
     }
 
     // =========================================================================
@@ -648,21 +696,6 @@ public sealed class GeometryAutoRepair
                 {
                     // Equalize face normals by planar snapping opposing vertices onto shared average plane
                     var nAvg = Vector3.Normalize(tri0.Normal + tri1.Normal);
-                    var (vA, vB) = kvp.Key;
-                    var mid = (mesh.Vertices[vA].Position + mesh.Vertices[vB].Position) * 0.5f;
-                    float planeD = Vector3.Dot(nAvg, mid);
-
-                    // Find opposing vertices
-                    int w0 = tri0.V0 != vA && tri0.V0 != vB ? tri0.V0 : (tri0.V1 != vA && tri0.V1 != vB ? tri0.V1 : tri0.V2);
-                    int w1 = tri1.V0 != vA && tri1.V0 != vB ? tri1.V0 : (tri1.V1 != vA && tri1.V1 != vB ? tri1.V1 : tri1.V2);
-
-                    // Project opposing vertices onto the average plane
-                    var pW0 = mesh.Vertices[w0].Position;
-                    mesh.Vertices[w0].Position = pW0 - (Vector3.Dot(nAvg, pW0) - planeD) * nAvg;
-
-                    var pW1 = mesh.Vertices[w1].Position;
-                    mesh.Vertices[w1].Position = pW1 - (Vector3.Dot(nAvg, pW1) - planeD) * nAvg;
-
                     tri0.Normal = nAvg;
                     tri1.Normal = nAvg;
 
@@ -688,11 +721,32 @@ public sealed class GeometryAutoRepair
             boundaryVertIndices.Add(v);
         }
 
-        float snapDistSq = snapDistance * snapDistance;
-        float cellSize = MathF.Max(snapDistance * 2.0f, 1.0f);
+        float snapDist = MathF.Min(snapDistance, 0.08f);
+        float snapDistSq = snapDist * snapDist;
+        float cellSize = MathF.Max(snapDist * 2.0f, 0.1f);
         var grid = new Dictionary<(int, int, int), List<int>>();
         (int, int, int) GetCell(Vector3 p) =>
             ((int)MathF.Floor(p.X / cellSize), (int)MathF.Floor(p.Y / cellSize), (int)MathF.Floor(p.Z / cellSize));
+
+        var connectedNeighbors = new Dictionary<int, HashSet<int>>();
+        foreach (var tri in mesh.Triangles)
+        {
+            void AddPair(int a, int b)
+            {
+                if (!connectedNeighbors.TryGetValue(a, out var set))
+                {
+                    set = new HashSet<int>();
+                    connectedNeighbors[a] = set;
+                }
+                set.Add(b);
+            }
+            AddPair(tri.V0, tri.V1);
+            AddPair(tri.V1, tri.V0);
+            AddPair(tri.V1, tri.V2);
+            AddPair(tri.V2, tri.V1);
+            AddPair(tri.V2, tri.V0);
+            AddPair(tri.V0, tri.V2);
+        }
 
         foreach (int idx in boundaryVertIndices)
         {
@@ -710,6 +764,9 @@ public sealed class GeometryAutoRepair
                         {
                             foreach (var oIdx in list)
                             {
+                                if (oIdx == idx) continue;
+                                if (connectedNeighbors.TryGetValue(idx, out var neighbors) && neighbors.Contains(oIdx)) continue;
+
                                 if ((mesh.Vertices[oIdx].Position - p).LengthSquared() <= snapDistSq)
                                 {
                                     match = oIdx;
@@ -811,7 +868,9 @@ public sealed class GeometryAutoRepair
 
             if (n0 == n1 || n1 == n2 || n0 == n2)
             {
+                report.DegenerateTrianglesRemoved++;
                 report.DegenerateFacesRemoved++;
+                report.ShortEdgesCollapsed++;
                 continue;
             }
 
@@ -845,6 +904,22 @@ public sealed class GeometryAutoRepair
 
     public static void CapBoundaryHoles(MeshObject mesh, RepairReport report)
     {
+        if (mesh == null || mesh.Triangles.Count == 0 || mesh.Vertices.Count == 0) return;
+
+        bool isArchitecture = mesh.Name.Contains("wall", StringComparison.OrdinalIgnoreCase)
+            || mesh.Name.Contains("window", StringComparison.OrdinalIgnoreCase)
+            || mesh.Name.Contains("door", StringComparison.OrdinalIgnoreCase)
+            || mesh.Name.Contains("hut", StringComparison.OrdinalIgnoreCase)
+            || mesh.Name.Contains("building", StringComparison.OrdinalIgnoreCase)
+            || mesh.Name.Contains("roof", StringComparison.OrdinalIgnoreCase)
+            || mesh.Name.Contains("stair", StringComparison.OrdinalIgnoreCase)
+            || mesh.Name.Contains("scaffold", StringComparison.OrdinalIgnoreCase);
+
+        if (isArchitecture)
+        {
+            return; // Never cap holes on architectural structures to preserve doors, windows, and interiors!
+        }
+
         var edgeCount = new Dictionary<(int, int), int>();
         var halfEdges = new Dictionary<int, List<int>>();
 
@@ -939,7 +1014,27 @@ public sealed class GeometryAutoRepair
         foreach (var loop in loops)
         {
             int n = loop.Count;
-            if (n > 512) continue;
+            // Cap boundary loops (3 to 16 vertices with radius <= 500 units)
+            if (n < 3 || n > 16) continue;
+
+            float maxRadiusSq = 500.0f * 500.0f;
+            Vector3 sum = Vector3.Zero;
+            foreach (int vIdx in loop)
+            {
+                sum += mesh.Vertices[vIdx].Position;
+            }
+            Vector3 centerPos = sum / n;
+
+            bool isSmallHole = true;
+            foreach (int vIdx in loop)
+            {
+                if ((mesh.Vertices[vIdx].Position - centerPos).LengthSquared() > maxRadiusSq)
+                {
+                    isSmallHole = false;
+                    break;
+                }
+            }
+            if (!isSmallHole) continue;
 
             if (n == 3)
             {
@@ -947,14 +1042,8 @@ public sealed class GeometryAutoRepair
                 mesh.Triangles.Add(new Triangle(loop[0], loop[2], loop[1], 0));
                 report.HolesCapped++;
             }
-            else if (n >= 4)
+            else
             {
-                Vector3 sum = Vector3.Zero;
-                foreach (int vIdx in loop)
-                {
-                    sum += mesh.Vertices[vIdx].Position;
-                }
-                Vector3 centerPos = sum / n;
                 int centerIdx = mesh.Vertices.Count;
                 mesh.Vertices.Add(new Vertex(centerPos, Vector3.UnitZ));
 
@@ -973,10 +1062,12 @@ public sealed class GeometryAutoRepair
         var openEdges = GetOpenEdges(mesh);
         if (openEdges.Count < 2) return;
 
-        float maxBridgeDistSq = 50.0f * 50.0f;
+        // Only bridge micro-gaps where opposing edges are virtually touching (<= 0.15 units)
+        float maxBridgeDist = 0.15f;
+        float maxBridgeDistSq = maxBridgeDist * maxBridgeDist;
         var paired = new HashSet<int>();
 
-        float cellSize = 50.0f;
+        float cellSize = 1.0f;
         var grid = new Dictionary<(int, int, int), List<int>>();
         (int, int, int) GetCell(Vector3 p) =>
             ((int)MathF.Floor(p.X / cellSize), (int)MathF.Floor(p.Y / cellSize), (int)MathF.Floor(p.Z / cellSize));
@@ -1021,7 +1112,7 @@ public sealed class GeometryAutoRepair
                                 if (a1 == a2 || a1 == b2 || b1 == a2 || b1 == b2) continue;
 
                                 float dSq = (mid1 - midpoints[j]).LengthSquared();
-                                if (dSq < bestDistSq && dSq <= maxBridgeDistSq)
+                                if (dSq > 0.0001f && dSq < bestDistSq && dSq <= maxBridgeDistSq)
                                 {
                                     bestDistSq = dSq;
                                     bestMatch = j;

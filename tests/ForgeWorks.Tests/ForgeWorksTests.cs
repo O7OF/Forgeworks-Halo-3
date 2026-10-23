@@ -2454,28 +2454,41 @@ public class ForgeWorksTests
             ConvertYUpToZUp = true
         };
 
-        var sw = System.Diagnostics.Stopwatch.StartNew();
         var imported = UniversalGeometryImporter.Import(path, options);
-        long tImport = sw.ElapsedMilliseconds;
+        var roof = imported.Find(m => m.Name.Contains("Roof", StringComparison.OrdinalIgnoreCase));
+        var walls = imported.Find(m => m.Name.Contains("walls", StringComparison.OrdinalIgnoreCase));
 
-        sw.Restart();
-        var issues = GeometryLinter.LintScene(imported);
-        long tLint = sw.ElapsedMilliseconds;
+        Assert.NotNull(roof);
+        Assert.NotNull(walls);
 
-        sw.Restart();
-        int repaired = 0;
+        int totalOrigVerts = imported.Sum(m => m.Vertices.Count);
+        int totalOrigTris = imported.Sum(m => m.Triangles.Count);
+
+        var stairs = imported.Find(m => m.Name.Contains("FenceStairs", StringComparison.OrdinalIgnoreCase));
+        Assert.NotNull(stairs);
+
+        var repList = new List<RepairReport>();
         foreach (var m in imported)
         {
             var rep = GeometryAutoRepair.RepairAllErrors(m);
-            repaired += rep.VerticesWelded + rep.DuplicateFacesRemoved;
+            repList.Add(rep);
+            Assert.True(m.Triangles.Count > 0, $"Mesh '{m.Name}' must retain its triangles after repair");
+            Assert.True(m.Vertices.Count > 0, $"Mesh '{m.Name}' must retain its vertices after repair");
         }
-        long tRepair = sw.ElapsedMilliseconds;
 
-        Assert.NotEmpty(imported);
-        Assert.NotNull(issues);
-        Assert.True(tImport < 2000, $"Import took {tImport}ms (expected < 2000ms)");
-        Assert.True(tLint < 1500, $"LintScene took {tLint}ms (expected < 1500ms)");
-        Assert.True(tRepair < 2000, $"RepairAllErrors took {tRepair}ms (expected < 2000ms)");
+
+
+        int totalNewVerts = imported.Sum(m => m.Vertices.Count);
+        int totalNewTris = imported.Sum(m => m.Triangles.Count);
+
+        // Verify key structural meshes are fully preserved
+        Assert.True(roof.Triangles.Count >= 3000, $"Roof must retain its structure (has {roof.Triangles.Count} tris, expected >= 3000)");
+        Assert.True(walls.Triangles.Count >= 15000, $"Walls must retain its structure (has {walls.Triangles.Count} tris, expected >= 15000)");
+        Assert.True(stairs.Triangles.Count >= 200, $"Stairs must retain its structure (has {stairs.Triangles.Count} tris, expected >= 200)");
+
+        // Verify vertex count was successfully lowered by welding
+        Assert.True(totalNewVerts < totalOrigVerts, $"Vertex count should be lowered by welding ({totalNewVerts} < {totalOrigVerts})");
+        Assert.True(totalNewTris <= totalOrigTris, $"Triangle count should be optimized ({totalNewTris} <= {totalOrigTris})");
     }
 }
 

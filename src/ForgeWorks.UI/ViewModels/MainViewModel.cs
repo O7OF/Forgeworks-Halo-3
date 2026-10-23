@@ -1647,11 +1647,11 @@ public partial class MainViewModel : ViewModelBase
         PushHistoryState($"Repair Mesh {ActiveMesh.Name}");
         var report = GeometryAutoRepair.RepairAllErrors(
             ActiveMesh,
-            capHoles: true,
+            capHoles: false,
             weldDistance: GeometryAutoRepair.DefaultWeldDistance,
             collapseShortEdges: true,
             flattenNearlyCoplanar: true,
-            applySmooth: true);
+            applySmooth: false);
 
         UpdateMeshStats();
         MeshVersion++;
@@ -1939,11 +1939,11 @@ public partial class MainViewModel : ViewModelBase
         {
             var report = GeometryAutoRepair.RepairAllErrors(
                 mesh,
-                capHoles: true,
+                capHoles: false,
                 weldDistance: GeometryAutoRepair.DefaultWeldDistance,
                 collapseShortEdges: true,
                 flattenNearlyCoplanar: true,
-                applySmooth: true);
+                applySmooth: false);
 
             totalHoles += report.HolesCapped;
             totalWelded += report.VerticesWelded;
