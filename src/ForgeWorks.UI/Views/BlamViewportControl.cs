@@ -562,8 +562,12 @@ void main()
         // Lint issues: exact failing edges where known, crosses otherwise (WRL-style colors)
         if (vm.ShowLintOverlay)
         {
+            int lintLinesDrawn = 0;
+            const int maxLintLines = 1500;
             foreach (var issue in vm.LintIssues)
             {
+                if (lintLinesDrawn >= maxLintLines) break;
+
                 var c = issue.Severity switch
                 {
                     LintSeverity.Error => new Vector4(1.0f, 0.15f, 0.15f, 1f),
@@ -574,10 +578,12 @@ void main()
                 {
                     var lift = new Vector3(0, 0, markerScale * 0.15f);
                     AddLine(depthBuf, issue.SegmentA.Value + lift, issue.SegmentB.Value + lift, c);
+                    lintLinesDrawn++;
                 }
                 else if (issue.Position != Vector3.Zero)
                 {
                     AddCross(xrayBuf, issue.Position, markerScale, c);
+                    lintLinesDrawn += 3;
                 }
             }
         }
@@ -650,9 +656,13 @@ void main()
         // Tool-emitted WRL error geometry (always x-ray: errors are often inside the BSP)
         if (vm.ShowWrlOverlay)
         {
+            int wrlDrawn = 0;
+            const int maxWrl = 2000;
             foreach (var w in vm.WrlLines)
             {
+                if (wrlDrawn >= maxWrl) break;
                 AddLine(xrayBuf, w.PointA, w.PointB, new Vector4(w.Color, 1f));
+                wrlDrawn++;
             }
         }
 

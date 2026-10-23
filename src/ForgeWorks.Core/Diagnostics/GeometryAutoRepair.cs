@@ -146,99 +146,171 @@ public sealed class GeometryAutoRepair
     }
 
     // =========================================================================
-    // 1. ALGORITHM: FIX DEGENERATE TRIANGLES
+    // 1. ALGORITHM: FIX DEGENERATE TRIANGLES (O(N) Union-Find Optimized)
     // =========================================================================
     public static void FixDegenerateTriangles(MeshObject mesh, RepairReport report)
     {
-        var validTris = new List<Triangle>(mesh.Triangles.Count);
+        if (mesh == null || mesh.Triangles.Count == 0 || mesh.Vertices.Count == 0) return;
+
+        int[] parent = new int[mesh.Vertices.Count];
+        for (int i = 0; i < parent.Length; i++) parent[i] = i;
+
+        int Find(int i)
+        {
+            while (i != parent[i])
+            {
+                parent[i] = parent[parent[i]];
+                i = parent[i];
+            }
+            return i;
+        }
+
+        void Union(int a, int b)
+        {
+            int rA = Find(a);
+            int rB = Find(b);
+            if (rA != rB)
+            {
+                parent[rB] = rA;
+                mesh.Vertices[rA].Position = (mesh.Vertices[rA].Position + mesh.Vertices[rB].Position) * 0.5f;
+            }
+        }
+
         for (int i = 0; i < mesh.Triangles.Count; i++)
         {
             var tri = mesh.Triangles[i];
+            int v0 = Find(tri.V0);
+            int v1 = Find(tri.V1);
+            int v2 = Find(tri.V2);
 
             // Identical vertex indices
-            if (tri.V0 == tri.V1 || tri.V1 == tri.V2 || tri.V0 == tri.V2)
+            if (v0 == v1 || v1 == v2 || v0 == v2)
             {
                 report.DegenerateTrianglesRemoved++;
                 report.DegenerateFacesRemoved++;
                 continue;
             }
 
-            var p0 = mesh.Vertices[tri.V0].Position;
-            var p1 = mesh.Vertices[tri.V1].Position;
-            var p2 = mesh.Vertices[tri.V2].Position;
+            var p0 = mesh.Vertices[v0].Position;
+            var p1 = mesh.Vertices[v1].Position;
+            var p2 = mesh.Vertices[v2].Position;
 
             var cross = Vector3.Cross(p1 - p0, p2 - p0);
             float area = cross.Length() * 0.5f;
 
             if (area < MinTriangleArea)
             {
-                // Collapse shortest edge into midpoint
                 float d01 = (p1 - p0).LengthSquared();
                 float d12 = (p2 - p1).LengthSquared();
                 float d20 = (p0 - p2).LengthSquared();
 
-                int keep = tri.V0;
-                int drop = tri.V1;
-                if (d12 < d01 && d12 < d20) { keep = tri.V1; drop = tri.V2; }
-                else if (d20 < d01 && d20 < d12) { keep = tri.V2; drop = tri.V0; }
+                int keep = v0, drop = v1;
+                if (d12 < d01 && d12 < d20) { keep = v1; drop = v2; }
+                else if (d20 < d01 && d20 < d12) { keep = v2; drop = v0; }
 
-                mesh.Vertices[keep].Position = (mesh.Vertices[keep].Position + mesh.Vertices[drop].Position) * 0.5f;
-                foreach (var t in mesh.Triangles)
-                {
-                    if (t.V0 == drop) t.V0 = keep;
-                    if (t.V1 == drop) t.V1 = keep;
-                    if (t.V2 == drop) t.V2 = keep;
-                }
-
+                Union(keep, drop);
                 report.DegenerateTrianglesRemoved++;
                 report.DegenerateFacesRemoved++;
-                continue;
             }
+        }
 
-            validTris.Add(tri);
+        var validTris = new List<Triangle>(mesh.Triangles.Count);
+        for (int i = 0; i < mesh.Triangles.Count; i++)
+        {
+            var tri = mesh.Triangles[i];
+            int v0 = Find(tri.V0);
+            int v1 = Find(tri.V1);
+            int v2 = Find(tri.V2);
+
+            if (v0 != v1 && v1 != v2 && v0 != v2)
+            {
+                tri.V0 = v0;
+                tri.V1 = v1;
+                tri.V2 = v2;
+                validTris.Add(tri);
+            }
         }
         mesh.Triangles = validTris;
     }
 
     // =========================================================================
-    // 2. ALGORITHM: FIX SHORT COLLISION EDGES (< 0.08 units)
+    // 2. ALGORITHM: FIX SHORT COLLISION EDGES (< 0.08 units) (O(N) Union-Find Optimized)
     // =========================================================================
     public static void FixShortCollisionEdges(MeshObject mesh, float minLength, RepairReport report)
     {
+        if (mesh == null || mesh.Triangles.Count == 0 || mesh.Vertices.Count == 0) return;
         float minLenSq = minLength * minLength;
-        bool collapsedAny = true;
-        int maxPasses = 6;
 
-        while (collapsedAny && maxPasses-- > 0)
+        int[] parent = new int[mesh.Vertices.Count];
+        for (int i = 0; i < parent.Length; i++) parent[i] = i;
+
+        int Find(int i)
         {
-            collapsedAny = false;
-            for (int i = 0; i < mesh.Triangles.Count; i++)
+            while (i != parent[i])
             {
-                var tri = mesh.Triangles[i];
-                var p0 = mesh.Vertices[tri.V0].Position;
-                var p1 = mesh.Vertices[tri.V1].Position;
-                var p2 = mesh.Vertices[tri.V2].Position;
+                parent[i] = parent[parent[i]];
+                i = parent[i];
+            }
+            return i;
+        }
 
-                int u = -1, v = -1;
-                if ((p1 - p0).LengthSquared() < minLenSq) { u = tri.V0; v = tri.V1; }
-                else if ((p2 - p1).LengthSquared() < minLenSq) { u = tri.V1; v = tri.V2; }
-                else if ((p0 - p2).LengthSquared() < minLenSq) { u = tri.V2; v = tri.V0; }
-
-                if (u != -1 && v != -1 && u != v)
-                {
-                    mesh.Vertices[u].Position = (mesh.Vertices[u].Position + mesh.Vertices[v].Position) * 0.5f;
-                    foreach (var t in mesh.Triangles)
-                    {
-                        if (t.V0 == v) t.V0 = u;
-                        if (t.V1 == v) t.V1 = u;
-                        if (t.V2 == v) t.V2 = u;
-                    }
-                    report.ShortEdgesCollapsed++;
-                    collapsedAny = true;
-                    break;
-                }
+        void Union(int a, int b)
+        {
+            int rA = Find(a);
+            int rB = Find(b);
+            if (rA != rB)
+            {
+                parent[rB] = rA;
+                mesh.Vertices[rA].Position = (mesh.Vertices[rA].Position + mesh.Vertices[rB].Position) * 0.5f;
             }
         }
+
+        for (int i = 0; i < mesh.Triangles.Count; i++)
+        {
+            var tri = mesh.Triangles[i];
+            int v0 = Find(tri.V0);
+            int v1 = Find(tri.V1);
+            int v2 = Find(tri.V2);
+            if (v0 == v1 || v1 == v2 || v0 == v2) continue;
+
+            var p0 = mesh.Vertices[v0].Position;
+            var p1 = mesh.Vertices[v1].Position;
+            var p2 = mesh.Vertices[v2].Position;
+
+            if ((p1 - p0).LengthSquared() < minLenSq)
+            {
+                Union(v0, v1);
+                report.ShortEdgesCollapsed++;
+            }
+            else if ((p2 - p1).LengthSquared() < minLenSq)
+            {
+                Union(v1, v2);
+                report.ShortEdgesCollapsed++;
+            }
+            else if ((p0 - p2).LengthSquared() < minLenSq)
+            {
+                Union(v2, v0);
+                report.ShortEdgesCollapsed++;
+            }
+        }
+
+        var validTris = new List<Triangle>(mesh.Triangles.Count);
+        for (int i = 0; i < mesh.Triangles.Count; i++)
+        {
+            var tri = mesh.Triangles[i];
+            int v0 = Find(tri.V0);
+            int v1 = Find(tri.V1);
+            int v2 = Find(tri.V2);
+
+            if (v0 != v1 && v1 != v2 && v0 != v2)
+            {
+                tri.V0 = v0;
+                tri.V1 = v1;
+                tri.V2 = v2;
+                validTris.Add(tri);
+            }
+        }
+        mesh.Triangles = validTris;
     }
 
     // =========================================================================
@@ -299,30 +371,68 @@ public sealed class GeometryAutoRepair
                 if (!mesh.MaterialName.StartsWith("!") && !mesh.MaterialName.StartsWith("%!"))
                 {
                     mesh.MaterialName = $"!{mesh.MaterialName}";
-                    mesh.IsCollideable = false;
                 }
+                for (int s = 0; s < mesh.MaterialSlots.Count; s++)
+                {
+                    if (!mesh.MaterialSlots[s].StartsWith("!") && !mesh.MaterialSlots[s].StartsWith("%!"))
+                    {
+                        mesh.MaterialSlots[s] = $"!{mesh.MaterialSlots[s]}";
+                    }
+                }
+                mesh.IsCollideable = false;
             }
         }
     }
 
     // =========================================================================
-    // 5. ALGORITHM: FIX DEGENERATE FACES (Needle slivers & extreme aspect ratios)
+    // 5. ALGORITHM: FIX DEGENERATE FACES (O(N) Union-Find Optimized)
     // =========================================================================
     public static void FixDegenerateFaces(MeshObject mesh, RepairReport report)
     {
-        var nonDegen = new List<Triangle>(mesh.Triangles.Count);
+        if (mesh == null || mesh.Triangles.Count == 0 || mesh.Vertices.Count == 0) return;
+
+        int[] parent = new int[mesh.Vertices.Count];
+        for (int i = 0; i < parent.Length; i++) parent[i] = i;
+
+        int Find(int i)
+        {
+            while (i != parent[i])
+            {
+                parent[i] = parent[parent[i]];
+                i = parent[i];
+            }
+            return i;
+        }
+
+        void Union(int a, int b)
+        {
+            int rA = Find(a);
+            int rB = Find(b);
+            if (rA != rB)
+            {
+                parent[rB] = rA;
+                mesh.Vertices[rA].Position = (mesh.Vertices[rA].Position + mesh.Vertices[rB].Position) * 0.5f;
+            }
+        }
+
         for (int i = 0; i < mesh.Triangles.Count; i++)
         {
             var tri = mesh.Triangles[i];
-            var p0 = mesh.Vertices[tri.V0].Position;
-            var p1 = mesh.Vertices[tri.V1].Position;
-            var p2 = mesh.Vertices[tri.V2].Position;
+            int v0 = Find(tri.V0);
+            int v1 = Find(tri.V1);
+            int v2 = Find(tri.V2);
+            if (v0 == v1 || v1 == v2 || v0 == v2) continue;
+
+            var p0 = mesh.Vertices[v0].Position;
+            var p1 = mesh.Vertices[v1].Position;
+            var p2 = mesh.Vertices[v2].Position;
 
             var cross = Vector3.Cross(p1 - p0, p2 - p0);
             float area = cross.Length() * 0.5f;
 
             if (area < MinTriangleArea)
             {
+                Union(v0, v1);
                 report.DegenerateFacesFixed++;
                 report.DegenerateFacesRemoved++;
                 continue;
@@ -333,33 +443,38 @@ public sealed class GeometryAutoRepair
             float e2 = (p0 - p2).Length();
             float perimeter = e0 + e1 + e2;
 
-            // Needle aspect ratio check
             if ((perimeter * perimeter / area) > 400.0f)
             {
-                // Collapse the shortest edge of the needle
-                int u = tri.V0, v = tri.V1;
-                if (e1 < e0 && e1 < e2) { u = tri.V1; v = tri.V2; }
-                else if (e2 < e0 && e2 < e1) { u = tri.V2; v = tri.V0; }
+                int u = v0, v = v1;
+                if (e1 < e0 && e1 < e2) { u = v1; v = v2; }
+                else if (e2 < e0 && e2 < e1) { u = v2; v = v0; }
 
-                mesh.Vertices[u].Position = (mesh.Vertices[u].Position + mesh.Vertices[v].Position) * 0.5f;
-                foreach (var t in mesh.Triangles)
-                {
-                    if (t.V0 == v) t.V0 = u;
-                    if (t.V1 == v) t.V1 = u;
-                    if (t.V2 == v) t.V2 = u;
-                }
-
+                Union(u, v);
                 report.DegenerateFacesFixed++;
-                continue;
             }
+        }
 
-            nonDegen.Add(tri);
+        var nonDegen = new List<Triangle>(mesh.Triangles.Count);
+        for (int i = 0; i < mesh.Triangles.Count; i++)
+        {
+            var tri = mesh.Triangles[i];
+            int v0 = Find(tri.V0);
+            int v1 = Find(tri.V1);
+            int v2 = Find(tri.V2);
+
+            if (v0 != v1 && v1 != v2 && v0 != v2)
+            {
+                tri.V0 = v0;
+                tri.V1 = v1;
+                tri.V2 = v2;
+                nonDegen.Add(tri);
+            }
         }
         mesh.Triangles = nonDegen;
     }
 
     // =========================================================================
-    // 6. ALGORITHM: FIX LEAKY CONNECTIONS (Unwelded seams & slits)
+    // 6. ALGORITHM: FIX LEAKY CONNECTIONS (Spatial Hash Grid Optimized)
     // =========================================================================
     public static void FixLeakyConnections(MeshObject mesh, float maxDistance, RepairReport report)
     {
@@ -368,9 +483,7 @@ public sealed class GeometryAutoRepair
         var openEdges = GetOpenEdges(mesh);
         if (openEdges.Count < 2) return;
 
-        float maxDistSq = maxDistance * maxDistance;
         float snapDistSq = BoundarySnapDistance * BoundarySnapDistance;
-
         var boundaryVerts = new HashSet<int>();
         foreach (var (u, v) in openEdges)
         {
@@ -378,25 +491,52 @@ public sealed class GeometryAutoRepair
             boundaryVerts.Add(v);
         }
 
-        var bVertList = new List<int>(boundaryVerts);
-        for (int i = 0; i < bVertList.Count; i++)
+        float cellSize = MathF.Max(BoundarySnapDistance * 2.0f, 1.0f);
+        var grid = new Dictionary<(int, int, int), List<int>>();
+        (int, int, int) GetCell(Vector3 p) =>
+            ((int)MathF.Floor(p.X / cellSize), (int)MathF.Floor(p.Y / cellSize), (int)MathF.Floor(p.Z / cellSize));
+
+        foreach (int idx in boundaryVerts)
         {
-            int idxA = bVertList[i];
-            var posA = mesh.Vertices[idxA].Position;
+            var p = mesh.Vertices[idx].Position;
+            var cell = GetCell(p);
+            int match = -1;
 
-            for (int j = i + 1; j < bVertList.Count; j++)
+            for (int dx = -1; dx <= 1 && match == -1; dx++)
             {
-                int idxB = bVertList[j];
-                var posB = mesh.Vertices[idxB].Position;
-
-                float distSq = (posA - posB).LengthSquared();
-                if (distSq > 0.0f && distSq <= snapDistSq)
+                for (int dy = -1; dy <= 1 && match == -1; dy++)
                 {
-                    // Snap vertices together to seal the leak
-                    mesh.Vertices[idxB].Position = posA;
-                    report.LeakyConnectionsSealed++;
-                    report.VerticesWelded++;
+                    for (int dz = -1; dz <= 1 && match == -1; dz++)
+                    {
+                        if (grid.TryGetValue((cell.Item1 + dx, cell.Item2 + dy, cell.Item3 + dz), out var list))
+                        {
+                            foreach (var oIdx in list)
+                            {
+                                if ((mesh.Vertices[oIdx].Position - p).LengthSquared() <= snapDistSq)
+                                {
+                                    match = oIdx;
+                                    break;
+                                }
+                            }
+                        }
+                    }
                 }
+            }
+
+            if (match != -1)
+            {
+                mesh.Vertices[idx].Position = mesh.Vertices[match].Position;
+                report.LeakyConnectionsSealed++;
+                report.VerticesWelded++;
+            }
+            else
+            {
+                if (!grid.TryGetValue(cell, out var list))
+                {
+                    list = new List<int>(4);
+                    grid[cell] = list;
+                }
+                list.Add(idx);
             }
         }
 
@@ -548,25 +688,52 @@ public sealed class GeometryAutoRepair
             boundaryVertIndices.Add(v);
         }
 
-        var bVerts = new List<int>(boundaryVertIndices);
         float snapDistSq = snapDistance * snapDistance;
+        float cellSize = MathF.Max(snapDistance * 2.0f, 1.0f);
+        var grid = new Dictionary<(int, int, int), List<int>>();
+        (int, int, int) GetCell(Vector3 p) =>
+            ((int)MathF.Floor(p.X / cellSize), (int)MathF.Floor(p.Y / cellSize), (int)MathF.Floor(p.Z / cellSize));
 
-        for (int i = 0; i < bVerts.Count; i++)
+        foreach (int idx in boundaryVertIndices)
         {
-            int idxA = bVerts[i];
-            var posA = mesh.Vertices[idxA].Position;
+            var p = mesh.Vertices[idx].Position;
+            var cell = GetCell(p);
+            int match = -1;
 
-            for (int j = i + 1; j < bVerts.Count; j++)
+            for (int dx = -1; dx <= 1 && match == -1; dx++)
             {
-                int idxB = bVerts[j];
-                var posB = mesh.Vertices[idxB].Position;
-
-                float distSq = (posA - posB).LengthSquared();
-                if (distSq > 0.0f && distSq <= snapDistSq)
+                for (int dy = -1; dy <= 1 && match == -1; dy++)
                 {
-                    mesh.Vertices[idxB].Position = posA;
-                    report.VerticesWelded++;
+                    for (int dz = -1; dz <= 1 && match == -1; dz++)
+                    {
+                        if (grid.TryGetValue((cell.Item1 + dx, cell.Item2 + dy, cell.Item3 + dz), out var list))
+                        {
+                            foreach (var oIdx in list)
+                            {
+                                if ((mesh.Vertices[oIdx].Position - p).LengthSquared() <= snapDistSq)
+                                {
+                                    match = oIdx;
+                                    break;
+                                }
+                            }
+                        }
+                    }
                 }
+            }
+
+            if (match != -1)
+            {
+                mesh.Vertices[idx].Position = mesh.Vertices[match].Position;
+                report.VerticesWelded++;
+            }
+            else
+            {
+                if (!grid.TryGetValue(cell, out var list))
+                {
+                    list = new List<int>(4);
+                    grid[cell] = list;
+                }
+                list.Add(idx);
             }
         }
     }
@@ -809,27 +976,59 @@ public sealed class GeometryAutoRepair
         float maxBridgeDistSq = 50.0f * 50.0f;
         var paired = new HashSet<int>();
 
+        float cellSize = 50.0f;
+        var grid = new Dictionary<(int, int, int), List<int>>();
+        (int, int, int) GetCell(Vector3 p) =>
+            ((int)MathF.Floor(p.X / cellSize), (int)MathF.Floor(p.Y / cellSize), (int)MathF.Floor(p.Z / cellSize));
+
+        var midpoints = new Vector3[openEdges.Count];
+        for (int i = 0; i < openEdges.Count; i++)
+        {
+            var (a, b) = openEdges[i];
+            var mid = (mesh.Vertices[a].Position + mesh.Vertices[b].Position) * 0.5f;
+            midpoints[i] = mid;
+            var cell = GetCell(mid);
+            if (!grid.TryGetValue(cell, out var list))
+            {
+                list = new List<int>(4);
+                grid[cell] = list;
+            }
+            list.Add(i);
+        }
+
         for (int i = 0; i < openEdges.Count; i++)
         {
             if (paired.Contains(i)) continue;
             var (a1, b1) = openEdges[i];
-            var mid1 = (mesh.Vertices[a1].Position + mesh.Vertices[b1].Position) * 0.5f;
+            var mid1 = midpoints[i];
+            var cell = GetCell(mid1);
 
             int bestMatch = -1;
             float bestDistSq = float.MaxValue;
 
-            for (int j = i + 1; j < openEdges.Count; j++)
+            for (int dx = -1; dx <= 1; dx++)
             {
-                if (paired.Contains(j)) continue;
-                var (a2, b2) = openEdges[j];
-                if (a1 == a2 || a1 == b2 || b1 == a2 || b1 == b2) continue;
-
-                var mid2 = (mesh.Vertices[a2].Position + mesh.Vertices[b2].Position) * 0.5f;
-                float dSq = (mid1 - mid2).LengthSquared();
-                if (dSq < bestDistSq && dSq <= maxBridgeDistSq)
+                for (int dy = -1; dy <= 1; dy++)
                 {
-                    bestDistSq = dSq;
-                    bestMatch = j;
+                    for (int dz = -1; dz <= 1; dz++)
+                    {
+                        if (grid.TryGetValue((cell.Item1 + dx, cell.Item2 + dy, cell.Item3 + dz), out var candidates))
+                        {
+                            foreach (int j in candidates)
+                            {
+                                if (j <= i || paired.Contains(j)) continue;
+                                var (a2, b2) = openEdges[j];
+                                if (a1 == a2 || a1 == b2 || b1 == a2 || b1 == b2) continue;
+
+                                float dSq = (mid1 - midpoints[j]).LengthSquared();
+                                if (dSq < bestDistSq && dSq <= maxBridgeDistSq)
+                                {
+                                    bestDistSq = dSq;
+                                    bestMatch = j;
+                                }
+                            }
+                        }
+                    }
                 }
             }
 

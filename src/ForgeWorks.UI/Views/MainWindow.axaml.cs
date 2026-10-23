@@ -59,6 +59,35 @@ public partial class MainWindow : Window
                     }
                 }
             };
+
+            vm.RequestImportTexturesDialog += async () =>
+            {
+                var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+                {
+                    Title = "Import Model PNG / JPG / TIF Textures & Generate Custom Halo 3 Shaders",
+                    AllowMultiple = true,
+                    FileTypeFilter = new[]
+                    {
+                        new FilePickerFileType("Image Textures (*.png, *.jpg, *.jpeg, *.tif, *.tiff, *.bmp)")
+                        {
+                            Patterns = new[] { "*.png", "*.jpg", "*.jpeg", "*.tif", "*.tiff", "*.bmp" }
+                        },
+                        new FilePickerFileType("PNG Textures (*.png)") { Patterns = new[] { "*.png" } },
+                        new FilePickerFileType("TIFF Textures (*.tif, *.tiff)") { Patterns = new[] { "*.tif", "*.tiff" } },
+                        new FilePickerFileType("All Files (*.*)") { Patterns = new[] { "*.*" } }
+                    }
+                });
+
+                if (files != null && files.Count > 0)
+                {
+                    string? first = files[0].TryGetLocalPath();
+                    if (!string.IsNullOrEmpty(first))
+                    {
+                        string dir = System.IO.Path.GetDirectoryName(first) ?? "";
+                        vm.ImportModelTextures(dir);
+                    }
+                }
+            };
         }
     }
 

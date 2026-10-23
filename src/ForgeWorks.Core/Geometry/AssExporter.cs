@@ -209,30 +209,25 @@ public sealed class AssExporter
     {
         if (string.IsNullOrWhiteSpace(mat)) return "river riverworld_ground";
         string m = mat.Trim();
+
+        // Extract semantic flags: %, !, %!, +, $, @, ~
+        string prefix = "";
+        while (m.Length > 0 && (m[0] == '%' || m[0] == '!' || m[0] == '+' || m[0] == '$' || m[0] == '@' || m[0] == '~'))
+        {
+            prefix += m[0];
+            m = m[1..];
+        }
+
         if (m.StartsWith("boxcanvas", StringComparison.OrdinalIgnoreCase))
         {
             return "river riverworld_ground";
         }
-        // In Halo 3 Tool / ASS specification:
-        // Collision / render-only flags are leading prefixes:
-        //   '%' = two-sided
-        //   '!' = render-only (non-collidable)
-        //   '%!' = two-sided render-only foliage/glass
-        // Trailing '!' suffixes must be stripped because Tool treats trailing characters as part of the shader tag filename!
-        if (m.EndsWith("!") && (m.StartsWith("%") || m.StartsWith("!")))
-        {
-            m = m.TrimEnd('!');
-            if (!m.StartsWith("%!"))
-            {
-                if (m.StartsWith("%")) m = "%!" + m.Substring(1);
-                else if (m.StartsWith("!")) m = "%!" + m.Substring(1);
-            }
-        }
-        else if (m.EndsWith("!"))
-        {
-            m = "!" + m.TrimEnd('!');
-        }
-        return m;
+
+        // Clean out colons, slashes, and invalid characters from material identifier
+        m = System.Text.RegularExpressions.Regex.Replace(m, @"[^A-Za-z0-9_\s]+", "_").Trim();
+        if (string.IsNullOrEmpty(m)) m = "custom";
+
+        return prefix + m;
     }
 
     private static float CleanFloat(float val, float fallback = 0.0f)

@@ -211,6 +211,11 @@ public sealed class HaloShaderCatalog
         }
     }
 
+    public void RegisterCustomShader(string materialName, string tagPath, string levelPrefix = "", string category = "Custom")
+    {
+        AddEntry(new HaloShaderEntry(materialName, tagPath, ".shader", levelPrefix, category, IsVerified: true));
+    }
+
     public bool IsValidShader(string materialName)
     {
         if (string.IsNullOrWhiteSpace(materialName))

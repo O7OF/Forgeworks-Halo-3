@@ -370,16 +370,13 @@ public sealed class StructureGenerator
         sky.MaterialSlots.Add("+sky");
         sky.IsCollideable = true;
 
-        bool isTerrainOrSurface = levelMesh.Name.Contains("terrain", StringComparison.OrdinalIgnoreCase)
-            || levelMesh.Name.Contains("bsp", StringComparison.OrdinalIgnoreCase)
-            || levelMesh.Name.Contains("ground", StringComparison.OrdinalIgnoreCase)
-            || levelMesh.Name.Contains("basin", StringComparison.OrdinalIgnoreCase)
-            || levelMesh.Name.Contains("canyon", StringComparison.OrdinalIgnoreCase)
-            || levelMesh.Name.Contains("valley", StringComparison.OrdinalIgnoreCase);
+        bool isTerrainOrSurface = perimeter != null && perimeter.Count >= 3
+            && !levelMesh.Name.StartsWith("brush_box", StringComparison.OrdinalIgnoreCase)
+            && !levelMesh.Name.StartsWith("brush_cube", StringComparison.OrdinalIgnoreCase);
 
-        if (isTerrainOrSurface && perimeter != null && perimeter.Count >= 3)
+        if (isTerrainOrSurface)
         {
-            int N = perimeter.Count;
+            int N = perimeter!.Count;
 
             // Ensure CCW winding in XY plane around (centerX, centerY)
             float signedArea = 0f;
@@ -474,6 +471,60 @@ public sealed class StructureGenerator
 
         // Fallback: If mesh has no open boundary edges (e.g. closed bunker or convex hull)
         return GenerateBoundingSkyBox(min, max, ceilingMargin, floorMargin, horizontalPadding);
+    }
+
+    /// <summary>
+    /// Seals an entire multi-mesh scene watertight (+sky).
+    /// Computes overall scene bounds across all level meshes, selects ground perimeter or builds inward-facing skybox envelope.
+    /// </summary>
+    public static MeshObject GenerateWatertightSkyDomeForScene(
+        IEnumerable<MeshObject> meshes,
+        float ceilingMargin = 8000.0f,
+        float floorMargin = 500.0f,
+        float horizontalPadding = 500.0f)
+    {
+        var meshList = new List<MeshObject>();
+        foreach (var m in meshes)
+        {
+            if (m != null && m.Vertices.Count > 0)
+                meshList.Add(m);
+        }
+
+        if (meshList.Count == 0)
+        {
+            return GenerateBoundingSkyBox(new Vector3(-5000, -5000, -500), new Vector3(5000, 5000, 5000), ceilingMargin, floorMargin, horizontalPadding);
+        }
+
+        Vector3 globalMin = new Vector3(float.MaxValue);
+        Vector3 globalMax = new Vector3(float.MinValue);
+        MeshObject? bestGroundMesh = null;
+        float maxFootprint = -1f;
+
+        foreach (var m in meshList)
+        {
+            var (bMin, bMax) = CsgBooleanEngine.ComputeBounds(m);
+            globalMin = Vector3.Min(globalMin, bMin);
+            globalMax = Vector3.Max(globalMax, bMax);
+
+            float footprint = (bMax.X - bMin.X) * (bMax.Y - bMin.Y);
+            if (footprint > maxFootprint)
+            {
+                maxFootprint = footprint;
+                bestGroundMesh = m;
+            }
+        }
+
+        if (bestGroundMesh != null && bestGroundMesh.Triangles.Count > 0)
+        {
+            var candidateSky = GenerateWatertightSkyDome(bestGroundMesh, ceilingMargin, floorMargin, horizontalPadding);
+            var (skyMin, skyMax) = CsgBooleanEngine.ComputeBounds(candidateSky);
+            if (skyMin.X <= globalMin.X && skyMin.Y <= globalMin.Y && skyMax.X >= globalMax.X && skyMax.Y >= globalMax.Y && skyMax.Z >= globalMax.Z)
+            {
+                return candidateSky;
+            }
+        }
+
+        return GenerateBoundingSkyBox(globalMin, globalMax, ceilingMargin, floorMargin, horizontalPadding);
     }
 
     private static MeshObject GenerateBoundingSkyBox(Vector3 min, Vector3 max, float ceilingMargin, float floorMargin, float horizontalPadding)

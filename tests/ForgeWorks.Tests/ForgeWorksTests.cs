@@ -8,6 +8,7 @@ using ForgeWorks.Core.Procedural;
 using ForgeWorks.Core.Rendering;
 using ForgeWorks.Core.Shaders;
 using ForgeWorks.Blam.Scenario;
+using ForgeWorks.Blam.Shaders;
 using ForgeWorks.Blam.Tags;
 using ForgeWorks.Blam.Tool;
 using Xunit;
@@ -2274,6 +2275,170 @@ public class ForgeWorksTests
 
         var issues = GeometryLinter.LintScene(new[] { mesh });
         Assert.NotNull(issues);
+    }
+
+    [Fact]
+    public void CustomShaderBuilder_EndToEnd_GeneratesTifAndShaderTagAndCollectionsEntry()
+    {
+        string tempEk = Path.Combine(Path.GetTempPath(), $"h3ek_test_{Guid.NewGuid():N}");
+        try
+        {
+            Directory.CreateDirectory(tempEk);
+            string tempImgDir = Path.Combine(tempEk, "source_images");
+            Directory.CreateDirectory(tempImgDir);
+
+            // 1. Create a dummy test PNG image
+            string pngPath = Path.Combine(tempImgDir, "bikini_sand.png");
+            using (var bmp = new System.Drawing.Bitmap(64, 64))
+            {
+                using (var g = System.Drawing.Graphics.FromImage(bmp))
+                {
+                    g.Clear(System.Drawing.Color.Goldenrod);
+                }
+                bmp.Save(pngPath, System.Drawing.Imaging.ImageFormat.Png);
+            }
+
+            // 2. Test ConvertImageToTif
+            string tifPath = Path.Combine(tempEk, "test_out.tif");
+            bool converted = CustomShaderBuilder.ConvertImageToTif(pngPath, tifPath);
+            Assert.True(converted, "Image conversion to TIFF must succeed");
+            Assert.True(File.Exists(tifPath), "Output TIFF must exist on disk");
+            Assert.True(new FileInfo(tifPath).Length > 0, "Output TIFF must have non-zero size");
+
+            // 3. Test EnsureShaderCollectionsEntry
+            CustomShaderBuilder.EnsureShaderCollectionsEntry(tempEk, "custom_canvas", "multi");
+            string collectionsPath = Path.Combine(tempEk, "tags", "levels", "shader_collections.txt");
+            Assert.True(File.Exists(collectionsPath), "shader_collections.txt must be created");
+            string collectionsContent = File.ReadAllText(collectionsPath);
+            Assert.Contains("custom_canvas\tlevels\\multi\\custom_canvas\\shaders", collectionsContent);
+
+            // 4. Test GenerateCustomShaderTag
+            string shaderTag = Path.Combine(tempEk, "tags", "levels", "multi", "custom_canvas", "shaders", "bikini_sand.shader");
+            CustomShaderBuilder.GenerateCustomShaderTag(shaderTag, "bikini_sand", "levels\\multi\\custom_canvas\\bitmaps\\bikini_sand", tempEk);
+            Assert.True(File.Exists(shaderTag), "Synthesized .shader tag must exist");
+            byte[] shaderBytes = File.ReadAllBytes(shaderTag);
+            Assert.True(shaderBytes.Length >= 0x40, "Shader tag must be at least header size");
+            Assert.Equal((byte)'r', shaderBytes[0]);
+            Assert.Equal((byte)'m', shaderBytes[1]);
+            Assert.Equal((byte)'s', shaderBytes[2]);
+            Assert.Equal((byte)'h', shaderBytes[3]);
+
+            // 5. Test SetupCustomShadersForModel
+            var mesh = new MeshObject("sand_mesh") { MaterialName = "bikini_sand" };
+            mesh.MaterialSlots.Add("bikini_sand");
+            var catalog = new HaloShaderCatalog();
+
+            var results = CustomShaderBuilder.SetupCustomShadersForModel(
+                tempEk,
+                "custom_canvas",
+                new[] { mesh },
+                tempImgDir,
+                catalog);
+
+            Assert.Single(results);
+            Assert.Equal("custom_canvas bikini_sand", results[0].MaterialName);
+            Assert.True(File.Exists(results[0].FullShaderTagPath));
+            Assert.True(File.Exists(results[0].FullTifDataPath));
+        }
+        finally
+        {
+            if (Directory.Exists(tempEk))
+            {
+                try { Directory.Delete(tempEk, true); } catch { }
+            }
+        }
+    }
+
+    [Fact]
+    public void GeometryAutoRepair_HighPoly200k_ExecutesRapidlyWithoutHanging()
+    {
+        // Construct high-density mesh with > 200,000 vertices and triangles
+        // res = 320 -> 320*320 = 102,400 vertices, 319*319*2 = 203,522 triangles!
+        int res = 320;
+        var mesh = new MeshObject("high_poly_200k_mesh");
+        mesh.Vertices = new List<Vertex>(res * res);
+        mesh.Triangles = new List<Triangle>((res - 1) * (res - 1) * 2 + 10);
+
+        for (int y = 0; y < res; y++)
+        {
+            for (int x = 0; x < res; x++)
+            {
+                mesh.Vertices.Add(new Vertex(new Vector3(x * 10f, y * 10f, (x + y) * 0.1f), Vector3.UnitZ));
+            }
+        }
+
+        for (int y = 0; y < res - 1; y++)
+        {
+            for (int x = 0; x < res - 1; x++)
+            {
+                int v00 = y * res + x;
+                int v10 = y * res + (x + 1);
+                int v01 = (y + 1) * res + x;
+                int v11 = (y + 1) * res + (x + 1);
+                mesh.Triangles.Add(new Triangle(v00, v10, v11));
+                mesh.Triangles.Add(new Triangle(v00, v11, v01));
+            }
+        }
+
+        // Inject 5 degenerate triangles and short edges to test repair
+        mesh.Triangles.Add(new Triangle(0, 0, 1));
+        mesh.Triangles.Add(new Triangle(2, 2, 2));
+
+        Assert.True(mesh.Triangles.Count > 200000, "Mesh must exceed 200k triangles");
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var report = GeometryAutoRepair.RepairAllErrors(
+            mesh,
+            capHoles: false,
+            weldDistance: 0.05f,
+            collapseShortEdges: true,
+            flattenNearlyCoplanar: false,
+            applySmooth: false);
+        sw.Stop();
+
+        Assert.True(report.DegenerateTrianglesRemoved >= 2, "Degenerates must be removed");
+        Assert.True(sw.ElapsedMilliseconds < 3500, $"200k poly repair took {sw.ElapsedMilliseconds}ms, must be < 3500ms");
+    }
+
+    [Fact]
+    public void StructureGenerator_GenerateWatertightSkyDomeForScene_EnclosesAllMeshes()
+    {
+        var meshA = CsgBrushBuilder.CreateBox(new Vector3(200, 200, 100), new Vector3(-1000, -1000, 0));
+        var meshB = CsgBrushBuilder.CreateBox(new Vector3(300, 300, 150), new Vector3(0, 0, 50));
+        var meshC = CsgBrushBuilder.CreateBox(new Vector3(400, 400, 200), new Vector3(2000, 2000, 100));
+
+        var skyDome = StructureGenerator.GenerateWatertightSkyDomeForScene(
+            new[] { meshA, meshB, meshC },
+            ceilingMargin: 3000f,
+            floorMargin: 500f,
+            horizontalPadding: 500f);
+
+        Assert.NotNull(skyDome);
+        Assert.Equal("+sky", skyDome.MaterialName);
+        Assert.True(skyDome.IsCollideable);
+
+        var (sMin, sMax) = CsgBooleanEngine.ComputeBounds(skyDome);
+        Assert.True(sMin.X <= -1500f, $"Sky min X ({sMin.X}) must enclose meshA (-1000)");
+        Assert.True(sMin.Y <= -1500f, $"Sky min Y ({sMin.Y}) must enclose meshA (-1000)");
+        Assert.True(sMax.X >= 2200f, $"Sky max X ({sMax.X}) must enclose meshC (2000)");
+        Assert.True(sMax.Y >= 2200f, $"Sky max Y ({sMax.Y}) must enclose meshC (2000)");
+        Assert.True(sMax.Z >= 3100f, $"Sky max Z ({sMax.Z}) must include ceiling margin");
+    }
+
+    [Fact]
+    public void OpenNonManifoldMeshes_TaggedRenderOnly_ByAutoRepair()
+    {
+        // An open non-manifold decorative surface
+        var openProp = new MeshObject("open_bikini_prop") { MaterialName = "bikini_wood" };
+        openProp.MaterialSlots.Add("bikini_wood");
+        openProp.Vertices.Add(new Vertex(new Vector3(0, 0, 0), Vector3.UnitZ));
+        openProp.Vertices.Add(new Vertex(new Vector3(100, 0, 0), Vector3.UnitZ));
+        openProp.Vertices.Add(new Vertex(new Vector3(50, 100, 0), Vector3.UnitZ));
+        openProp.Triangles.Add(new Triangle(0, 1, 2)); // 3 open boundary edges
+
+        GeometryAutoRepair.FixOpenEdges(openProp, capHoles: false, new RepairReport());
+        Assert.True(openProp.MaterialName.StartsWith("!"), "Non-manifold prop material must be tagged with '!' render-only");
+        Assert.True(openProp.MaterialSlots[0].StartsWith("!"), "Material slot must be tagged with '!' render-only");
     }
 }
 

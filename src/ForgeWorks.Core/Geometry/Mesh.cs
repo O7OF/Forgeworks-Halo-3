@@ -52,6 +52,8 @@ public sealed class MeshObject
     public Matrix4x4 Transform { get; set; } = Matrix4x4.Identity;
     public int GridResolutionX { get; set; }
     public int GridResolutionY { get; set; }
+    public string? SourceTexturePath { get; set; }
+    public Dictionary<string, string> MaterialTextureMap { get; } = new(StringComparer.OrdinalIgnoreCase);
 
     public MeshObject() { }
 

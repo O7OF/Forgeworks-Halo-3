@@ -101,10 +101,14 @@ public sealed class ToolFastCompiler
         string fullDataDir = Path.Combine(ekPath, "data", dataRel);
         string fullBitmapsDir = Path.Combine(ekPath, "data", "levels", scenarioType, levelName, "bitmaps");
         string fullTagsDir = Path.Combine(ekPath, "tags", "levels", scenarioType, levelName);
+        string fullShadersDir = Path.Combine(ekPath, "tags", "levels", scenarioType, levelName, "shaders");
+        string fullTagsBitmapsDir = Path.Combine(ekPath, "tags", "levels", scenarioType, levelName, "bitmaps");
 
         Directory.CreateDirectory(fullDataDir);
         Directory.CreateDirectory(fullBitmapsDir);
         Directory.CreateDirectory(fullTagsDir);
+        Directory.CreateDirectory(fullShadersDir);
+        Directory.CreateDirectory(fullTagsBitmapsDir);
 
         return (fullDataDir, fullTagsDir, dataRel);
     }
@@ -128,6 +132,21 @@ public sealed class ToolFastCompiler
         }
 
         var (_, fullTagsDir, dataRel) = SetupLevelDirectories(ekPath, levelName, scenarioType);
+
+        // Ensure shader collections mapping exists
+        Shaders.CustomShaderBuilder.EnsureShaderCollectionsEntry(ekPath, levelName, scenarioType);
+
+        // Step 0: Compile custom texture bitmaps if .tif files are present
+        string dataBitmapsRel = Path.Combine("levels", scenarioType, levelName, "bitmaps");
+        string fullDataBitmaps = Path.Combine(ekPath, "data", dataBitmapsRel);
+        if (Directory.Exists(fullDataBitmaps) && Directory.GetFiles(fullDataBitmaps, "*.tif").Length > 0)
+        {
+            string bitmapsCmd = $"bitmaps \"{dataBitmapsRel}\"";
+            fullLog.Add($"=== RUNNING: {toolExe} {bitmapsCmd} ===");
+            onLogMessage?.Invoke($"[ForgeWorks] Compiling custom bitmaps: {dataBitmapsRel}...");
+            var (bCode, bLog) = await RunProcessAsync(toolExe, bitmapsCmd, ekPath, onLogMessage, cancellationToken);
+            fullLog.Add(bLog);
+        }
 
         // Step 1: Synthesize and write authentic .scenario tag with all spawns, equipment, volumes
         string scenarioTagPath = Path.Combine(fullTagsDir, $"{levelName}.scenario");

@@ -82,6 +82,8 @@
                                 <MenuItem Header="Import .ASS Amalgam Scene..." Command="{Binding ImportAssCommand}"/>
                                 <MenuItem Header="Import .JMS Jointed Model..." Command="{Binding ImportJmsCommand}"/>
                                 <MenuItem Header="Import Tool WRL Error Wire..." Command="{Binding ImportWrlCommand}"/>
+                                <Separator/>
+                                <MenuItem Header="🎨 Import Model Textures &amp; Generate Custom .shader Tags..." Command="{Binding ImportModelTexturesCommand}"/>
                             </MenuItem>
                             <MenuItem Header="Spawn Primitive (Blockbench / Blender)">
                                 <MenuItem Header="Spawn Cube / Box" Command="{Binding SpawnCubeCommand}"/>
@@ -123,6 +125,7 @@
                             <MenuItem Header="🌾 Swampthing Fix Open Edges &amp; Welds" Command="{Binding SwampthingFixAllCommand}"/>
                             <MenuItem Header="1-Click Fix All Errors (Weld + Dissolve + Cap)" Command="{Binding AutoRepairAllCommand}"/>
                             <MenuItem Header="Auto-Repair Active Mesh" Command="{Binding AutoRepairCommand}"/>
+                            <MenuItem Header="🛡️ Seal Entire Map Watertight (+sky)" Command="{Binding SealMapWatertightCommand}"/>
                             <MenuItem Header="Run Geometry Linter" Command="{Binding RunLinterCommand}"/>
                         </MenuItem>
                         <MenuItem Header="Procedural Generation" Foreground="#d1d5db" FontSize="11">
@@ -612,9 +615,10 @@
 
                             <!-- 5. Search Bar & Shader List (Differentiating Verified from Raw Tags) -->
                             <Grid Grid.Row="4" RowDefinitions="Auto,*">
-                                <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,4">
+                                <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" Margin="0,0,0,4">
                                     <TextBox Grid.Column="0" Text="{Binding ShaderSearchQuery}" PlaceholderText="Search 14k+ shaders (e.g. chill, rock)..." Height="26" FontSize="10"/>
                                     <Button Grid.Column="1" Command="{Binding PerformShaderSearchCommand}" Content="Search" Height="26" FontSize="10" Margin="4,0,0,0"/>
+                                    <Button Grid.Column="2" Command="{Binding ImportModelTexturesCommand}" Background="#7c3aed" Foreground="White" FontWeight="Bold" Content="+ Shaders" Height="26" FontSize="10" Margin="4,0,0,0" ToolTip.Tip="Import model PNG/JPG/TIF textures, convert to TIFF in data\, and generate custom .shader tags in tags\levels\multi\level\shaders\"/>
                                 </Grid>
 
                                 <ListBox Grid.Row="1" ItemsSource="{Binding SearchResults}" SelectedItem="{Binding SelectedShader}" Background="#111317">
@@ -1341,12 +1345,17 @@
                                     </ListBox>
 
                                     <!-- 1-Click Repair and Swampthing Fix in Fixer tab -->
-                                    <Grid Grid.Row="3" ColumnDefinitions="*,*" Margin="0,6,0,0">
-                                        <Button Grid.Column="0" Command="{Binding SwampthingFixAllCommand}" Background="#0284c7" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="0,0,2,0" ToolTip.Tip="Use Swampthing algorithm to seal water open edges and weld boundaries">
-                                            <TextBlock Text="🌾 Swampthing Fix"/>
-                                        </Button>
-                                        <Button Grid.Column="1" Command="{Binding AutoRepairAllCommand}" Background="#059669" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="2,0,0,0" ToolTip.Tip="Auto-weld vertices, dissolve degenerates and cap boundary holes">
-                                            <TextBlock Text="🛠️ Fix All Geo"/>
+                                    <Grid Grid.Row="3" RowDefinitions="Auto,Auto" Margin="0,6,0,0">
+                                        <Grid Grid.Row="0" ColumnDefinitions="*,*" Margin="0,0,0,4">
+                                            <Button Grid.Column="0" Command="{Binding SwampthingFixAllCommand}" Background="#0284c7" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="0,0,2,0" ToolTip.Tip="Use Swampthing algorithm to seal water open edges and weld boundaries">
+                                                <TextBlock Text="🌾 Swampthing Fix"/>
+                                            </Button>
+                                            <Button Grid.Column="1" Command="{Binding AutoRepairAllCommand}" Background="#059669" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="2,0,0,0" ToolTip.Tip="Auto-weld vertices, dissolve degenerates and cap boundary holes">
+                                                <TextBlock Text="🛠️ Fix All Geo"/>
+                                            </Button>
+                                        </Grid>
+                                        <Button Grid.Row="1" Command="{Binding SealMapWatertightCommand}" Background="#10b981" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" ToolTip.Tip="Generate watertight sky dome (+sky) enclosing all imported meshes and auto-repair scene">
+                                            <TextBlock Text="🌐 Auto-Seal Entire Map (+sky)"/>
                                         </Button>
                                     </Grid>
                                 </Grid>

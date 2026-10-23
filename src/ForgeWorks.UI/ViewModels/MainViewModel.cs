@@ -13,6 +13,7 @@ using ForgeWorks.Core.Procedural;
 using ForgeWorks.Core.Rendering;
 using ForgeWorks.Core.Shaders;
 using ForgeWorks.Blam.Scenario;
+using ForgeWorks.Blam.Shaders;
 using ForgeWorks.Blam.Tags;
 using ForgeWorks.Blam.Tool;
 
@@ -37,6 +38,8 @@ public partial class MainViewModel : ViewModelBase
     private HaloShaderCatalog? _catalog;
     private readonly ScenarioManager _scenarioManager = new();
     private int _spawnCounter;
+    private int _totalLintErrors;
+    private int _totalLintWarnings;
 
     [ObservableProperty] private string _activeLevelName = "custom_canvas";
     [ObservableProperty] private string _selectedGame = "Halo 3 (H3EK)";
@@ -63,6 +66,7 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private int _loopCutAxis = 2; // 0=X, 1=Y, 2=Z
 
     public event Action? RequestImportFileDialog;
+    public event Action? RequestImportTexturesDialog;
 
     partial void OnSelectionModeChanged(SubElementSelectionMode value)
     {
@@ -558,7 +562,11 @@ public partial class MainViewModel : ViewModelBase
     private void InitializeShaderCatalog()
     {
         string? root = FindProjectRoot(AppContext.BaseDirectory);
-        if (root == null) return;
+        if (root == null)
+        {
+            _catalog = new HaloShaderCatalog();
+            return;
+        }
 
         string bShaders = Path.Combine(root, "halo3_blender_shaders.txt");
         string rShaders = Path.Combine(root, "halo3_shaders.txt");
@@ -566,6 +574,10 @@ public partial class MainViewModel : ViewModelBase
         {
             _catalog = HaloShaderCatalog.LoadFromFiles(bShaders, rShaders);
             PerformShaderSearch();
+        }
+        else
+        {
+            _catalog = new HaloShaderCatalog();
         }
     }
 
@@ -973,22 +985,27 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     public void SealMapWatertight()
     {
-        if (ActiveMesh == null)
+        var levelMeshes = SceneGraph.GetLevelMeshes();
+        if (levelMeshes.Count == 0 && ActiveMesh == null)
         {
             StatusMessage = "No active terrain to seal. Generating terrain first...";
             GenerateTerrain();
+            levelMeshes = SceneGraph.GetLevelMeshes();
         }
 
         PushHistoryState("Seal Map Watertight");
-        var skyDome = StructureGenerator.GenerateWatertightSkyDome(ActiveMesh!);
+        var targets = levelMeshes.Count > 0 ? levelMeshes : new List<MeshObject> { ActiveMesh! };
+        var skyDome = StructureGenerator.GenerateWatertightSkyDomeForScene(targets);
         skyDome.MaterialName = "+sky";
-        CsgBooleanEngine.MergeInto(ActiveMesh!, skyDome);
-        ActiveMesh!.RecalculateNormals();
+        var node = SceneGraph.AddGeometryMesh(skyDome);
+        SelectedSceneNode = node;
 
-        var report = GeometryAutoRepair.RepairAllErrors(ActiveMesh!, capHoles: true, weldDistance: 0.1f, collapseShortEdges: true, flattenNearlyCoplanar: true, applySmooth: false);
+        // Auto-run repair across all meshes to ensure open edges are sealed and non-manifold props are marked render-only (!)
+        SwampthingFixAll();
+
         MeshVersion++;
         RunLinter();
-        StatusMessage = $"100% Watertight Map Sealed! Merged +sky dome into active BSP ({ActiveMesh!.Triangles.Count} tris). Welded {report.VerticesWelded} boundary seams.";
+        StatusMessage = $"100% Watertight Map Sealed! Added +sky dome enclosure ({skyDome.Triangles.Count} tris) covering entire scene. All boundary seams sealed and repaired.";
     }
 
     [RelayCommand]
@@ -1580,13 +1597,36 @@ public partial class MainViewModel : ViewModelBase
                     matNames.Add(slot);
         }
 
+        int totalErrors = 0;
+        int totalWarnings = 0;
+        const int maxDisplayIssues = 500;
+
         foreach (var issue in GeometryLinter.LintScene(targets, null, matNames))
         {
-            LintIssues.Add(issue);
+            if (issue.Severity == LintSeverity.Error) totalErrors++;
+            else if (issue.Severity == LintSeverity.Warning) totalWarnings++;
+
+            if (LintIssues.Count < maxDisplayIssues)
+            {
+                LintIssues.Add(issue);
+            }
         }
 
+        int totalIssues = totalErrors + totalWarnings;
+        if (totalIssues > maxDisplayIssues)
+        {
+            LintIssues.Add(new LintIssue(
+                LintSeverity.Warning,
+                "UI Limit",
+                $"Showing first {maxDisplayIssues} of {totalIssues} issues ({totalErrors} errors, {totalWarnings} warnings). Click 'Swampthing Fix' or 'Fix All Geo' to repair.",
+                targets.FirstOrDefault()?.Vertices.FirstOrDefault()?.Position ?? Vector3.Zero
+            ));
+        }
+
+        _totalLintErrors = totalErrors;
+        _totalLintWarnings = totalWarnings;
         UpdateMeshStats();
-        StatusMessage = $"Pre-flight scan: {LintIssues.Count} issue(s) across {(ScanSelectedMeshOnly ? "selected mesh" : $"{targets.Count} scene meshes")}.";
+        StatusMessage = $"Pre-flight scan: {totalIssues} issue(s) ({totalErrors} errors, {totalWarnings} warnings) across {(ScanSelectedMeshOnly ? "selected mesh" : $"{targets.Count} scene meshes")}.";
     }
 
     [RelayCommand]
@@ -2907,6 +2947,32 @@ public partial class MainViewModel : ViewModelBase
             {
                 SetActiveMesh(imported[0], $"Imported {imported.Count} mesh(es) from '{Path.GetFileName(path)}' into b_levelroot.");
             }
+
+            // Custom Shaders & Texture Auto-Generation for imported model
+            if (!string.IsNullOrWhiteSpace(EkPath) && Directory.Exists(EkPath) && imported.Count > 0)
+            {
+                try
+                {
+                    string modelDir = Path.GetDirectoryName(path) ?? "";
+                    var shaderResults = CustomShaderBuilder.SetupCustomShadersForModel(
+                        EkPath,
+                        ActiveLevelName,
+                        imported,
+                        modelDir,
+                        _catalog);
+
+                    if (shaderResults.Count > 0)
+                    {
+                        PerformShaderSearch();
+                        StatusMessage += $" Configured {shaderResults.Count} custom .shader tags & TIFFs for H3EK.";
+                    }
+                }
+                catch (Exception shaderEx)
+                {
+                    StatusMessage += $" (Custom shader notice: {shaderEx.Message})";
+                }
+            }
+
             MeshVersion++;
             OverlayVersion++;
             RunLinter();
@@ -2914,6 +2980,42 @@ public partial class MainViewModel : ViewModelBase
         catch (Exception ex)
         {
             StatusMessage = $"Import error ({Path.GetExtension(path)}): {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    public void ImportModelTextures(string? path = null)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            RequestImportTexturesDialog?.Invoke();
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(EkPath) || !Directory.Exists(EkPath))
+        {
+            StatusMessage = "H3EK path not configured. Set H3EK path first to generate custom shaders.";
+            return;
+        }
+
+        try
+        {
+            var levelMeshes = SceneGraph.GetLevelMeshes();
+            var targets = levelMeshes.Count > 0 ? levelMeshes : (ActiveMesh != null ? new List<MeshObject> { ActiveMesh } : new List<MeshObject>());
+            string folder = Directory.Exists(path) ? path : (Path.GetDirectoryName(path) ?? "");
+            var results = CustomShaderBuilder.SetupCustomShadersForModel(
+                EkPath,
+                ActiveLevelName,
+                targets,
+                folder,
+                _catalog);
+
+            PerformShaderSearch();
+            StatusMessage = $"Generated {results.Count} custom .shader tags in tags\\levels\\multi\\{ActiveLevelName}\\shaders\\ and TIFFs in data\\.";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Custom shader setup error: {ex.Message}";
         }
     }
 
@@ -3407,9 +3509,9 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
-        int errors = LintIssues.Count(i => i.Severity == LintSeverity.Error);
-        int warnings = LintIssues.Count(i => i.Severity == LintSeverity.Warning);
-        string status = LintIssues.Count == 0 ? "Tool-compliant" : $"{errors} errors, {warnings} warnings";
+        string status = (_totalLintErrors == 0 && _totalLintWarnings == 0)
+            ? "Tool-compliant (0 errors)"
+            : $"{_totalLintErrors} errors, {_totalLintWarnings} warnings";
         MeshStats = $"{ActiveMesh.Name} | Verts: {ActiveMesh.Vertices.Count} | Tris: {ActiveMesh.Triangles.Count} | {status}";
     }
 

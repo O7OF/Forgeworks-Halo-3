@@ -79,94 +79,92 @@ public static class UniversalGeometryImporter
 
         var results = new List<MeshObject>();
         string baseName = Path.GetFileNameWithoutExtension(filePath);
+        string modelDir = Path.GetDirectoryName(filePath) ?? string.Empty;
 
-        for (int mIdx = 0; mIdx < scene.MeshCount; mIdx++)
+        // Check FBX Metadata for native Z-Up coordinate space
+        bool isNativeZUp = false;
+        if (scene.Metadata != null && scene.Metadata.ContainsKey("UpAxis"))
         {
-            var aMesh = scene.Meshes[mIdx];
-            string meshName = string.IsNullOrWhiteSpace(aMesh.Name) ? $"{baseName}_{mIdx}" : aMesh.Name;
-            var meshObj = new MeshObject(meshName);
+            var entry = scene.Metadata["UpAxis"];
+            if (entry.Data is int upVal && upVal == 2) isNativeZUp = true;
+            else if (entry.Data is long upValLong && upValLong == 2) isNativeZUp = true;
+        }
 
-            // Material resolution
-            string matName = options.DefaultMaterial;
-            if (aMesh.MaterialIndex >= 0 && aMesh.MaterialIndex < scene.MaterialCount)
+        // Cache materials and associated texture paths
+        var resolvedMaterials = new (string name, string? texturePath)[scene.MaterialCount];
+        for (int i = 0; i < scene.MaterialCount; i++)
+        {
+            var aMat = scene.Materials[i];
+            string mName = options.DefaultMaterial;
+            if (!string.IsNullOrWhiteSpace(aMat.Name) && aMat.Name != "DefaultMaterial")
             {
-                var aMat = scene.Materials[aMesh.MaterialIndex];
-                if (!string.IsNullOrWhiteSpace(aMat.Name) && aMat.Name != "DefaultMaterial")
-                {
-                    matName = aMat.Name;
-                }
-            }
-            meshObj.MaterialName = matName;
-            meshObj.MaterialSlots.Add(matName);
-
-            // Vertices
-            for (int i = 0; i < aMesh.VertexCount; i++)
-            {
-                var p = aMesh.Vertices[i];
-                Vector3 pos = new(p.X, p.Y, p.Z);
-
-                // Coordinate conversion: DCC Y-Up (Assimp default) to Blam! Z-Up
-                if (options.ConvertYUpToZUp)
-                {
-                    // X = X, Y = -Z, Z = Y or X=Forward, Y=Left, Z=Up
-                    pos = new Vector3(pos.X, -pos.Z, pos.Y);
-                }
-                pos *= options.ScaleFactor;
-
-                Vector3 normal = Vector3.UnitZ;
-                if (aMesh.HasNormals && i < aMesh.Normals.Count)
-                {
-                    var n = aMesh.Normals[i];
-                    normal = options.ConvertYUpToZUp ? new Vector3(n.X, -n.Z, n.Y) : new Vector3(n.X, n.Y, n.Z);
-                    float nLen = normal.Length();
-                    if (nLen > 1e-5f) normal /= nLen;
-                }
-
-                var v = new Vertex(pos, normal);
-
-                // UVs
-                if (aMesh.HasTextureCoords(0))
-                {
-                    var uv = aMesh.TextureCoordinateChannels[0][i];
-                    v.UVs.Add(new Vector2(uv.X, 1.0f - uv.Y));
-                }
-                else
-                {
-                    v.UVs.Add(new Vector2(pos.X * 0.005f, pos.Y * 0.005f));
-                }
-
-                // Vertex colors
-                if (aMesh.HasVertexColors(0))
-                {
-                    var c = aMesh.VertexColorChannels[0][i];
-                    v.Color = new System.Numerics.Vector4(c.X, c.Y, c.Z, c.W);
-                }
-
-                meshObj.Vertices.Add(v);
+                mName = SanitizeMaterialName(aMat.Name);
             }
 
-            // Triangles / Faces (Robust N-Gon Fan Triangulation)
-            for (int f = 0; f < aMesh.FaceCount; f++)
+            string? texPath = null;
+            if (aMat.HasTextureDiffuse)
             {
-                var face = aMesh.Faces[f];
-                if (face.IndexCount == 3)
+                texPath = ResolveTexturePath(modelDir, aMat.TextureDiffuse.FilePath, mName);
+            }
+            else
+            {
+                texPath = ResolveTexturePath(modelDir, null, mName);
+            }
+
+            resolvedMaterials[i] = (mName, texPath);
+        }
+
+        // Traverse scene node graph to collect meshes with their true hierarchy transforms
+        void ProcessNode(Node node, Matrix4x4 parentTransform)
+        {
+            var currentTransform = node.Transform * parentTransform;
+
+            if (node.HasMeshes)
+            {
+                float subDet = SubDeterminant3x3(currentTransform);
+                bool flipWinding = subDet < 0;
+
+                for (int i = 0; i < node.MeshCount; i++)
                 {
-                    meshObj.Triangles.Add(new Triangle(face.Indices[0], face.Indices[1], face.Indices[2], 0));
-                }
-                else if (face.IndexCount >= 4)
-                {
-                    for (int j = 1; j < face.IndexCount - 1; j++)
+                    int mIdx = node.MeshIndices[i];
+                    if (mIdx < 0 || mIdx >= scene.MeshCount) continue;
+
+                    var aMesh = scene.Meshes[mIdx];
+                    string meshName = !string.IsNullOrWhiteSpace(node.Name)
+                        ? node.Name
+                        : (!string.IsNullOrWhiteSpace(aMesh.Name) ? aMesh.Name : $"{baseName}_{results.Count}");
+
+                    if (node.MeshCount > 1)
                     {
-                        meshObj.Triangles.Add(new Triangle(face.Indices[0], face.Indices[j], face.Indices[j + 1], 0));
+                        meshName = $"{meshName}_{i}";
                     }
+
+                    var meshObj = BuildMeshObject(aMesh, meshName, currentTransform, flipWinding, isNativeZUp, options, resolvedMaterials);
+                    results.Add(meshObj);
                 }
             }
 
-            if (!aMesh.HasNormals)
+            for (int c = 0; c < node.ChildCount; c++)
             {
-                meshObj.RecalculateNormals();
+                ProcessNode(node.Children[c], currentTransform);
             }
-            results.Add(meshObj);
+        }
+
+        if (scene.RootNode != null)
+        {
+            ProcessNode(scene.RootNode, Matrix4x4.Identity);
+        }
+
+        // Fallback if node traversal didn't pick up meshes
+        if (results.Count == 0)
+        {
+            for (int mIdx = 0; mIdx < scene.MeshCount; mIdx++)
+            {
+                var aMesh = scene.Meshes[mIdx];
+                string meshName = string.IsNullOrWhiteSpace(aMesh.Name) ? $"{baseName}_{mIdx}" : aMesh.Name;
+                var meshObj = BuildMeshObject(aMesh, meshName, Matrix4x4.Identity, false, isNativeZUp, options, resolvedMaterials);
+                results.Add(meshObj);
+            }
         }
 
         if (options.MergeMeshes && results.Count > 1)
@@ -180,5 +178,175 @@ public static class UniversalGeometryImporter
         }
 
         return results;
+    }
+
+    private static MeshObject BuildMeshObject(
+        Mesh aMesh,
+        string meshName,
+        Matrix4x4 transform,
+        bool flipWinding,
+        bool isNativeZUp,
+        GeometryImportOptions options,
+        (string name, string? texturePath)[] resolvedMaterials)
+    {
+        var meshObj = new MeshObject(meshName);
+
+        // Material resolution
+        string matName = options.DefaultMaterial;
+        string? texPath = null;
+        if (aMesh.MaterialIndex >= 0 && aMesh.MaterialIndex < resolvedMaterials.Length)
+        {
+            (matName, texPath) = resolvedMaterials[aMesh.MaterialIndex];
+        }
+
+        meshObj.MaterialName = matName;
+        meshObj.MaterialSlots.Add(matName);
+        if (!string.IsNullOrEmpty(texPath))
+        {
+            meshObj.SourceTexturePath = texPath;
+            meshObj.MaterialTextureMap[matName] = texPath;
+        }
+
+        bool convertYUp = options.ConvertYUpToZUp && !isNativeZUp;
+
+        // Pre-allocate vertices for high-poly performance
+        meshObj.Vertices = new List<Vertex>(aMesh.VertexCount);
+        for (int i = 0; i < aMesh.VertexCount; i++)
+        {
+            var p = aMesh.Vertices[i];
+            var pos = TransformPoint(transform, p);
+
+            if (convertYUp)
+            {
+                pos = new Vector3(pos.X, -pos.Z, pos.Y);
+            }
+            pos *= options.ScaleFactor;
+
+            Vector3 normal = Vector3.UnitZ;
+            if (aMesh.HasNormals && i < aMesh.Normals.Count)
+            {
+                normal = TransformNormal(transform, aMesh.Normals[i]);
+                if (convertYUp)
+                {
+                    normal = new Vector3(normal.X, -normal.Z, normal.Y);
+                }
+                float nLen = normal.Length();
+                if (nLen > 1e-5f) normal /= nLen;
+            }
+
+            var v = new Vertex(pos, normal);
+
+            if (aMesh.HasTextureCoords(0))
+            {
+                var uv = aMesh.TextureCoordinateChannels[0][i];
+                v.UVs.Add(new Vector2(uv.X, 1.0f - uv.Y));
+            }
+            else
+            {
+                v.UVs.Add(new Vector2(pos.X * 0.005f, pos.Y * 0.005f));
+            }
+
+            if (aMesh.HasVertexColors(0))
+            {
+                var c = aMesh.VertexColorChannels[0][i];
+                v.Color = new Vector4(c.X, c.Y, c.Z, c.W);
+            }
+
+            meshObj.Vertices.Add(v);
+        }
+
+        // Triangles with winding check
+        meshObj.Triangles = new List<Triangle>(aMesh.FaceCount);
+        for (int f = 0; f < aMesh.FaceCount; f++)
+        {
+            var face = aMesh.Faces[f];
+            if (face.IndexCount == 3)
+            {
+                int i0 = face.Indices[0];
+                int i1 = flipWinding ? face.Indices[2] : face.Indices[1];
+                int i2 = flipWinding ? face.Indices[1] : face.Indices[2];
+                meshObj.Triangles.Add(new Triangle(i0, i1, i2, 0));
+            }
+            else if (face.IndexCount >= 4)
+            {
+                for (int j = 1; j < face.IndexCount - 1; j++)
+                {
+                    int i0 = face.Indices[0];
+                    int i1 = flipWinding ? face.Indices[j + 1] : face.Indices[j];
+                    int i2 = flipWinding ? face.Indices[j] : face.Indices[j + 1];
+                    meshObj.Triangles.Add(new Triangle(i0, i1, i2, 0));
+                }
+            }
+        }
+
+        if (!aMesh.HasNormals)
+        {
+            meshObj.RecalculateNormals();
+        }
+
+        return meshObj;
+    }
+
+    private static string? ResolveTexturePath(string modelDir, string? rawFilePath, string materialName)
+    {
+        if (!string.IsNullOrEmpty(rawFilePath))
+        {
+            if (File.Exists(rawFilePath)) return rawFilePath;
+
+            string fileName = Path.GetFileName(rawFilePath);
+            string direct = Path.Combine(modelDir, fileName);
+            if (File.Exists(direct)) return direct;
+
+            string inTextures = Path.Combine(modelDir, "textures", fileName);
+            if (File.Exists(inTextures)) return inTextures;
+
+            string inBitmaps = Path.Combine(modelDir, "bitmaps", fileName);
+            if (File.Exists(inBitmaps)) return inBitmaps;
+
+            string rel = Path.Combine(modelDir, rawFilePath.Replace('/', '\\'));
+            if (File.Exists(rel)) return rel;
+        }
+
+        string[] exts = { ".png", ".tif", ".tiff", ".jpg", ".jpeg", ".tga", ".dds", ".bmp" };
+        foreach (var ext in exts)
+        {
+            string p = Path.Combine(modelDir, materialName + ext);
+            if (File.Exists(p)) return p;
+
+            string pSub = Path.Combine(modelDir, "textures", materialName + ext);
+            if (File.Exists(pSub)) return pSub;
+
+            string pBitm = Path.Combine(modelDir, "bitmaps", materialName + ext);
+            if (File.Exists(pBitm)) return pBitm;
+        }
+
+        return null;
+    }
+
+    public static string SanitizeMaterialName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "river riverworld_ground";
+        string s = name.Trim().ToLowerInvariant();
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"[^a-z0-9_\+\%\!\$\@\~]+", "_").Trim('_');
+        return string.IsNullOrEmpty(s) ? "custom" : s;
+    }
+
+    private static Vector3 TransformPoint(Matrix4x4 m, Vector3 p)
+    {
+        return Vector3.Transform(p, m);
+    }
+
+    private static Vector3 TransformNormal(Matrix4x4 m, Vector3 n)
+    {
+        var vec = Vector3.TransformNormal(n, m);
+        float len = vec.Length();
+        return len > 1e-5f ? vec / len : Vector3.UnitZ;
+    }
+
+    private static float SubDeterminant3x3(Matrix4x4 m)
+    {
+        return m.M11 * (m.M22 * m.M33 - m.M23 * m.M32)
+             - m.M12 * (m.M21 * m.M33 - m.M23 * m.M31)
+             + m.M13 * (m.M21 * m.M32 - m.M22 * m.M31);
     }
 }
