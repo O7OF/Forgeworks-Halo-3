@@ -66,9 +66,12 @@ public static class CustomShaderBuilder
         string cleanLevel = SanitizeIdentifier(levelName);
         string targetEntry = $"{cleanLevel}\tlevels\\{scenarioType}\\{cleanLevel}\\shaders";
         string targetEntryFallback = $"{cleanLevel}\tlevels\\{scenarioType}\\{cleanLevel}";
+        string matPrefixEntry = $"material_{cleanLevel}\tlevels\\{scenarioType}\\{cleanLevel}\\shaders";
+        string matPrefixEntryFallback = $"material_{cleanLevel}\tlevels\\{scenarioType}\\{cleanLevel}";
 
         var lines = new List<string>();
         bool alreadyPresent = false;
+        bool matPrefixPresent = false;
 
         if (File.Exists(collectionsPath))
         {
@@ -82,13 +85,31 @@ public static class CustomShaderBuilder
                 {
                     alreadyPresent = true;
                 }
+                if (trimmed.StartsWith($"material_{cleanLevel}\t", StringComparison.OrdinalIgnoreCase) ||
+                    trimmed.StartsWith($"material_{cleanLevel} ", StringComparison.OrdinalIgnoreCase))
+                {
+                    matPrefixPresent = true;
+                }
             }
         }
 
+        bool updated = false;
         if (!alreadyPresent)
         {
             lines.Add(targetEntry);
             lines.Add(targetEntryFallback);
+            updated = true;
+        }
+
+        if (!matPrefixPresent)
+        {
+            lines.Add(matPrefixEntry);
+            lines.Add(matPrefixEntryFallback);
+            updated = true;
+        }
+
+        if (updated)
+        {
             File.WriteAllLines(collectionsPath, lines);
         }
     }

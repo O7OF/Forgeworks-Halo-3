@@ -17,7 +17,8 @@ public sealed class AssExporter
         List<string> materials,
         List<MeshObject> objects,
         int version = 7,
-        float scale = 1.0f)
+        float scale = 1.0f,
+        string? levelName = null)
     {
         var dir = Path.GetDirectoryName(filepath);
         if (!string.IsNullOrEmpty(dir))
@@ -25,8 +26,10 @@ public sealed class AssExporter
             Directory.CreateDirectory(dir);
         }
 
+        levelName ??= Path.GetFileNameWithoutExtension(filepath);
+
         using var stream = File.Create(filepath);
-        ExportToStream(stream, materials, objects, version, scale);
+        ExportToStream(stream, materials, objects, version, scale, levelName);
     }
 
     public static void ExportToStream(
@@ -34,7 +37,8 @@ public sealed class AssExporter
         List<string> materials,
         List<MeshObject> objects,
         int version = 7,
-        float scale = 1.0f)
+        float scale = 1.0f,
+        string? levelName = null)
     {
         using var writer = new StreamWriter(destination, leaveOpen: true);
         var inv = CultureInfo.InvariantCulture;
@@ -55,10 +59,10 @@ public sealed class AssExporter
         var cleanMaterials = new List<string>(materials.Count);
         for (int i = 0; i < materials.Count; i++)
         {
-            string clean = SanitizeMaterialName(materials[i]);
+            string clean = SanitizeMaterialName(materials[i], levelName);
             if (!cleanMaterials.Contains(clean)) cleanMaterials.Add(clean);
         }
-        if (cleanMaterials.Count == 0) cleanMaterials.Add("river riverworld_ground");
+        if (cleanMaterials.Count == 0) cleanMaterials.Add(!string.IsNullOrEmpty(levelName) ? $"{levelName} ground" : "river riverworld_ground");
 
         // 2. MATERIALS
         writer.WriteLine($";### MATERIALS ###\n{cleanMaterials.Count}\n");
@@ -123,7 +127,7 @@ public sealed class AssExporter
                     ? obj.MaterialSlots[tri.MaterialIndex]
                     : obj.MaterialName;
                 if (string.IsNullOrEmpty(matName)) matName = obj.MaterialName;
-                matName = SanitizeMaterialName(matName);
+                matName = SanitizeMaterialName(matName, levelName);
 
                 int matIdx = cleanMaterials.IndexOf(matName);
                 if (matIdx < 0)
@@ -205,9 +209,10 @@ public sealed class AssExporter
         }
     }
 
-    public static string SanitizeMaterialName(string mat)
+    public static string SanitizeMaterialName(string mat, string? defaultLevelPrefix = null)
     {
-        if (string.IsNullOrWhiteSpace(mat)) return "river riverworld_ground";
+        if (string.IsNullOrWhiteSpace(mat))
+            return !string.IsNullOrEmpty(defaultLevelPrefix) ? $"{defaultLevelPrefix} ground" : "river riverworld_ground";
         string m = mat.Trim();
 
         // Extract semantic flags: %, !, %!, +, $, @, ~
@@ -226,6 +231,13 @@ public sealed class AssExporter
         // Clean out colons, slashes, and invalid characters from material identifier
         m = System.Text.RegularExpressions.Regex.Replace(m, @"[^A-Za-z0-9_\s]+", "_").Trim();
         if (string.IsNullOrEmpty(m)) m = "custom";
+
+        // If regular geometry (no special +sky, +portal, etc.), does not already have a collection prefix (no space),
+        // and defaultLevelPrefix is available, prepend collection prefix so Tool resolves the shader!
+        if (string.IsNullOrEmpty(prefix) && !m.Contains(' ') && !string.IsNullOrEmpty(defaultLevelPrefix))
+        {
+            m = $"{defaultLevelPrefix} {m}";
+        }
 
         return prefix + m;
     }

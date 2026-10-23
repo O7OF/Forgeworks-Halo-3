@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using ForgeWorks.Core.Diagnostics;
 
 namespace ForgeWorks.Core.Geometry;
 
@@ -20,6 +21,24 @@ public readonly record struct MeshEdge(int V0, int V1)
 
     public bool Equals(MeshEdge other) => Min == other.Min && Max == other.Max;
     public override int GetHashCode() => HashCode.Combine(Min, Max);
+}
+
+public sealed record ModelOptimizationReport(
+    int OriginalVertices,
+    int OptimizedVertices,
+    int OriginalTriangles,
+    int OptimizedTriangles,
+    int EdgesDissolved,
+    int CoplanarFacesMerged
+)
+{
+    public float VertexReductionPercent => OriginalVertices > 0
+        ? ((OriginalVertices - OptimizedVertices) / (float)OriginalVertices) * 100.0f
+        : 0f;
+
+    public float TriangleReductionPercent => OriginalTriangles > 0
+        ? ((OriginalTriangles - OptimizedTriangles) / (float)OriginalTriangles) * 100.0f
+        : 0f;
 }
 
 /// <summary>
@@ -419,5 +438,383 @@ public static class MeshModelingEngine
         mesh.Triangles = surviving;
         mesh.RecalculateNormals();
         return selected.Count * 3;
+    }
+
+    /// <summary>
+    /// Combines multiple mesh objects into a single clean unified mesh,
+    /// consolidating material slots, remapping triangle indices, and welding
+    /// coincident boundary seam vertices.
+    /// </summary>
+    public static MeshObject CleanMergeMeshes(IEnumerable<MeshObject> meshes, string mergedName = "merged_mesh", float weldDist = 0.05f)
+    {
+        var meshList = meshes.Where(m => m != null && m.Vertices.Count > 0 && m.Triangles.Count > 0).ToList();
+        if (meshList.Count == 0) return new MeshObject(mergedName);
+        if (meshList.Count == 1) return meshList[0];
+
+        var merged = new MeshObject(mergedName);
+        var materialMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        int AddOrGetMaterial(string mat)
+        {
+            if (string.IsNullOrWhiteSpace(mat)) mat = "river riverworld_ground";
+            if (!materialMap.TryGetValue(mat, out int idx))
+            {
+                idx = merged.MaterialSlots.Count;
+                merged.MaterialSlots.Add(mat);
+                materialMap[mat] = idx;
+            }
+            return idx;
+        }
+
+        merged.MaterialName = meshList[0].MaterialName;
+        AddOrGetMaterial(merged.MaterialName);
+
+        foreach (var m in meshList)
+        {
+            uint baseIdx = (uint)merged.Vertices.Count;
+
+            // Copy vertices with UVs and colors
+            foreach (var v in m.Vertices)
+            {
+                var newV = new Vertex(v.Position, v.Normal)
+                {
+                    Color = v.Color,
+                    UVs = new List<Vector2>(v.UVs)
+                };
+                merged.Vertices.Add(newV);
+            }
+
+            // Remap triangle material indices
+            foreach (var tri in m.Triangles)
+            {
+                string mat = (tri.MaterialIndex >= 0 && tri.MaterialIndex < m.MaterialSlots.Count)
+                    ? m.MaterialSlots[tri.MaterialIndex]
+                    : m.MaterialName;
+
+                int mergedMatIdx = AddOrGetMaterial(mat);
+                merged.Triangles.Add(new Triangle(
+                    (int)(baseIdx + tri.V0),
+                    (int)(baseIdx + tri.V1),
+                    (int)(baseIdx + tri.V2),
+                    mergedMatIdx)
+                {
+                    Normal = tri.Normal
+                });
+            }
+        }
+
+        // Weld coincident boundary seams across joined sub-meshes
+        if (weldDist > 0)
+        {
+            GeometryAutoRepair.WeldVertices(merged, weldDist, new RepairReport());
+            GeometryAutoRepair.PruneLooseVertices(merged);
+        }
+
+        merged.RecalculateNormals();
+        return merged;
+    }
+
+    /// <summary>
+    /// Mathematically dissolves coplanar interior edges without altering curved geometry
+    /// or boundary silhouettes. Collapses flat interior vertices where all incident triangles
+    /// lie on the same plane (within maxAngleDeg) and share the same material.
+    /// </summary>
+    public static int DissolveCoplanarEdges(MeshObject mesh, float maxAngleDeg = 0.5f)
+    {
+        if (mesh == null || mesh.Triangles.Count == 0 || mesh.Vertices.Count == 0) return 0;
+
+        float minDot = MathF.Cos(maxAngleDeg * MathF.PI / 180.0f);
+        int totalDissolved = 0;
+
+        // Perform multiple passes until no further interior coplanar vertices can be collapsed
+        for (int pass = 0; pass < 8; pass++)
+        {
+            // 1. Identify boundary vertices (never collapse boundary perimeter vertices)
+            var edgeCount = new Dictionary<MeshEdge, int>();
+            foreach (var tri in mesh.Triangles)
+            {
+                void AddE(int a, int b)
+                {
+                    var e = new MeshEdge(a, b);
+                    edgeCount.TryGetValue(e, out int c);
+                    edgeCount[e] = c + 1;
+                }
+                AddE(tri.V0, tri.V1);
+                AddE(tri.V1, tri.V2);
+                AddE(tri.V2, tri.V0);
+            }
+
+            var boundaryVerts = new HashSet<int>();
+            foreach (var (edge, count) in edgeCount)
+            {
+                if (count == 1)
+                {
+                    boundaryVerts.Add(edge.V0);
+                    boundaryVerts.Add(edge.V1);
+                }
+            }
+
+            // 2. Build vertex to incident triangles adjacency
+            var vertTris = new Dictionary<int, List<int>>();
+            for (int tIdx = 0; tIdx < mesh.Triangles.Count; tIdx++)
+            {
+                var t = mesh.Triangles[tIdx];
+                void Link(int v)
+                {
+                    if (!vertTris.TryGetValue(v, out var list))
+                    {
+                        list = new List<int>(6);
+                        vertTris[v] = list;
+                    }
+                    list.Add(tIdx);
+                }
+                Link(t.V0);
+                Link(t.V1);
+                Link(t.V2);
+            }
+
+            int passDissolved = 0;
+            var collapsed = new HashSet<int>();
+
+            // 3. Find candidates for coplanar dissolution
+            foreach (var (vIdx, incident) in vertTris)
+            {
+                if (boundaryVerts.Contains(vIdx) || collapsed.Contains(vIdx) || incident.Count < 3)
+                    continue;
+
+                // Ensure all incident triangles share the same material
+                int firstMat = mesh.Triangles[incident[0]].MaterialIndex;
+                bool sameMat = incident.All(ti => mesh.Triangles[ti].MaterialIndex == firstMat);
+                if (!sameMat) continue;
+
+                // Calculate average normal of incident ring
+                var avgNorm = Vector3.Zero;
+                foreach (int ti in incident)
+                {
+                    avgNorm += mesh.Triangles[ti].Normal;
+                }
+                if (avgNorm.LengthSquared() < 1e-4f) continue;
+                avgNorm = Vector3.Normalize(avgNorm);
+
+                // Check that every single incident triangle is coplanar with avgNorm
+                bool isCoplanar = incident.All(ti => Vector3.Dot(mesh.Triangles[ti].Normal, avgNorm) >= minDot);
+                if (!isCoplanar) continue;
+
+                // Find valid neighbor to collapse into
+                var neighbors = new HashSet<int>();
+                foreach (int ti in incident)
+                {
+                    var t = mesh.Triangles[ti];
+                    if (t.V0 != vIdx) neighbors.Add(t.V0);
+                    if (t.V1 != vIdx) neighbors.Add(t.V1);
+                    if (t.V2 != vIdx) neighbors.Add(t.V2);
+                }
+
+                int bestTarget = -1;
+                float bestDist = float.MaxValue;
+                var vPos = mesh.Vertices[vIdx].Position;
+
+                foreach (int nIdx in neighbors)
+                {
+                    if (collapsed.Contains(nIdx)) continue;
+
+                    // Verify that collapsing vIdx -> nIdx preserves normal direction for surviving faces
+                    bool valid = true;
+                    var nPos = mesh.Vertices[nIdx].Position;
+
+                    foreach (int ti in incident)
+                    {
+                        var t = mesh.Triangles[ti];
+                        if (t.V0 == nIdx || t.V1 == nIdx || t.V2 == nIdx)
+                            continue; // This face collapses to zero area (will be removed cleanly)
+
+                        var p0 = t.V0 == vIdx ? nPos : mesh.Vertices[t.V0].Position;
+                        var p1 = t.V1 == vIdx ? nPos : mesh.Vertices[t.V1].Position;
+                        var p2 = t.V2 == vIdx ? nPos : mesh.Vertices[t.V2].Position;
+
+                        var newCross = Vector3.Cross(p1 - p0, p2 - p0);
+                        if (newCross.LengthSquared() < 1e-6f || Vector3.Dot(Vector3.Normalize(newCross), avgNorm) < 0.5f)
+                        {
+                            valid = false;
+                            break;
+                        }
+                    }
+
+                    if (valid)
+                    {
+                        float d = (nPos - vPos).LengthSquared();
+                        if (d < bestDist)
+                        {
+                            bestDist = d;
+                            bestTarget = nIdx;
+                        }
+                    }
+                }
+
+                if (bestTarget != -1)
+                {
+                    // Collapse vIdx into bestTarget
+                    collapsed.Add(vIdx);
+                    collapsed.Add(bestTarget);
+
+                    // Remap in triangles
+                    for (int i = 0; i < mesh.Triangles.Count; i++)
+                    {
+                        var t = mesh.Triangles[i];
+                        int v0 = t.V0 == vIdx ? bestTarget : t.V0;
+                        int v1 = t.V1 == vIdx ? bestTarget : t.V1;
+                        int v2 = t.V2 == vIdx ? bestTarget : t.V2;
+                        if (v0 != t.V0 || v1 != t.V1 || v2 != t.V2)
+                        {
+                            mesh.Triangles[i] = new Triangle(v0, v1, v2, t.MaterialIndex) { Normal = t.Normal };
+                        }
+                    }
+
+                    passDissolved++;
+                }
+            }
+
+            // Remove collapsed zero-area triangles
+            var survivingTris = new List<Triangle>(mesh.Triangles.Count);
+            foreach (var t in mesh.Triangles)
+            {
+                if (t.V0 != t.V1 && t.V1 != t.V2 && t.V0 != t.V2)
+                {
+                    survivingTris.Add(t);
+                }
+            }
+            mesh.Triangles = survivingTris;
+
+            totalDissolved += passDissolved;
+            if (passDissolved == 0) break;
+        }
+
+        GeometryAutoRepair.PruneLooseVertices(mesh);
+        mesh.RecalculateNormals();
+        return totalDissolved;
+    }
+
+    /// <summary>
+    /// Dissolves redundant collinear vertices along straight boundary or interior seams.
+    /// Eliminates vertices that sit along a straight line (180 deg) without changing shape.
+    /// </summary>
+    public static int DissolveCollinearVertices(MeshObject mesh, float maxAngleDeg = 0.5f)
+    {
+        if (mesh == null || mesh.Triangles.Count == 0 || mesh.Vertices.Count == 0) return 0;
+
+        float maxDot = -MathF.Cos(maxAngleDeg * MathF.PI / 180.0f); // ~ -0.99996
+        int dissolved = 0;
+
+        var edgeCount = new Dictionary<MeshEdge, int>();
+        foreach (var tri in mesh.Triangles)
+        {
+            void AddE(int a, int b)
+            {
+                var e = new MeshEdge(a, b);
+                edgeCount.TryGetValue(e, out int c);
+                edgeCount[e] = c + 1;
+            }
+            AddE(tri.V0, tri.V1);
+            AddE(tri.V1, tri.V2);
+            AddE(tri.V2, tri.V0);
+        }
+
+        // Adjacency for boundary edges
+        var boundaryAdj = new Dictionary<int, List<int>>();
+        foreach (var (edge, count) in edgeCount)
+        {
+            if (count == 1)
+            {
+                if (!boundaryAdj.TryGetValue(edge.V0, out var l0)) { l0 = new List<int>(2); boundaryAdj[edge.V0] = l0; }
+                l0.Add(edge.V1);
+                if (!boundaryAdj.TryGetValue(edge.V1, out var l1)) { l1 = new List<int>(2); boundaryAdj[edge.V1] = l1; }
+                l1.Add(edge.V0);
+            }
+        }
+
+        var toCollapse = new Dictionary<int, int>();
+        foreach (var (vIdx, neighbors) in boundaryAdj)
+        {
+            if (neighbors.Count == 2 && !toCollapse.ContainsKey(neighbors[0]) && !toCollapse.ContainsKey(neighbors[1]))
+            {
+                var p = mesh.Vertices[vIdx].Position;
+                var p0 = mesh.Vertices[neighbors[0]].Position;
+                var p1 = mesh.Vertices[neighbors[1]].Position;
+
+                var d0 = Vector3.Normalize(p0 - p);
+                var d1 = Vector3.Normalize(p1 - p);
+
+                if (Vector3.Dot(d0, d1) <= maxDot) // Collinear (180 degrees)
+                {
+                    toCollapse[vIdx] = neighbors[0];
+                    dissolved++;
+                }
+            }
+        }
+
+        if (toCollapse.Count > 0)
+        {
+            var validTris = new List<Triangle>(mesh.Triangles.Count);
+            foreach (var t in mesh.Triangles)
+            {
+                int v0 = toCollapse.TryGetValue(t.V0, out int r0) ? r0 : t.V0;
+                int v1 = toCollapse.TryGetValue(t.V1, out int r1) ? r1 : t.V1;
+                int v2 = toCollapse.TryGetValue(t.V2, out int r2) ? r2 : t.V2;
+
+                if (v0 != v1 && v1 != v2 && v0 != v2)
+                {
+                    validTris.Add(new Triangle(v0, v1, v2, t.MaterialIndex));
+                }
+            }
+            mesh.Triangles = validTris;
+            GeometryAutoRepair.PruneLooseVertices(mesh);
+            mesh.RecalculateNormals();
+        }
+
+        return dissolved;
+    }
+
+    /// <summary>
+    /// Master optimization suite for lowering vertex/triangle counts and dissolving redundant cuts:
+    /// 1. Pre-welds coincident vertices.
+    /// 2. Iteratively dissolves coplanar interior edges.
+    /// 3. Dissolves straight-line collinear boundary vertices.
+    /// 4. Removes degenerate faces and prunes unreferenced vertices.
+    /// </summary>
+    public static ModelOptimizationReport OptimizeAndDissolveModel(MeshObject mesh, float maxAngleDeg = 0.5f, float weldDist = 0.05f)
+    {
+        if (mesh == null) return new ModelOptimizationReport(0, 0, 0, 0, 0, 0);
+
+        int origVerts = mesh.Vertices.Count;
+        int origTris = mesh.Triangles.Count;
+
+        // Pass 1: Weld coincident vertices
+        if (weldDist > 0)
+        {
+            GeometryAutoRepair.WeldVertices(mesh, weldDist, new RepairReport());
+        }
+
+        // Pass 2: Planar edge decimation
+        int dissolvedEdges = DissolveCoplanarEdges(mesh, maxAngleDeg);
+
+        // Pass 3: Collinear boundary vertex simplification
+        int dissolvedCollinear = DissolveCollinearVertices(mesh, maxAngleDeg);
+
+        // Pass 4: Clean up zero-area degenerate triangles
+        GeometryAutoRepair.FixDegenerateTriangles(mesh, new RepairReport());
+        GeometryAutoRepair.PruneLooseVertices(mesh);
+        mesh.RecalculateNormals();
+
+        int finalVerts = mesh.Vertices.Count;
+        int finalTris = mesh.Triangles.Count;
+
+        return new ModelOptimizationReport(
+            origVerts,
+            finalVerts,
+            origTris,
+            finalTris,
+            dissolvedEdges + dissolvedCollinear,
+            origTris - finalTris
+        );
     }
 }

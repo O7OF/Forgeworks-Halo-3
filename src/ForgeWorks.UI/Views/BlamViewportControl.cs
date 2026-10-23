@@ -13,6 +13,7 @@ using Avalonia.Rendering;
 using ForgeWorks.Core.Diagnostics;
 using ForgeWorks.Core.Geometry;
 using ForgeWorks.Core.Rendering;
+using ForgeWorks.UI.Rendering;
 using ForgeWorks.UI.ViewModels;
 using Silk.NET.OpenGL;
 
@@ -25,7 +26,7 @@ namespace ForgeWorks.UI.Views;
 /// </summary>
 public sealed class BlamViewportControl : OpenGlControlBase, ICustomHitTest
 {
-    private const int FloatsPerVertex = 10; // pos3 + normal3 + color4
+    private const int FloatsPerVertex = 12; // pos3 + normal3 + color4 + uv2
     private const int ModeTerrainBlend = 0;
     private const int ModeUnlit = 1;
     private const int ModeLitSolid = 2;
@@ -35,6 +36,9 @@ public sealed class BlamViewportControl : OpenGlControlBase, ICustomHitTest
     private bool _glReady;
     private uint _program;
     private int _locMvp, _locLightDir, _locBaseColor, _locMode;
+    private int _locHasTexture, _locDiffuseMap;
+    private int _locTerrainGrass, _locTerrainRock, _locTerrainSnow, _locTerrainMud;
+    private BlamTextureManager? _textureManager;
 
     // Active mesh buffers
     private uint _meshVao, _meshVbo, _meshTriEbo, _meshLineEbo;
@@ -50,8 +54,10 @@ public sealed class BlamViewportControl : OpenGlControlBase, ICustomHitTest
         public readonly uint IndexCount;
         public readonly bool IsSky;
         public readonly bool IsTransparent;
+        public readonly uint TextureId;
+        public readonly bool HasTexture;
 
-        public SubMeshBatch(int mode, Vector4 baseColor, uint startIndex, uint indexCount, bool isSky, bool isTransparent)
+        public SubMeshBatch(int mode, Vector4 baseColor, uint startIndex, uint indexCount, bool isSky, bool isTransparent, uint textureId = 0, bool hasTexture = false)
         {
             Mode = mode;
             BaseColor = baseColor;
@@ -59,6 +65,8 @@ public sealed class BlamViewportControl : OpenGlControlBase, ICustomHitTest
             IndexCount = indexCount;
             IsSky = isSky;
             IsTransparent = isTransparent;
+            TextureId = textureId;
+            HasTexture = hasTexture;
         }
     }
     private readonly List<SubMeshBatch> _subBatches = new();
@@ -137,6 +145,15 @@ public sealed class BlamViewportControl : OpenGlControlBase, ICustomHitTest
             _locLightDir = _gl.GetUniformLocation(_program, "uLightDir");
             _locBaseColor = _gl.GetUniformLocation(_program, "uBaseColor");
             _locMode = _gl.GetUniformLocation(_program, "uMode");
+            _locHasTexture = _gl.GetUniformLocation(_program, "uHasTexture");
+            _locDiffuseMap = _gl.GetUniformLocation(_program, "uDiffuseMap");
+            _locTerrainGrass = _gl.GetUniformLocation(_program, "uTerrainGrass");
+            _locTerrainRock = _gl.GetUniformLocation(_program, "uTerrainRock");
+            _locTerrainSnow = _gl.GetUniformLocation(_program, "uTerrainSnow");
+            _locTerrainMud = _gl.GetUniformLocation(_program, "uTerrainMud");
+
+            _textureManager = new BlamTextureManager();
+            _textureManager.Initialize(_gl);
 
             _meshVao = _gl.GenVertexArray();
             _meshVbo = _gl.GenBuffer();
@@ -175,6 +192,8 @@ public sealed class BlamViewportControl : OpenGlControlBase, ICustomHitTest
                 _depthRbo = 0;
             }
             _gl.DeleteProgram(_program);
+            _textureManager?.Dispose();
+            _textureManager = null;
         }
         _glReady = false;
         base.OnOpenGlDeinit(gl);
@@ -188,23 +207,33 @@ public sealed class BlamViewportControl : OpenGlControlBase, ICustomHitTest
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec4 aColor;
+layout(location = 3) in vec2 aTexCoord;
 uniform mat4 uMVP;
 out vec3 vNormal;
 out vec4 vColor;
+out vec2 vTexCoord;
 void main()
 {
     vNormal = aNormal;
     vColor = aColor;
+    vTexCoord = aTexCoord;
     gl_Position = uMVP * vec4(aPos, 1.0);
 }";
 
-        // uMode: 0 = lit 4-layer terrain blend, 1 = unlit vertex color, 2 = lit solid uBaseColor
+        // uMode: 0 = lit 4-layer terrain blend, 1 = unlit vertex color, 2 = lit solid / textured
         const string fsBody = @"
 in vec3 vNormal;
 in vec4 vColor;
+in vec2 vTexCoord;
 uniform vec3 uLightDir;
 uniform vec4 uBaseColor;
 uniform int uMode;
+uniform int uHasTexture;
+uniform sampler2D uDiffuseMap;
+uniform sampler2D uTerrainGrass;
+uniform sampler2D uTerrainRock;
+uniform sampler2D uTerrainSnow;
+uniform sampler2D uTerrainMud;
 out vec4 FragColor;
 void main()
 {
@@ -217,17 +246,35 @@ void main()
     float lighting = 0.18 + 0.22 * hemi + 0.65 * diff;
 
     vec3 baseCol = uBaseColor.rgb;
+    float alpha = uBaseColor.a;
+
     if (uMode == 0)
     {
-        // Halo 3 shader_terrain style 4-way blend driven by Terrain_Layers vertex color.
-        vec3 colBase = vec3(0.47, 0.50, 0.33); // grass / sand
-        vec3 colRock = vec3(0.42, 0.39, 0.36); // cliff rock     (R)
-        vec3 colSnow = vec3(0.88, 0.90, 0.94); // alpine snow    (G)
-        vec3 colMud  = vec3(0.30, 0.24, 0.18); // wet mud        (B)
-        float wBase = clamp(1.0 - (vColor.r + vColor.g + vColor.b), 0.0, 1.0);
-        baseCol = colBase * wBase + colRock * vColor.r + colSnow * vColor.g + colMud * vColor.b;
+        // Sapien / Blam 4-layer terrain blend driven by Terrain_Layers vertex colors (R=Rock, G=Snow, B=Mud, 1-(R+G+B)=Grass)
+        vec2 uvTerrain = vTexCoord * 4.0;
+        vec4 colGrass = texture(uTerrainGrass, uvTerrain);
+        vec4 colRock  = texture(uTerrainRock, uvTerrain);
+        vec4 colSnow  = texture(uTerrainSnow, uvTerrain);
+        vec4 colMud   = texture(uTerrainMud, uvTerrain);
+
+        float wRock = clamp(vColor.r, 0.0, 1.0);
+        float wSnow = clamp(vColor.g, 0.0, 1.0);
+        float wMud  = clamp(vColor.b, 0.0, 1.0);
+        float wGrass = clamp(1.0 - (wRock + wSnow + wMud), 0.0, 1.0);
+
+        vec3 blended = colGrass.rgb * wGrass + colRock.rgb * wRock + colSnow.rgb * wSnow + colMud.rgb * wMud;
+        FragColor = vec4(blended * lighting, 1.0);
+        return;
     }
-    FragColor = vec4(baseCol * lighting, uBaseColor.a);
+
+    if (uHasTexture == 1)
+    {
+        vec4 texCol = texture(uDiffuseMap, vTexCoord);
+        baseCol = baseCol * texCol.rgb;
+        alpha = alpha * texCol.a;
+    }
+
+    FragColor = vec4(baseCol * lighting, alpha);
 }";
 
         uint vs = CompileShader(ShaderType.VertexShader, header + vsBody);
@@ -240,6 +287,7 @@ void main()
         _gl.BindAttribLocation(prog, 0, "aPos");
         _gl.BindAttribLocation(prog, 1, "aNormal");
         _gl.BindAttribLocation(prog, 2, "aColor");
+        _gl.BindAttribLocation(prog, 3, "aTexCoord");
         _gl.LinkProgram(prog);
         _gl.DeleteShader(vs);
         _gl.DeleteShader(fs);
@@ -290,6 +338,8 @@ void main()
         _gl.EnableVertexAttribArray(1);
         _gl.VertexAttribPointer(2, 4, VertexAttribPointerType.Float, false, stride, (void*)(6 * sizeof(float)));
         _gl.EnableVertexAttribArray(2);
+        _gl.VertexAttribPointer(3, 2, VertexAttribPointerType.Float, false, stride, (void*)(10 * sizeof(float)));
+        _gl.EnableVertexAttribArray(3);
     }
 
     private unsafe void UploadLines(uint vbo, List<float> data)
@@ -316,6 +366,7 @@ void main()
         buf.Add(p.X); buf.Add(p.Y); buf.Add(p.Z);
         buf.Add(0); buf.Add(0); buf.Add(1);
         buf.Add(c.X); buf.Add(c.Y); buf.Add(c.Z); buf.Add(c.W);
+        buf.Add(0); buf.Add(0);
     }
 
     private static void AddLine(List<float> buf, Vector3 a, Vector3 b, Vector4 c)
@@ -435,6 +486,17 @@ void main()
                 allVerts.Add(v.Color.Y);
                 allVerts.Add(v.Color.Z);
                 allVerts.Add(v.Color.W);
+                if (v.UVs.Count > 0)
+                {
+                    allVerts.Add(v.UVs[0].X);
+                    allVerts.Add(v.UVs[0].Y);
+                }
+                else
+                {
+                    // Fallback planar projection: 200 world units per UV tile
+                    allVerts.Add(v.Position.X / 200.0f);
+                    allVerts.Add(v.Position.Y / 200.0f);
+                }
             }
 
             if (mesh.MaterialSlots.Count > 1)
@@ -479,7 +541,21 @@ void main()
                     bool isSky = mesh.Name.StartsWith("+sky", StringComparison.OrdinalIgnoreCase) || matName.StartsWith("+sky", StringComparison.OrdinalIgnoreCase);
                     bool isTransparent = isSky || mesh.Name.Contains("water", StringComparison.OrdinalIgnoreCase) || matName.Contains("water", StringComparison.OrdinalIgnoreCase) || matName.StartsWith("+portal", StringComparison.OrdinalIgnoreCase);
 
-                    _subBatches.Add(new SubMeshBatch(mode, color, subTriStart, subCount, isSky, isTransparent));
+                    uint texId = 0;
+                    bool hasTex = false;
+                    if (_textureManager != null && _gl != null && !isSky && !matName.StartsWith("+portal", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string? modelDir = !string.IsNullOrEmpty(vm.CurrentFilePath) ? Path.GetDirectoryName(vm.CurrentFilePath) : null;
+                        string? activeLevel = !string.IsNullOrEmpty(vm.ActiveLevelName) ? vm.ActiveLevelName : (!string.IsNullOrEmpty(vm.CurrentFilePath) ? Path.GetFileNameWithoutExtension(vm.CurrentFilePath) : null);
+                        string? explicitTex = null;
+                        if (!string.IsNullOrEmpty(mesh.SourceTexturePath)) explicitTex = mesh.SourceTexturePath;
+                        else if (mesh.MaterialTextureMap.TryGetValue(matName, out var mappedTex)) explicitTex = mappedTex;
+
+                        texId = _textureManager.GetOrCreateMaterialTexture(_gl, matName, vm.EkPath, activeLevel, modelDir, explicitTex);
+                        hasTex = texId != 0;
+                    }
+
+                    _subBatches.Add(new SubMeshBatch(mode, color, subTriStart, subCount, isSky, isTransparent, texId, hasTex));
                 }
             }
             else
@@ -505,10 +581,25 @@ void main()
 
                 uint triCount = (uint)allTris.Count - triStart;
                 var (mode, color) = ClassifyMaterial(mesh, 0);
+                string matName = mesh.MaterialSlots.Count > 0 ? mesh.MaterialSlots[0] : mesh.MaterialName;
                 bool isSky = mesh.Name.StartsWith("+sky", StringComparison.OrdinalIgnoreCase) || mesh.MaterialName.StartsWith("+sky", StringComparison.OrdinalIgnoreCase);
                 bool isTransparent = isSky || mesh.Name.Contains("water", StringComparison.OrdinalIgnoreCase) || mesh.MaterialName.Contains("water", StringComparison.OrdinalIgnoreCase) || mesh.MaterialName.StartsWith("+portal", StringComparison.OrdinalIgnoreCase);
 
-                _subBatches.Add(new SubMeshBatch(mode, color, triStart, triCount, isSky, isTransparent));
+                uint texId = 0;
+                bool hasTex = false;
+                if (_textureManager != null && _gl != null && !isSky && !matName.StartsWith("+portal", StringComparison.OrdinalIgnoreCase))
+                {
+                    string? modelDir = !string.IsNullOrEmpty(vm.CurrentFilePath) ? Path.GetDirectoryName(vm.CurrentFilePath) : null;
+                    string? activeLevel = !string.IsNullOrEmpty(vm.ActiveLevelName) ? vm.ActiveLevelName : (!string.IsNullOrEmpty(vm.CurrentFilePath) ? Path.GetFileNameWithoutExtension(vm.CurrentFilePath) : null);
+                    string? explicitTex = null;
+                    if (!string.IsNullOrEmpty(mesh.SourceTexturePath)) explicitTex = mesh.SourceTexturePath;
+                    else if (mesh.MaterialTextureMap.TryGetValue(matName, out var mappedTex)) explicitTex = mappedTex;
+
+                    texId = _textureManager.GetOrCreateMaterialTexture(_gl, matName, vm.EkPath, activeLevel, modelDir, explicitTex);
+                    hasTex = texId != 0;
+                }
+
+                _subBatches.Add(new SubMeshBatch(mode, color, triStart, triCount, isSky, isTransparent, texId, hasTex));
             }
         }
 
@@ -906,6 +997,7 @@ void main()
 
             // 1. Grid
             _gl.Uniform1(_locMode, ModeUnlit);
+            _gl.Uniform1(_locHasTexture, 0);
             _gl.Uniform4(_locBaseColor, 1f, 1f, 1f, 1f);
             _gl.BindVertexArray(_gridVao);
             _gl.DrawArrays(PrimitiveType.Lines, 0, (uint)_gridVertexCount);
@@ -927,6 +1019,41 @@ void main()
                     _gl.Uniform1(_locMode, batch.Mode);
                     _gl.Uniform4(_locBaseColor, batch.BaseColor.X, batch.BaseColor.Y, batch.BaseColor.Z, batch.BaseColor.W);
 
+                    if (batch.Mode == ModeTerrainBlend && _textureManager != null)
+                    {
+                        var (grassTex, rockTex, snowTex, mudTex) = _textureManager.GetTerrainTextures(_gl);
+                        _gl.ActiveTexture(TextureUnit.Texture1);
+                        _gl.BindTexture(TextureTarget.Texture2D, grassTex);
+                        _gl.Uniform1(_locTerrainGrass, 1);
+
+                        _gl.ActiveTexture(TextureUnit.Texture2);
+                        _gl.BindTexture(TextureTarget.Texture2D, rockTex);
+                        _gl.Uniform1(_locTerrainRock, 2);
+
+                        _gl.ActiveTexture(TextureUnit.Texture3);
+                        _gl.BindTexture(TextureTarget.Texture2D, snowTex);
+                        _gl.Uniform1(_locTerrainSnow, 3);
+
+                        _gl.ActiveTexture(TextureUnit.Texture4);
+                        _gl.BindTexture(TextureTarget.Texture2D, mudTex);
+                        _gl.Uniform1(_locTerrainMud, 4);
+
+                        _gl.Uniform1(_locHasTexture, 0);
+                    }
+                    else if (batch.HasTexture && batch.TextureId != 0)
+                    {
+                        _gl.ActiveTexture(TextureUnit.Texture0);
+                        _gl.BindTexture(TextureTarget.Texture2D, batch.TextureId);
+                        _gl.Uniform1(_locDiffuseMap, 0);
+                        _gl.Uniform1(_locHasTexture, 1);
+                    }
+                    else
+                    {
+                        _gl.ActiveTexture(TextureUnit.Texture0);
+                        _gl.BindTexture(TextureTarget.Texture2D, 0);
+                        _gl.Uniform1(_locHasTexture, 0);
+                    }
+
                     void* offset = (void*)(batch.StartIndex * sizeof(uint));
                     _gl.DrawElements(PrimitiveType.Triangles, batch.IndexCount, DrawElementsType.UnsignedInt, offset);
                 }
@@ -938,6 +1065,20 @@ void main()
 
                     _gl.Uniform1(_locMode, batch.Mode);
                     _gl.Uniform4(_locBaseColor, batch.BaseColor.X, batch.BaseColor.Y, batch.BaseColor.Z, batch.BaseColor.W);
+
+                    if (batch.HasTexture && batch.TextureId != 0)
+                    {
+                        _gl.ActiveTexture(TextureUnit.Texture0);
+                        _gl.BindTexture(TextureTarget.Texture2D, batch.TextureId);
+                        _gl.Uniform1(_locDiffuseMap, 0);
+                        _gl.Uniform1(_locHasTexture, 1);
+                    }
+                    else
+                    {
+                        _gl.ActiveTexture(TextureUnit.Texture0);
+                        _gl.BindTexture(TextureTarget.Texture2D, 0);
+                        _gl.Uniform1(_locHasTexture, 0);
+                    }
 
                     void* offset = (void*)(batch.StartIndex * sizeof(uint));
                     _gl.DrawElements(PrimitiveType.Triangles, batch.IndexCount, DrawElementsType.UnsignedInt, offset);
@@ -953,6 +1094,7 @@ void main()
                     _gl.CullFace(TriangleFace.Front); // Cull exterior facing walls so camera outside sees inside
 
                     _gl.Uniform1(_locMode, ModeLitSolid);
+                    _gl.Uniform1(_locHasTexture, 0);
                     _gl.Uniform4(_locBaseColor, 0.28f, 0.45f, 0.72f, 0.28f);
 
                     void* offset = (void*)(batch.StartIndex * sizeof(uint));
@@ -967,6 +1109,7 @@ void main()
                 if (vm != null && vm.ShowWireframe)
                 {
                     _gl.Uniform1(_locMode, ModeLitSolid);
+                    _gl.Uniform1(_locHasTexture, 0);
                     _gl.Uniform4(_locBaseColor, 0.08f, 0.08f, 0.08f, 0.65f);
                     _gl.BindBuffer(BufferTargetARB.ElementArrayBuffer, _meshLineEbo);
                     _gl.DrawElements(PrimitiveType.Lines, (uint)_meshLineIndexCount, DrawElementsType.UnsignedInt, (void*)0);
@@ -975,6 +1118,7 @@ void main()
 
             // 3. Overlays: depth-tested layer, then x-ray layer on top
             _gl.Uniform1(_locMode, ModeUnlit);
+            _gl.Uniform1(_locHasTexture, 0);
             _gl.BindVertexArray(_overlayVao);
             if (_overlayDepthCount > 0)
                 _gl.DrawArrays(PrimitiveType.Lines, 0, (uint)_overlayDepthCount);
@@ -989,6 +1133,8 @@ void main()
             if (_cursorVertexCount > 0)
             {
                 _gl.Disable(EnableCap.DepthTest);
+                _gl.Uniform1(_locMode, ModeUnlit);
+                _gl.Uniform1(_locHasTexture, 0);
                 _gl.BindVertexArray(_cursorVao);
                 _gl.DrawArrays(PrimitiveType.Lines, 0, (uint)_cursorVertexCount);
                 _gl.Enable(EnableCap.DepthTest);
@@ -998,6 +1144,8 @@ void main()
             if (_gizmoVertexCount > 0 && vm?.IsGizmoActive == true)
             {
                 _gl.Disable(EnableCap.DepthTest);
+                _gl.Uniform1(_locMode, ModeUnlit);
+                _gl.Uniform1(_locHasTexture, 0);
                 _gl.BindVertexArray(_gizmoVao);
                 _gl.DrawArrays(PrimitiveType.Lines, 0, (uint)_gizmoVertexCount);
                 _gl.Enable(EnableCap.DepthTest);

@@ -13,6 +13,7 @@ public sealed class GeometryImportOptions
     public string DefaultMaterial { get; set; } = "river riverworld_ground";
     public bool AutoGenerateNormals { get; set; } = true;
     public bool MergeMeshes { get; set; } = false;
+    public bool AutoWeldVertices { get; set; } = false;
 }
 
 public static class UniversalGeometryImporter
@@ -34,7 +35,7 @@ public static class UniversalGeometryImporter
         options ??= new GeometryImportOptions();
         string ext = Path.GetExtension(filePath).ToLowerInvariant();
 
-        return ext switch
+        var meshes = ext switch
         {
             ".ass" => AssImporter.ImportFromFile(filePath),
             ".jms" => JmsImporter.ImportFromFile(filePath),
@@ -42,6 +43,20 @@ public static class UniversalGeometryImporter
             ".map" => MapBrushImporter.ImportFromFile(filePath, options),
             _ => ImportWithAssimpOrFallback(filePath, options)
         };
+
+        if (options.AutoWeldVertices && meshes != null)
+        {
+            var repReport = new Diagnostics.RepairReport();
+            float weldDist = 0.005f * options.ScaleFactor;
+            foreach (var m in meshes)
+            {
+                Diagnostics.GeometryAutoRepair.WeldVertices(m, weldDist, repReport);
+                Diagnostics.GeometryAutoRepair.FixDegenerateTriangles(m, repReport);
+                Diagnostics.GeometryAutoRepair.FixOverlappingSurfaces(m, repReport);
+            }
+        }
+
+        return meshes ?? new List<MeshObject>();
     }
 
     private static List<MeshObject> ImportWithAssimpOrFallback(string filePath, GeometryImportOptions options)
@@ -289,35 +304,68 @@ public static class UniversalGeometryImporter
 
     private static string? ResolveTexturePath(string modelDir, string? rawFilePath, string materialName)
     {
+        var searchDirs = new List<string>
+        {
+            modelDir,
+            Path.Combine(modelDir, "textures"),
+            Path.Combine(modelDir, "bitmaps"),
+            Path.Combine(modelDir, "Scenery"),
+            Path.Combine(modelDir, "scenery")
+        };
+
         if (!string.IsNullOrEmpty(rawFilePath))
         {
+            string unescaped = rawFilePath;
+            try { unescaped = Uri.UnescapeDataString(rawFilePath); } catch { }
+
+            if (File.Exists(unescaped)) return unescaped;
             if (File.Exists(rawFilePath)) return rawFilePath;
 
-            string fileName = Path.GetFileName(rawFilePath);
-            string direct = Path.Combine(modelDir, fileName);
-            if (File.Exists(direct)) return direct;
+            string fn1 = Path.GetFileName(unescaped);
+            string fn2 = Path.GetFileName(rawFilePath);
 
-            string inTextures = Path.Combine(modelDir, "textures", fileName);
-            if (File.Exists(inTextures)) return inTextures;
+            foreach (var d in searchDirs)
+            {
+                if (!Directory.Exists(d)) continue;
+                string p1 = Path.Combine(d, fn1);
+                if (File.Exists(p1)) return p1;
+                string p2 = Path.Combine(d, fn2);
+                if (File.Exists(p2)) return p2;
+            }
 
-            string inBitmaps = Path.Combine(modelDir, "bitmaps", fileName);
-            if (File.Exists(inBitmaps)) return inBitmaps;
-
-            string rel = Path.Combine(modelDir, rawFilePath.Replace('/', '\\'));
+            string rel = Path.Combine(modelDir, unescaped.Replace('/', '\\'));
             if (File.Exists(rel)) return rel;
         }
 
-        string[] exts = { ".png", ".tif", ".tiff", ".jpg", ".jpeg", ".tga", ".dds", ".bmp" };
-        foreach (var ext in exts)
+        // Test variations of material name (stripping prefixes like Material_ or level name)
+        var nameCandidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { materialName };
+        string stripped = materialName;
+        if (stripped.StartsWith("Material_", StringComparison.OrdinalIgnoreCase)) stripped = stripped[9..];
+        if (stripped.StartsWith("Mat_", StringComparison.OrdinalIgnoreCase)) stripped = stripped[4..];
+        nameCandidates.Add(stripped);
+        nameCandidates.Add(stripped.Replace('_', ' '));
+        nameCandidates.Add(materialName.Replace('_', ' '));
+
+        int firstUs = stripped.IndexOf('_');
+        if (firstUs > 0 && firstUs < stripped.Length - 1)
         {
-            string p = Path.Combine(modelDir, materialName + ext);
-            if (File.Exists(p)) return p;
+            string sub = stripped[(firstUs + 1)..];
+            nameCandidates.Add(sub);
+            nameCandidates.Add(sub.Replace('_', ' '));
+        }
 
-            string pSub = Path.Combine(modelDir, "textures", materialName + ext);
-            if (File.Exists(pSub)) return pSub;
-
-            string pBitm = Path.Combine(modelDir, "bitmaps", materialName + ext);
-            if (File.Exists(pBitm)) return pBitm;
+        string[] exts = { ".png", ".tif", ".tiff", ".jpg", ".jpeg", ".tga", ".dds", ".bmp" };
+        foreach (var d in searchDirs)
+        {
+            if (!Directory.Exists(d)) continue;
+            foreach (var cand in nameCandidates)
+            {
+                foreach (var ext in exts)
+                {
+                    string p = Path.Combine(d, cand + ext);
+                    if (File.Exists(p)) return p;
+                }
+            }
         }
 
         return null;

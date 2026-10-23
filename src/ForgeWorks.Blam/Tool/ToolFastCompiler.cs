@@ -128,95 +128,178 @@ public sealed class ToolFastCompiler
         string toolExe = ResolveToolExecutable(ekPath, preferFast);
         if (string.IsNullOrEmpty(toolExe))
         {
-            return new CompileResult(false, "Neither tool_fast.exe nor tool.exe found in Editing Kit directory.", TimeSpan.Zero, "");
+            string err = "Neither tool_fast.exe nor tool.exe found in Editing Kit directory.";
+            WriteLastToolOutputLog(ekPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] ERROR: {err}\nEK Path: {ekPath}\n");
+            return new CompileResult(false, err, TimeSpan.Zero, "");
         }
 
         var (_, fullTagsDir, dataRel) = SetupLevelDirectories(ekPath, levelName, scenarioType);
 
-        // Ensure shader collections mapping exists
-        Shaders.CustomShaderBuilder.EnsureShaderCollectionsEntry(ekPath, levelName, scenarioType);
-
-        // Step 0: Compile custom texture bitmaps if .tif files are present
-        string dataBitmapsRel = Path.Combine("levels", scenarioType, levelName, "bitmaps");
-        string fullDataBitmaps = Path.Combine(ekPath, "data", dataBitmapsRel);
-        if (Directory.Exists(fullDataBitmaps) && Directory.GetFiles(fullDataBitmaps, "*.tif").Length > 0)
+        try
         {
-            string bitmapsCmd = $"bitmaps \"{dataBitmapsRel}\"";
-            fullLog.Add($"=== RUNNING: {toolExe} {bitmapsCmd} ===");
-            onLogMessage?.Invoke($"[ForgeWorks] Compiling custom bitmaps: {dataBitmapsRel}...");
-            var (bCode, bLog) = await RunProcessAsync(toolExe, bitmapsCmd, ekPath, onLogMessage, cancellationToken);
-            fullLog.Add(bLog);
-        }
+            fullLog.Add($"================================================================================");
+            fullLog.Add($"FORGEWORKS BLAM! TOOL COMPILATION LOG - {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+            fullLog.Add($"Level: {levelName} (Scenario Type: {scenarioType})");
+            fullLog.Add($"Tool Executable: {toolExe}");
+            fullLog.Add($"Editing Kit Path: {ekPath}");
+            fullLog.Add($"================================================================================\n");
 
-        // Step 1: Synthesize and write authentic .scenario tag with all spawns, equipment, volumes
-        string scenarioTagPath = Path.Combine(fullTagsDir, $"{levelName}.scenario");
-        string bspTagRelative = Path.Combine("levels", scenarioType, levelName, levelName);
-        string skyTagRelative = scenarioData?.SkyTagPath ?? @"levels\multi\chill\sky\chill_sky";
+            // Ensure shader collections mapping exists
+            Shaders.CustomShaderBuilder.EnsureShaderCollectionsEntry(ekPath, levelName, scenarioType);
 
-        var spawns = scenarioData != null && scenarioData.Spawns.Count > 0 ? scenarioData.Spawns : new List<PlayerStartingLocation> { new(new System.Numerics.Vector3(0, 0, 50), 0f, 0) };
-        var equipment = scenarioData != null ? scenarioData.Equipment : new List<NetgameEquipment>();
-        var volumes = scenarioData != null ? scenarioData.Volumes : new List<TriggerVolume>();
+            // Step 0: Compile custom texture bitmaps if .tif files are present
+            string dataBitmapsRel = Path.Combine("levels", scenarioType, levelName, "bitmaps");
+            string fullDataBitmaps = Path.Combine(ekPath, "data", dataBitmapsRel);
+            if (Directory.Exists(fullDataBitmaps) && Directory.GetFiles(fullDataBitmaps, "*.tif").Length > 0)
+            {
+                string bitmapsCmd = $"bitmaps \"{dataBitmapsRel}\"";
+                fullLog.Add($"=== STEP 0: COMPILE BITMAPS ===");
+                fullLog.Add($"Command: {toolExe} {bitmapsCmd}");
+                onLogMessage?.Invoke($"[ForgeWorks] Compiling custom bitmaps: {dataBitmapsRel}...");
+                var (bCode, bLog) = await RunProcessAsync(toolExe, bitmapsCmd, ekPath, onLogMessage, cancellationToken);
+                fullLog.Add(bLog);
+                fullLog.Add($"Exit Code: {bCode}\n");
+                WriteLastToolOutputLog(ekPath, string.Join("\n", fullLog));
+            }
 
-        Tags.ScenarioTagBuilder.GenerateScenarioTag(
-            scenarioTagPath,
-            levelName,
-            bspTagRelative,
-            skyTagRelative,
-            spawns,
-            equipment,
-            volumes,
-            ekPath);
+            // Step 1: Synthesize and write authentic .scenario tag with all spawns, equipment, volumes
+            string scenarioTagPath = Path.Combine(fullTagsDir, $"{levelName}.scenario");
+            string bspTagRelative = Path.Combine("levels", scenarioType, levelName, levelName);
+            string skyTagRelative = scenarioData?.SkyTagPath ?? @"levels\multi\chill\sky\chill_sky";
 
-        fullLog.Add($"[ForgeWorks] Generated Scenario Tag with {spawns.Count} spawns, {equipment.Count} weapons, {volumes.Count} volumes: {scenarioTagPath}");
+            var spawns = scenarioData != null && scenarioData.Spawns.Count > 0 ? scenarioData.Spawns : new List<PlayerStartingLocation> { new(new System.Numerics.Vector3(0, 0, 50), 0f, 0) };
+            var equipment = scenarioData != null ? scenarioData.Equipment : new List<NetgameEquipment>();
+            var volumes = scenarioData != null ? scenarioData.Volumes : new List<TriggerVolume>();
 
-        // Step 2: tool structure levels\multi\<level>\structure\<level>.ass
-        string assRelative = Path.Combine(dataRel, $"{levelName}.ass");
-        string structureCmd = $"structure \"{assRelative}\"";
+            Tags.ScenarioTagBuilder.GenerateScenarioTag(
+                scenarioTagPath,
+                levelName,
+                bspTagRelative,
+                skyTagRelative,
+                spawns,
+                equipment,
+                volumes,
+                ekPath);
 
-        fullLog.Add($"=== RUNNING: {toolExe} {structureCmd} ===");
-        onLogMessage?.Invoke($"[ForgeWorks] Compiling structure BSP: {assRelative}...");
+            fullLog.Add($"[ForgeWorks] Generated Scenario Tag with {spawns.Count} spawns, {equipment.Count} weapons, {volumes.Count} volumes: {scenarioTagPath}");
 
-        var (code1, log1) = await RunProcessAsync(toolExe, structureCmd, ekPath, onLogMessage, cancellationToken);
-        fullLog.Add(log1);
+            // Step 2: tool structure levels\multi\<level>\structure\<level>.ass
+            string assRelative = Path.Combine(dataRel, $"{levelName}.ass");
+            string structureCmd = $"structure \"{assRelative}\"";
 
-        if (code1 != 0 || log1.Contains("-FATAL-") || log1.Contains("### ERROR"))
-        {
+            fullLog.Add($"\n=== STEP 1: COMPILE STRUCTURE BSP ===");
+            fullLog.Add($"Command: {toolExe} {structureCmd}");
+            onLogMessage?.Invoke($"[ForgeWorks] Compiling structure BSP: {assRelative}...");
+
+            var (code1, log1) = await RunProcessAsync(toolExe, structureCmd, ekPath, onLogMessage, cancellationToken);
+            fullLog.Add(log1);
+            fullLog.Add($"Exit Code: {code1}\n");
+            WriteLastToolOutputLog(ekPath, string.Join("\n", fullLog));
+
+            if (code1 != 0 || log1.Contains("-FATAL-") || log1.Contains("### ERROR"))
+            {
+                sw.Stop();
+                fullLog.Add($"\n[ERROR] Structure compilation failed with exit code {code1}. Check log details above.");
+                WriteLastToolOutputLog(ekPath, string.Join("\n", fullLog));
+                return new CompileResult(false, $"Tool structure compilation failed with exit code {code1}. See last-tool-output-log for details.", sw.Elapsed, string.Join("\n", fullLog));
+            }
+
+            // Re-commit scenario tag to ensure structure tool didn't overwrite scenario properties
+            Tags.ScenarioTagBuilder.GenerateScenarioTag(
+                scenarioTagPath,
+                levelName,
+                bspTagRelative,
+                skyTagRelative,
+                spawns,
+                equipment,
+                volumes,
+                ekPath);
+
+            // Step 3: tool build-cache-file levels\multi\<level>\<level> pc
+            string scenarioRelative = Path.Combine("levels", scenarioType, levelName, levelName);
+            string cacheCmd = $"build-cache-file \"{scenarioRelative}\" pc";
+
+            fullLog.Add($"\n=== STEP 2: BUILD CACHE FILE ===");
+            fullLog.Add($"Command: {toolExe} {cacheCmd}");
+            onLogMessage?.Invoke($"[ForgeWorks] Packaging map cache file: {scenarioRelative}...");
+
+            var (code2, log2) = await RunProcessAsync(toolExe, cacheCmd, ekPath, onLogMessage, cancellationToken);
+            fullLog.Add(log2);
+            fullLog.Add($"Exit Code: {code2}\n");
+
             sw.Stop();
-            return new CompileResult(false, $"Tool structure compilation failed with exit code {code1}.", sw.Elapsed, string.Join("\n", fullLog));
+
+            string expectedMap = Path.Combine(ekPath, "maps", $"{levelName}.map");
+            bool mapExists = File.Exists(expectedMap);
+
+            if (code2 != 0 || !mapExists)
+            {
+                fullLog.Add($"\n[ERROR] Build-cache-file failed with exit code {code2}. Expected map exists: {mapExists}");
+                WriteLastToolOutputLog(ekPath, string.Join("\n", fullLog));
+                return new CompileResult(false, $"Tool build-cache-file failed with exit code {code2}. See last-tool-output-log for details.", sw.Elapsed, string.Join("\n", fullLog), expectedMap);
+            }
+
+            fullLog.Add($"\n================================================================================");
+            fullLog.Add($"[SUCCESS] Compilation succeeded in {sw.Elapsed.TotalSeconds:F1}s! Map created at: {expectedMap}");
+            fullLog.Add($"================================================================================");
+            WriteLastToolOutputLog(ekPath, string.Join("\n", fullLog));
+
+            return new CompileResult(true, $"Compilation Succeeded in {sw.Elapsed.TotalSeconds:F1}s! Map created at: {expectedMap}", sw.Elapsed, string.Join("\n", fullLog), expectedMap);
         }
-
-        // Re-commit scenario tag to ensure structure tool didn't overwrite scenario properties
-        Tags.ScenarioTagBuilder.GenerateScenarioTag(
-            scenarioTagPath,
-            levelName,
-            bspTagRelative,
-            skyTagRelative,
-            spawns,
-            equipment,
-            volumes,
-            ekPath);
-
-        // Step 2: tool build-cache-file levels\multi\<level>\<level> pc
-        string scenarioRelative = Path.Combine("levels", scenarioType, levelName, levelName);
-        string cacheCmd = $"build-cache-file \"{scenarioRelative}\" pc";
-
-        fullLog.Add($"=== RUNNING: {toolExe} {cacheCmd} ===");
-        onLogMessage?.Invoke($"[ForgeWorks] Packaging map cache file: {scenarioRelative}...");
-
-        var (code2, log2) = await RunProcessAsync(toolExe, cacheCmd, ekPath, onLogMessage, cancellationToken);
-        fullLog.Add(log2);
-
-        sw.Stop();
-
-        string expectedMap = Path.Combine(ekPath, "maps", $"{levelName}.map");
-        bool mapExists = File.Exists(expectedMap);
-
-        if (code2 != 0 || !mapExists)
+        catch (Exception ex)
         {
-            return new CompileResult(false, $"Tool build-cache-file failed with exit code {code2}.", sw.Elapsed, string.Join("\n", fullLog), expectedMap);
+            fullLog.Add($"\n[FATAL EXCEPTION]: {ex}");
+            WriteLastToolOutputLog(ekPath, string.Join("\n", fullLog));
+            throw;
+        }
+    }
+
+    public const string LastToolLogFileName = "last-tool-output-log.txt";
+
+    public static string GetLastToolLogPath(string? ekPath = null)
+    {
+        if (!string.IsNullOrWhiteSpace(ekPath) && Directory.Exists(ekPath))
+        {
+            string ekLog = Path.Combine(ekPath, LastToolLogFileName);
+            if (File.Exists(ekLog)) return ekLog;
+        }
+        string curLog = Path.Combine(Environment.CurrentDirectory, LastToolLogFileName);
+        if (File.Exists(curLog)) return curLog;
+
+        string appLog = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, LastToolLogFileName);
+        if (File.Exists(appLog)) return appLog;
+
+        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ForgeWorks", LastToolLogFileName);
+    }
+
+    public static void WriteLastToolOutputLog(string? ekPath, string logContent)
+    {
+        var targetPaths = new List<string>
+        {
+            Path.Combine(@"C:\Users\Chey1\Desktop\Forgeworks Halo 3", LastToolLogFileName),
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, LastToolLogFileName),
+            Path.Combine(Environment.CurrentDirectory, LastToolLogFileName),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ForgeWorks", LastToolLogFileName)
+        };
+
+        if (!string.IsNullOrWhiteSpace(ekPath) && Directory.Exists(ekPath))
+        {
+            targetPaths.Insert(0, Path.Combine(ekPath, LastToolLogFileName));
         }
 
-        return new CompileResult(true, $"Compilation Succeeded in {sw.Elapsed.TotalSeconds:F1}s! Map created at: {expectedMap}", sw.Elapsed, string.Join("\n", fullLog), expectedMap);
+        foreach (var p in targetPaths)
+        {
+            try
+            {
+                var dir = Path.GetDirectoryName(p);
+                if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                File.WriteAllText(p, logContent);
+            }
+            catch
+            {
+                // Never allow logging write failures to crash compilation
+            }
+        }
     }
 
     public static async Task<(int exitCode, string output)> RunProcessAsync(

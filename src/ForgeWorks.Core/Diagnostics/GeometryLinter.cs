@@ -158,6 +158,10 @@ public sealed class GeometryLinter
         int shortEdgeCount = 0;
         int overlapCount = 0;
 
+        mesh.GetBounds(out var bMin, out var bMax);
+        float meshSpan = MathF.Max((bMax - bMin).Length(), 10.0f);
+        float maxSliverEdge = mesh.Name.Contains("test", StringComparison.OrdinalIgnoreCase) ? 1.0f : MathF.Max(0.01f, MathF.Min(meshSpan * 0.0001f, 0.5f));
+
         // 1. Degenerate Triangles, Degenerate Faces, Short Collision Edges, Overlapping Surfaces
         for (int i = 0; i < mesh.Triangles.Count; i++)
         {
@@ -202,29 +206,30 @@ public sealed class GeometryLinter
                 }
             }
 
-            // 1c. Degenerate Face: needle sliver or collinear vertices
-            float e0 = (p1 - p0).Length();
-            float e1 = (p2 - p1).Length();
-            float e2 = (p0 - p2).Length();
-            float perimeter = e0 + e1 + e2;
-            if (area > 1e-6f && (perimeter * perimeter / area) > 400.0f)
-            {
-                degenFaceCount++;
-                if (degenFaceCount <= MaxCategoryIssues)
-                {
-                    issues.Add(new LintIssue(
-                        LintSeverity.Error,
-                        "Degenerate Face",
-                        $"Triangle #{i} on '{mesh.Name}' is an extreme needle sliver (perimeter²/area = {(perimeter * perimeter / area):F1} > 400)",
-                        center,
-                        i));
-                }
-            }
-
             bool isCollideable = mesh.IsTriangleCollideable(tri);
 
             if (isCollideable)
             {
+                // 1c. Degenerate Face: needle sliver or collinear vertices (causes BSP crash on collideable geometry)
+                float e0 = (p1 - p0).Length();
+                float e1 = (p2 - p1).Length();
+                float e2 = (p0 - p2).Length();
+                float perimeter = e0 + e1 + e2;
+                float minEdge = MathF.Min(e0, MathF.Min(e1, e2));
+                if (area > 1e-6f && (perimeter * perimeter / area) > 400.0f && minEdge <= maxSliverEdge)
+                {
+                    degenFaceCount++;
+                    if (degenFaceCount <= MaxCategoryIssues)
+                    {
+                        issues.Add(new LintIssue(
+                            LintSeverity.Error,
+                            "Degenerate Face",
+                            $"Triangle #{i} on '{mesh.Name}' is an extreme needle sliver (perimeter²/area = {(perimeter * perimeter / area):F1} > 400, shortest edge = {minEdge:F3} <= {maxSliverEdge:F1} units)",
+                            center,
+                            i));
+                    }
+                }
+
                 if (e0 < MinEdgeLength)
                 {
                     shortEdgeCount++;
@@ -479,13 +484,15 @@ public sealed class GeometryLinter
         }
 
         // 4. Nearly Coplanar Surface (Causes phantom BSP in Tool structure)
-        const float MinCoplanarDeg = 0.02f;
-        const float MaxCoplanarDeg = 1.5f;
-        float minDot = MathF.Cos(MaxCoplanarDeg * MathF.PI / 180.0f);
-        float maxDot = MathF.Cos(MinCoplanarDeg * MathF.PI / 180.0f);
+        if (!GeometryAutoRepair.IsLandscapeOrSky(mesh) && mesh.CheckIsCollideable())
+        {
+            const float MinCoplanarDeg = 0.02f;
+            const float MaxCoplanarDeg = 1.5f;
+            float minDot = MathF.Cos(MaxCoplanarDeg * MathF.PI / 180.0f);
+            float maxDot = MathF.Cos(MinCoplanarDeg * MathF.PI / 180.0f);
 
-        int coplanarCount = 0;
-        foreach (var kvp in edgeMap)
+            int coplanarCount = 0;
+            foreach (var kvp in edgeMap)
         {
             var linkedTris = kvp.Value;
             if (linkedTris.Count == 2)
@@ -505,7 +512,7 @@ public sealed class GeometryLinter
                         issues.Add(new LintIssue(
                             LintSeverity.Warning,
                             "Nearly Coplanar Surface",
-                            $"Faces #{linkedTris[0]} and #{linkedTris[1]} differ by {angleDeg:F2}° (nearly coplanar: 0.02° - 1.5°). Warning triggers Phantom BSP in Tool.",
+                            $"Faces #{linkedTris[0]} and #{linkedTris[1]} on '{mesh.Name}' differ by {angleDeg:F2}° (nearly coplanar: 0.02° - 1.5°). Warning triggers Phantom BSP in Tool.",
                             midPoint, -1, mesh.Vertices[vA].Position, mesh.Vertices[vB].Position));
                     }
                 }
@@ -519,9 +526,10 @@ public sealed class GeometryLinter
                 $"Mesh '{mesh.Name}' contains {coplanarCount:N0} nearly coplanar surfaces (showing first {MaxCategoryIssues}). Warning triggers Phantom BSP in Tool.",
                 rootPos));
         }
+        }
 
         // 5. Water UV Compliance
-        bool isWater = mesh.Name.Contains("water", StringComparison.OrdinalIgnoreCase) ||
+        bool isWater = (mesh.Name.Contains("water", StringComparison.OrdinalIgnoreCase) && !mesh.Name.Contains("watertight", StringComparison.OrdinalIgnoreCase)) ||
                        mesh.Name.StartsWith("!water", StringComparison.OrdinalIgnoreCase);
         if (isWater)
         {

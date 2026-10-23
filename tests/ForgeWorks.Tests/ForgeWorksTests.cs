@@ -2490,6 +2490,523 @@ public class ForgeWorksTests
         Assert.True(totalNewVerts < totalOrigVerts, $"Vertex count should be lowered by welding ({totalNewVerts} < {totalOrigVerts})");
         Assert.True(totalNewTris <= totalOrigTris, $"Triangle count should be optimized ({totalNewTris} <= {totalOrigTris})");
     }
+
+    [Fact]
+    public void Test_DiagnoseJungleObjFlow()
+    {
+        string path = @"C:\Users\Chey1\Documents\Jungle.obj";
+        if (!File.Exists(path)) return;
+
+        var options = new GeometryImportOptions
+        {
+            DefaultMaterial = "river riverworld_ground",
+            ScaleFactor = 1.0f,
+            ConvertYUpToZUp = true
+        };
+
+        var imported = UniversalGeometryImporter.Import(path, options);
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"=== PRE-SCALE WELD & REPAIR PIPELINE ===");
+
+        // Test complete repaired pipeline
+        foreach (var m in imported)
+        {
+            GeometryAutoRepair.RepairAllErrors(
+                m,
+                capHoles: false,
+                weldDistance: 0.005f,
+                collapseShortEdges: true,
+                flattenNearlyCoplanar: true,
+                applySmooth: false);
+        }
+
+        // Scale by 65x for Halo 3 playable dimensions (doorways ~200 units tall)
+        float scaleFactor = 65.0f;
+        foreach (var m in imported)
+        {
+            for (int i = 0; i < m.Vertices.Count; i++)
+            {
+                var v = m.Vertices[i];
+                v.Position *= scaleFactor;
+                m.Vertices[i] = v;
+            }
+        }
+
+        // Seal GroundTerrain perimeter skirt down by 200 units
+        var ground = imported.Find(m => m.Name.Contains("Ground", StringComparison.OrdinalIgnoreCase));
+        if (ground != null)
+        {
+            SealTerrainBoundarySkirt(ground, depth: 300.0f);
+        }
+
+        // For meshes that still have open boundary edges, mark them render-only (!)
+        foreach (var m in imported)
+        {
+            if (m != ground && !m.Name.StartsWith("+sky") && GeometryAutoRepair.CountOpenEdges(m) > 0)
+            {
+                if (!m.MaterialName.StartsWith("!")) m.MaterialName = "!" + m.MaterialName;
+                for (int s = 0; s < m.MaterialSlots.Count; s++)
+                {
+                    if (!m.MaterialSlots[s].StartsWith("!")) m.MaterialSlots[s] = "!" + m.MaterialSlots[s];
+                }
+                m.IsCollideable = false;
+            }
+        }
+
+        // Post-scale repair (matches app's Auto-Repair / SwampthingFixAll button)
+        foreach (var m in imported)
+        {
+            GeometryAutoRepair.RepairAllErrors(
+                m,
+                capHoles: false,
+                weldDistance: 0.35f,
+                collapseShortEdges: true,
+                flattenNearlyCoplanar: true,
+                applySmooth: false);
+        }
+
+        // Add Sky Dome
+        var sky = StructureGenerator.GenerateWatertightSkyDomeForScene(imported);
+        sky.MaterialName = "+sky";
+        imported.Add(sky);
+
+        // Run Linter
+        var issues = GeometryLinter.LintScene(imported);
+        sb.AppendLine($"\n=== FINAL LINT REPORT AFTER ENHANCED PIPELINE ===");
+        sb.AppendLine($"Total Issues: {issues.Count}");
+        foreach (var g in issues.GroupBy(i => i.Category))
+        {
+            sb.AppendLine($"  {g.Key}: {g.Count()}");
+            foreach (var ig in g.GroupBy(x => x.Description.Contains("on '") ? x.Description.Substring(x.Description.IndexOf("on '")) : (x.Description.Contains("Mesh '") ? x.Description.Substring(x.Description.IndexOf("Mesh '")) : "other")))
+            {
+                sb.AppendLine($"     {ig.Key}: {ig.Count()}");
+            }
+        }
+
+        var audit = ToolLimitGuard.AuditScene(imported);
+        sb.AppendLine($"\nTool Limit Guard: TotalMeshes={audit.TotalMeshes}, TotalVerts={audit.TotalVertices}, TotalTris={audit.TotalTriangles}, Oversized={audit.OversizedMeshCount}");
+
+        File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "jungle_final_pipeline_test.txt"), sb.ToString());
+    }
+
+    private static void SealTerrainBoundarySkirt(MeshObject mesh, float depth)
+    {
+        var openEdges = GeometryAutoRepair.GetOpenEdges(mesh);
+        if (openEdges.Count < 3) return;
+
+        // Trace ordered boundary loop
+        var halfEdges = new Dictionary<int, List<int>>();
+        foreach (var (u, v) in openEdges)
+        {
+            if (!halfEdges.TryGetValue(u, out var l)) { l = new List<int>(1); halfEdges[u] = l; }
+            l.Add(v);
+            if (!halfEdges.TryGetValue(v, out var l2)) { l2 = new List<int>(1); halfEdges[v] = l2; }
+            l2.Add(u);
+        }
+
+        var visited = new HashSet<int>();
+        var loop = new List<int>();
+        int start = openEdges[0].Item1;
+        int curr = start;
+
+        while (curr != -1 && visited.Add(curr))
+        {
+            loop.Add(curr);
+            int next = -1;
+            if (halfEdges.TryGetValue(curr, out var nbrs))
+            {
+                foreach (int n in nbrs)
+                {
+                    if (!visited.Contains(n)) { next = n; break; }
+                }
+            }
+            curr = next;
+        }
+
+        if (loop.Count < 3) return;
+
+        float minZ = float.MaxValue;
+        foreach (int idx in loop) minZ = MathF.Min(minZ, mesh.Vertices[idx].Position.Z);
+        float floorZ = minZ - depth;
+
+        int N = loop.Count;
+        int floorBaseIdx = mesh.Vertices.Count;
+        for (int i = 0; i < N; i++)
+        {
+            var topPos = mesh.Vertices[loop[i]].Position;
+            var floorPos = new Vector3(topPos.X, topPos.Y, floorZ);
+            mesh.Vertices.Add(new Vertex(floorPos, -Vector3.UnitZ));
+        }
+
+        // Skirt quads
+        for (int i = 0; i < N; i++)
+        {
+            int next = (i + 1) % N;
+            int t0 = loop[i];
+            int t1 = loop[next];
+            int b0 = floorBaseIdx + i;
+            int b1 = floorBaseIdx + next;
+
+            mesh.Triangles.Add(new Triangle(t0, b0, t1, 0));
+            mesh.Triangles.Add(new Triangle(t1, b0, b1, 0));
+        }
+
+        // Floor cap (fan)
+        int centerFloorIdx = mesh.Vertices.Count;
+        Vector3 floorCenter = Vector3.Zero;
+        for (int i = 0; i < N; i++) floorCenter += mesh.Vertices[floorBaseIdx + i].Position;
+        floorCenter /= N;
+        mesh.Vertices.Add(new Vertex(floorCenter, -Vector3.UnitZ));
+
+        for (int i = 0; i < N; i++)
+        {
+            int next = (i + 1) % N;
+            mesh.Triangles.Add(new Triangle(centerFloorIdx, floorBaseIdx + i, floorBaseIdx + next, 0));
+        }
+
+        mesh.RecalculateNormals();
+    }
+
+    private static MeshObject CloneMesh(MeshObject src)
+    {
+        var copy = new MeshObject(src.Name) { MaterialName = src.MaterialName, IsCollideable = src.IsCollideable };
+        foreach (var s in src.MaterialSlots) copy.MaterialSlots.Add(s);
+        foreach (var v in src.Vertices)
+        {
+            var nv = new Vertex(v.Position, v.Normal) { Color = v.Color };
+            foreach (var uv in v.UVs) nv.UVs.Add(uv);
+            copy.Vertices.Add(nv);
+        }
+        foreach (var t in src.Triangles) copy.Triangles.Add(new Triangle(t.V0, t.V1, t.V2, t.MaterialIndex) { Normal = t.Normal });
+        return copy;
+    }
+
+    [Fact]
+    public void ToolFastCompiler_WritesLastToolOutputLog_Correctly()
+    {
+        string tempDir = Path.Combine(Path.GetTempPath(), "ForgeWorks_ToolLogTest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            Assert.Equal("last-tool-output-log.txt", ToolFastCompiler.LastToolLogFileName);
+
+            string sampleLog = "[2026-10-23T16:00:00] tool_fast.exe structure levels\\multi\\test\\test\nchopping triangles... 100%\n=== imported structure successfully\n";
+            ToolFastCompiler.WriteLastToolOutputLog(tempDir, sampleLog);
+            string logPath = Path.Combine(tempDir, ToolFastCompiler.LastToolLogFileName);
+
+            Assert.True(File.Exists(logPath), "Last tool log must exist on disk");
+            string written = File.ReadAllText(logPath);
+            Assert.Contains("tool_fast.exe", written);
+            Assert.Contains("imported structure successfully", written);
+
+            string? retrieved = ToolFastCompiler.GetLastToolLogPath(tempDir);
+            Assert.NotNull(retrieved);
+            Assert.True(File.Exists(retrieved));
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public void MeshModelingEngine_CleanMergeMeshes_CombinesAndWeldsSeams()
+    {
+        // Mesh 1: Quad from (0,0,0) to (100,100,0) with material slot 0
+        var m1 = new MeshObject("structure_part_a") { MaterialName = "metal_panel" };
+        m1.Vertices.Add(new Vertex(new Vector3(0, 0, 0), Vector3.UnitZ));
+        m1.Vertices.Add(new Vertex(new Vector3(100, 0, 0), Vector3.UnitZ));
+        m1.Vertices.Add(new Vertex(new Vector3(100, 100, 0), Vector3.UnitZ));
+        m1.Vertices.Add(new Vertex(new Vector3(0, 100, 0), Vector3.UnitZ));
+        m1.Triangles.Add(new Triangle(0, 1, 2, 0));
+        m1.Triangles.Add(new Triangle(0, 2, 3, 0));
+
+        // Mesh 2: Adjacent quad from (100,0,0) to (200,100,0) with duplicate seam vertices at x=100 and material slot 1
+        var m2 = new MeshObject("structure_part_b") { MaterialName = "concrete_wall" };
+        m2.Vertices.Add(new Vertex(new Vector3(100, 0, 0), Vector3.UnitZ)); // Coincident seam
+        m2.Vertices.Add(new Vertex(new Vector3(200, 0, 0), Vector3.UnitZ));
+        m2.Vertices.Add(new Vertex(new Vector3(200, 100, 0), Vector3.UnitZ));
+        m2.Vertices.Add(new Vertex(new Vector3(100, 100, 0), Vector3.UnitZ)); // Coincident seam
+        m2.Triangles.Add(new Triangle(0, 1, 2, 0));
+        m2.Triangles.Add(new Triangle(0, 2, 3, 0));
+
+        var merged = MeshModelingEngine.CleanMergeMeshes(new[] { m1, m2 }, "structure_merged", weldDist: 0.1f);
+
+        Assert.Equal("structure_merged", merged.Name);
+        Assert.Equal(4, merged.Triangles.Count);
+        // Original 8 vertices welded along the coincident seam -> exactly 6 unique vertices
+        Assert.Equal(6, merged.Vertices.Count);
+        Assert.Equal(2, merged.MaterialSlots.Count);
+        Assert.Contains(merged.MaterialSlots, s => s.Contains("metal"));
+        Assert.Contains(merged.MaterialSlots, s => s.Contains("concrete"));
+    }
+
+    [Fact]
+    public void MeshModelingEngine_OptimizeAndDissolveModel_ReducesVerticesWithoutAlteringSilhouette()
+    {
+        // Construct a planar 3x3 grid composed of 18 triangles and 16 vertices all on the Z=0 plane
+        var mesh = new MeshObject("flat_test_ground") { MaterialName = "stone_floor" };
+        for (int y = 0; y <= 3; y++)
+        {
+            for (int x = 0; x <= 3; x++)
+            {
+                mesh.Vertices.Add(new Vertex(new Vector3(x * 100, y * 100, 0), Vector3.UnitZ));
+            }
+        }
+
+        for (int y = 0; y < 3; y++)
+        {
+            for (int x = 0; x < 3; x++)
+            {
+                int i0 = y * 4 + x;
+                int i1 = i0 + 1;
+                int i2 = (y + 1) * 4 + x + 1;
+                int i3 = (y + 1) * 4 + x;
+
+                mesh.Triangles.Add(new Triangle(i0, i1, i2, 0));
+                mesh.Triangles.Add(new Triangle(i0, i2, i3, 0));
+            }
+        }
+
+        int origVerts = mesh.Vertices.Count;
+        int origTris = mesh.Triangles.Count;
+        Assert.Equal(16, origVerts);
+        Assert.Equal(18, origTris);
+
+        var report = MeshModelingEngine.OptimizeAndDissolveModel(mesh, maxAngleDeg: 0.5f, weldDist: 0.05f);
+
+        Assert.True(report.OptimizedVertices < origVerts, $"Vertices must decrease: was {origVerts}, now {report.OptimizedVertices}");
+        Assert.True(report.OptimizedTriangles < origTris, $"Triangles must decrease: was {origTris}, now {report.OptimizedTriangles}");
+        Assert.True(report.EdgesDissolved > 0, "Flat interior edges must be dissolved");
+        Assert.True(report.VertexReductionPercent > 0.0, "Vertex reduction percentage must be positive");
+
+        // Verify the bounding box of the optimized mesh matches the original exactly (no geometric distortion)
+        mesh.GetBounds(out var bMin, out var bMax);
+        Assert.Equal(0, bMin.X, 0.01f);
+        Assert.Equal(0, bMin.Y, 0.01f);
+        Assert.Equal(300, bMax.X, 0.01f);
+        Assert.Equal(300, bMax.Y, 0.01f);
+    }
+
+    [Fact]
+    public void IceFields_DAE_And_Scenery_Import_And_Textures_Work()
+    {
+        string iceFieldsDir = @"C:\Users\Chey1\Desktop\Ice Fields";
+        if (!Directory.Exists(iceFieldsDir)) return;
+
+        string daePath = Path.Combine(iceFieldsDir, "Ice Fields.DAE");
+        Assert.True(File.Exists(daePath), "Ice Fields.DAE must exist");
+
+        var options = new GeometryImportOptions
+        {
+            DefaultMaterial = "icefields_ground",
+            ScaleFactor = 1.0f,
+            ConvertYUpToZUp = false, // Collada file is natively Z_UP
+            AutoWeldVertices = true
+        };
+
+        var meshes = UniversalGeometryImporter.Import(daePath, options);
+        Assert.NotEmpty(meshes);
+
+        int totalVerts = meshes.Sum(m => m.Vertices.Count);
+        int totalTris = meshes.Sum(m => m.Triangles.Count);
+        Assert.True(totalVerts > 1000, $"Ice Fields should have > 1000 verts, got {totalVerts}");
+        Assert.True(totalTris > 1000, $"Ice Fields should have > 1000 tris, got {totalTris}");
+
+        var bMin = new Vector3(float.MaxValue);
+        var bMax = new Vector3(float.MinValue);
+        foreach (var m in meshes)
+        {
+            m.GetBounds(out var subMin, out var subMax);
+            bMin = Vector3.Min(bMin, subMin);
+            bMax = Vector3.Max(bMax, subMax);
+        }
+        Vector3 span = bMax - bMin;
+
+        // Verify texture mapping on meshes
+        int meshesWithTextures = meshes.Count(m => !string.IsNullOrEmpty(m.SourceTexturePath) || m.MaterialTextureMap.Count > 0);
+        Assert.True(meshesWithTextures > 0, $"Expected meshes to resolve texture paths, got {meshesWithTextures}");
+
+        // Check Scenery imports
+        string sceneryDir = Path.Combine(iceFieldsDir, "Scenery");
+        var allSceneryMeshes = new List<MeshObject>();
+        if (Directory.Exists(sceneryDir))
+        {
+            var sceneryFiles = Directory.GetFiles(sceneryDir, "*.DAE");
+            Assert.NotEmpty(sceneryFiles);
+            foreach (var sf in sceneryFiles)
+            {
+                var sceneryMeshes = UniversalGeometryImporter.Import(sf, options);
+                Assert.NotEmpty(sceneryMeshes);
+                allSceneryMeshes.AddRange(sceneryMeshes);
+            }
+        }
+
+        // Check Sky.DAE
+        string skyDae = Path.Combine(iceFieldsDir, "Sky.DAE");
+        if (File.Exists(skyDae))
+        {
+            var skyMeshes = UniversalGeometryImporter.Import(skyDae, options);
+            Assert.NotEmpty(skyMeshes);
+        }
+
+        // Verify H3EK Custom Shader & Bitmap generation for Ice Fields
+        string ekPath = @"C:\Program Files (x86)\Steam\steamapps\common\H3EK";
+        if (Directory.Exists(ekPath))
+        {
+            var shaderCatalog = new HaloShaderCatalog();
+            var shaderResults = CustomShaderBuilder.SetupCustomShadersForModel(
+                ekPath,
+                "icefields",
+                "multi",
+                meshes,
+                iceFieldsDir,
+                shaderCatalog);
+
+            Assert.NotEmpty(shaderResults);
+
+            // Also setup scenery shaders
+            if (allSceneryMeshes.Count > 0)
+            {
+                var sceneryShaderResults = CustomShaderBuilder.SetupCustomShadersForModel(
+                    ekPath,
+                    "icefields",
+                    "multi",
+                    allSceneryMeshes,
+                    sceneryDir,
+                    shaderCatalog);
+                Assert.NotEmpty(sceneryShaderResults);
+            }
+
+            // Verify shader_collections.txt has icefields entry
+            string shaderCollectionsPath = Path.Combine(ekPath, "tags", "levels", "shader_collections.txt");
+            Assert.True(File.Exists(shaderCollectionsPath));
+            string collectionsText = File.ReadAllText(shaderCollectionsPath);
+            Assert.Contains("icefields", collectionsText);
+
+            // Verify .tif files exist in data\levels\multi\icefields\bitmaps\
+            string dataBitmaps = Path.Combine(ekPath, "data", "levels", "multi", "icefields", "bitmaps");
+            Assert.True(Directory.Exists(dataBitmaps));
+            var tifs = Directory.GetFiles(dataBitmaps, "*.tif");
+            Assert.NotEmpty(tifs);
+
+            // Verify .shader tags exist in tags\levels\multi\icefields\shaders\
+            string tagsShaders = Path.Combine(ekPath, "tags", "levels", "multi", "icefields", "shaders");
+            Assert.True(Directory.Exists(tagsShaders));
+            var shaders = Directory.GetFiles(tagsShaders, "*.shader");
+            Assert.NotEmpty(shaders);
+        }
+    }
+
+    [Fact]
+    public async Task IceFields_FullCompilation_StructureBsp_And_Scenario_Succeeds()
+    {
+        string iceFieldsDir = @"C:\Users\Chey1\Desktop\Ice Fields";
+        string ekPath = @"C:\Program Files (x86)\Steam\steamapps\common\H3EK";
+        if (!Directory.Exists(iceFieldsDir) || !Directory.Exists(ekPath)) return;
+
+        string daePath = Path.Combine(iceFieldsDir, "Ice Fields.DAE");
+        Assert.True(File.Exists(daePath), "Ice Fields.DAE must exist");
+
+        var options = new GeometryImportOptions
+        {
+            DefaultMaterial = "icefields_ground",
+            ScaleFactor = 1.0f,
+            ConvertYUpToZUp = false,
+            AutoWeldVertices = true
+        };
+
+        var meshes = UniversalGeometryImporter.Import(daePath, options);
+        Assert.NotEmpty(meshes);
+
+        // 1. Setup custom shaders and shader_collections
+        var shaderCatalog = new HaloShaderCatalog();
+        var shaderResults = CustomShaderBuilder.SetupCustomShadersForModel(
+            ekPath,
+            "icefields",
+            "multi",
+            meshes,
+            iceFieldsDir,
+            shaderCatalog);
+
+        // 2. Setup level directories
+        var (dataDir, tagsDir, dataRel) = ToolFastCompiler.SetupLevelDirectories(ekPath, "icefields");
+        string assPath = Path.Combine(dataDir, "icefields.ass");
+
+        // 3. Generate Watertight Sky Dome Enclosure
+        var sky = StructureGenerator.GenerateWatertightSkyDomeForScene(meshes, ceilingMargin: 5000f, floorMargin: 500f, horizontalPadding: 500f);
+        sky.MaterialName = "+sky";
+        meshes.Add(sky);
+
+        // 4. Partition any oversized meshes
+        var audit = ToolLimitGuard.AuditScene(meshes);
+        if (audit.NeedsAutoPartitioning)
+        {
+            meshes = ToolLimitGuard.PartitionOversizedMeshes(meshes, out var autoPortals);
+            meshes.AddRange(autoPortals);
+        }
+
+        // 5. Collect materials and export .ass
+        var materials = new List<string>();
+        foreach (var m in meshes)
+        {
+            if (!string.IsNullOrEmpty(m.MaterialName) && !materials.Contains(m.MaterialName))
+                materials.Add(m.MaterialName);
+            foreach (var slot in m.MaterialSlots)
+            {
+                if (!string.IsNullOrEmpty(slot) && !materials.Contains(slot))
+                    materials.Add(slot);
+            }
+        }
+        if (!materials.Contains("+sky")) materials.Add("+sky");
+
+        AssExporter.ExportToFile(assPath, materials, meshes, version: 3, levelName: "icefields");
+        Assert.True(File.Exists(assPath), "Exported icefields.ass must exist");
+
+        // 6. Compile Structure BSP via ToolFast
+        string toolExe = ToolFastCompiler.ResolveToolExecutable(ekPath, preferFast: true);
+        string assRelative = Path.Combine(dataRel, "icefields.ass");
+        string arguments = $"structure \"{assRelative}\"";
+
+        var (exitCode, toolLog) = await ToolFastCompiler.RunProcessAsync(toolExe, arguments, ekPath, Console.WriteLine, CancellationToken.None);
+        string bspTag = Path.Combine(tagsDir, "icefields.scenario_structure_bsp");
+        Assert.True(File.Exists(bspTag), $"BSP tag must be compiled at {bspTag}. Tool exit code: {exitCode}");
+
+        // 7. Setup Authentic Multiplayer Scenario Tag
+        string scenarioTagPath = Path.Combine(tagsDir, "icefields.scenario");
+        var spawns = new List<PlayerStartingLocation>
+        {
+            new(new Vector3(-2500, -1500, 150), 0f, 0), // Red Base
+            new(new Vector3(-2300, -1700, 150), 45f, 0),
+            new(new Vector3(2500, 1500, 150), 180f, 1),  // Blue Base
+            new(new Vector3(2300, 1700, 150), 225f, 1)
+        };
+        var equipment = new List<NetgameEquipment>
+        {
+            new(new Vector3(-2000, -1200, 160), Quaternion.Identity, @"objects\weapons\rifle\battle_rifle\battle_rifle"),
+            new(new Vector3(2000, 1200, 160), Quaternion.Identity, @"objects\weapons\rifle\battle_rifle\battle_rifle"),
+            new(new Vector3(0, 0, 180), Quaternion.Identity, @"objects\weapons\support_high\rocket_launcher\rocket_launcher")
+        };
+
+        ScenarioTagBuilder.GenerateScenarioTag(
+            scenarioTagPath,
+            "icefields",
+            @"levels\multi\icefields\icefields",
+            @"levels\multi\chill\sky\chill_sky",
+            spawns,
+            equipment,
+            new List<TriggerVolume>(),
+            ekPath);
+        Assert.True(File.Exists(scenarioTagPath), "icefields.scenario must exist");
+
+        // 8. Run build-cache-file via ToolFast
+        string buildCacheArgs = "build-cache-file levels\\multi\\icefields\\icefields";
+        var (cacheExit, cacheLog) = await ToolFastCompiler.RunProcessAsync(toolExe, buildCacheArgs, ekPath, Console.WriteLine, CancellationToken.None);
+        ToolFastCompiler.WriteLastToolOutputLog(ekPath, cacheLog);
+
+        string mapFile = Path.Combine(ekPath, "maps", "icefields.map");
+        Assert.True(File.Exists(mapFile), $"icefields.map must be generated at {mapFile}. Exit: {cacheExit}");
+    }
 }
 
 

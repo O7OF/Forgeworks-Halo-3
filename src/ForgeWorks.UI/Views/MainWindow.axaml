@@ -83,6 +83,7 @@
                                 <MenuItem Header="Import .JMS Jointed Model..." Command="{Binding ImportJmsCommand}"/>
                                 <MenuItem Header="Import Tool WRL Error Wire..." Command="{Binding ImportWrlCommand}"/>
                                 <Separator/>
+                                <MenuItem Header="❄️ Port 'Ice Fields' Map to Halo 3..." Command="{Binding PortIceFieldsToHalo3Command}"/>
                                 <MenuItem Header="🎨 Import Model Textures &amp; Generate Custom .shader Tags..." Command="{Binding ImportModelTexturesCommand}"/>
                             </MenuItem>
                             <MenuItem Header="Spawn Primitive (Blockbench / Blender)">
@@ -122,6 +123,10 @@
                             <MenuItem Header="Flip Face Normals" Command="{Binding FlipSelectedNormalsCommand}"/>
                             <MenuItem Header="Subdivide Faces" Command="{Binding SubdivideSelectedFacesCommand}"/>
                             <Separator/>
+                            <MenuItem Header="✨ Optimize Model Mesh (Lower Vertices)" Command="{Binding OptimizeActiveModelMeshCommand}"/>
+                            <MenuItem Header="🧹 Clean Merge Selected Meshes" Command="{Binding CleanMergeSelectedMeshesCommand}"/>
+                            <MenuItem Header="📐 Dissolve Coplanar Edges &amp; Cuts" Command="{Binding DissolveCoplanarEdgesCommand}"/>
+                            <Separator/>
                             <MenuItem Header="🌾 Swampthing Fix Open Edges &amp; Welds" Command="{Binding SwampthingFixAllCommand}"/>
                             <MenuItem Header="1-Click Fix All Errors (Weld + Dissolve + Cap)" Command="{Binding AutoRepairAllCommand}"/>
                             <MenuItem Header="Auto-Repair Active Mesh" Command="{Binding AutoRepairCommand}"/>
@@ -129,6 +134,8 @@
                             <MenuItem Header="Run Geometry Linter" Command="{Binding RunLinterCommand}"/>
                         </MenuItem>
                         <MenuItem Header="Procedural Generation" Foreground="#d1d5db" FontSize="11">
+                            <MenuItem Header="❄️ Port 'Ice Fields' to Halo 3 (DAE + Scenery + Textures)" Command="{Binding PortIceFieldsToHalo3Command}"/>
+                            <Separator/>
                             <MenuItem Header="🚀 Generate 'delta_canyon' Map" Command="{Binding GenerateDeltaCanyonMapCommand}"/>
                             <MenuItem Header="🚀 Generate 'alpine_valley' Map" Command="{Binding GenerateAlpineValleyMapCommand}"/>
                             <MenuItem Header="🚀 Generate 'swamp_basin' Map" Command="{Binding GenerateSwampBasinMapCommand}"/>
@@ -371,6 +378,15 @@
                             <Button Command="{Binding SubdivideSelectedFacesCommand}" Background="#27272a" Foreground="#c084fc" Padding="4,2" ToolTip.Tip="Subdivide Selected Faces into Triangles">
                                 <TextBlock Text="🪓 Subdiv" FontSize="10"/>
                             </Button>
+                            <Button Command="{Binding OptimizeActiveModelMeshCommand}" Background="#1e3a5f" Foreground="#38bdf8" FontWeight="Bold" Padding="5,2" ToolTip.Tip="Optimize Model Mesh: lowers vertex/triangle count by mathematically dissolving coplanar cuts &amp; collinear vertices without altering shape">
+                                <TextBlock Text="✨ Optimize Mesh" FontSize="10"/>
+                            </Button>
+                            <Button Command="{Binding CleanMergeSelectedMeshesCommand}" Background="#064e3b" Foreground="#34d399" FontWeight="Bold" Padding="5,2" ToolTip.Tip="Clean Merge: combines selected (or all) meshes into a single unified mesh with welded seams">
+                                <TextBlock Text="🧹 Merge Meshes" FontSize="10"/>
+                            </Button>
+                            <Button Command="{Binding DissolveCoplanarEdgesCommand}" Background="#312e81" Foreground="#a5b4fc" Padding="4,2" ToolTip.Tip="Dissolve Coplanar Edges: merges flat faces sharing an edge into minimal polygons">
+                                <TextBlock Text="📐 Dissolve Flat" FontSize="10"/>
+                            </Button>
                         </StackPanel>
                     </Border>
 
@@ -515,6 +531,11 @@
 
                 <!-- Right: Quick Fix & 1-Click Compile Actions -->
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <Button Command="{Binding PortIceFieldsToHalo3Command}" Background="#0284c7" Foreground="White" FontWeight="Bold" ToolTip.Tip="1-Click Port Ice Fields map to Halo 3 (Imports DAE, Scenery, and all 26 custom textures, then builds structure and map)">
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                            <TextBlock Text="❄️ Port Ice Fields"/>
+                        </StackPanel>
+                    </Button>
                     <Button Command="{Binding AutoRepairAllCommand}" Background="#059669" Foreground="White" FontWeight="Bold" ToolTip.Tip="Auto-weld vertices, remove duplicate faces and dissolve degenerates without destroying mesh topology">
                         <StackPanel Orientation="Horizontal" Spacing="5">
                             <TextBlock Text="🛠️ Fix Geo Errors"/>
@@ -1402,6 +1423,9 @@
                         <ProgressBar IsIndeterminate="{Binding IsCompiling}" Width="90" Height="8" VerticalAlignment="Center"/>
                     </StackPanel>
                     <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
+                        <Button Command="{Binding OpenLastToolLogCommand}" Background="#374151" Foreground="#f3f4f6" FontWeight="SemiBold" Padding="8,2" FontSize="10" ToolTip.Tip="Open last-tool-output-log.txt in system editor to inspect complete compiler logs">
+                            <TextBlock Text="📄 Open Tool Log"/>
+                        </Button>
                         <Button Command="{Binding SetupMapFoldersCommand}" Background="#0284c7" Foreground="White" FontWeight="Bold" Padding="8,2" FontSize="10" ToolTip.Tip="Setup all required folders and scenario tag for active map in H3EK">
                             <TextBlock Text="📁 Setup Map Folders"/>
                         </Button>

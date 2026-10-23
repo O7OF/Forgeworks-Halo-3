@@ -22,9 +22,9 @@ namespace ForgeWorks.Blam.Tool;
 public static class ToolLimitGuard
 {
     public const int MaxClusterTriangles = 65535;
-    public const int SafeClusterTriangleThreshold = 60000;
+    public const int SafeClusterTriangleThreshold = 40000;
     public const int MaxClusterVertices = 65535;
-    public const int SafeClusterVertexThreshold = 60000;
+    public const int SafeClusterVertexThreshold = 40000;
     public const int MaxInstancedGeometryH3 = 4096;
     public const int MaxInstancedGeometryMcc = 32768;
 
@@ -79,9 +79,11 @@ public static class ToolLimitGuard
     {
         var outputMeshes = new List<MeshObject>();
         generatedPortals = new List<MeshObject>();
+        var queue = new Queue<MeshObject>(meshes);
 
-        foreach (var m in meshes)
+        while (queue.Count > 0)
         {
+            var m = queue.Dequeue();
             if (m.Triangles.Count <= SafeClusterTriangleThreshold && m.Vertices.Count <= SafeClusterVertexThreshold)
             {
                 outputMeshes.Add(m);
@@ -104,8 +106,8 @@ public static class ToolLimitGuard
                 _ => (bMin.X + bMax.X) * 0.5f
             };
 
-            var partA = new MeshObject($"{m.Name}_partA") { MaterialName = m.MaterialName };
-            var partB = new MeshObject($"{m.Name}_partB") { MaterialName = m.MaterialName };
+            var partA = new MeshObject($"{m.Name}_partA") { MaterialName = m.MaterialName, IsCollideable = m.IsCollideable };
+            var partB = new MeshObject($"{m.Name}_partB") { MaterialName = m.MaterialName, IsCollideable = m.IsCollideable };
             foreach (var slot in m.MaterialSlots)
             {
                 partA.MaterialSlots.Add(slot);
@@ -143,17 +145,41 @@ public static class ToolLimitGuard
                 }
             }
 
+            // Fallback: If one side received all triangles (degenerate split), force split by triangle index
+            if (partA.Triangles.Count == 0 || partB.Triangles.Count == 0)
+            {
+                partA.Triangles.Clear();
+                partA.Vertices.Clear();
+                partB.Triangles.Clear();
+                partB.Vertices.Clear();
+                mapA.Clear();
+                mapB.Clear();
+
+                int half = m.Triangles.Count / 2;
+                for (int i = 0; i < m.Triangles.Count; i++)
+                {
+                    var t = m.Triangles[i];
+                    var targetPart = i < half ? partA : partB;
+                    var targetMap = i < half ? mapA : mapB;
+                    int v0 = GetOrAddVertex(m, t.V0, targetPart, targetMap);
+                    int v1 = GetOrAddVertex(m, t.V1, targetPart, targetMap);
+                    int v2 = GetOrAddVertex(m, t.V2, targetPart, targetMap);
+                    targetPart.Triangles.Add(new Triangle(v0, v1, v2, t.MaterialIndex));
+                }
+            }
+
             partA.RecalculateNormals();
             partB.RecalculateNormals();
 
-            outputMeshes.Add(partA);
-            outputMeshes.Add(partB);
+            // Re-enqueue sub-parts to ensure they are <= 60,000 threshold
+            queue.Enqueue(partA);
+            queue.Enqueue(partB);
 
             // Generate a cluster portal dividing the two parts
             var portalCenter = (bMin + bMax) * 0.5f;
             float pWidth = Math.Max(size.X, size.Y);
             float pHeight = size.Z;
-            var portal = CsgBrushBuilder.CreatePlanarPortal($"+portal_{m.Name}_split", pWidth, pHeight, portalCenter);
+            var portal = CsgBrushBuilder.CreatePlanarPortal($"+portal_{m.Name}_split", Math.Max(pWidth, 500f), Math.Max(pHeight, 500f), portalCenter);
             generatedPortals.Add(portal);
         }
 

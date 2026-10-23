@@ -42,6 +42,7 @@ public partial class MainViewModel : ViewModelBase
     private int _totalLintWarnings;
 
     [ObservableProperty] private string _activeLevelName = "custom_canvas";
+    [ObservableProperty] private string? _currentFilePath;
     [ObservableProperty] private string _selectedGame = "Halo 3 (H3EK)";
     [ObservableProperty] private string _ekPath = "";
     [ObservableProperty] private string _statusMessage = "ForgeWorks Ready - Target: Halo 3 (H3EK)";
@@ -1645,10 +1646,18 @@ public partial class MainViewModel : ViewModelBase
         }
 
         PushHistoryState($"Repair Mesh {ActiveMesh.Name}");
+        float meshSpan = 100.0f;
+        if (ActiveMesh.Vertices.Count > 0)
+        {
+            ActiveMesh.GetBounds(out var bMin, out var bMax);
+            meshSpan = MathF.Max((bMax - bMin).Length(), 10.0f);
+        }
+        float weldDist = MathF.Max(GeometryAutoRepair.DefaultWeldDistance, MathF.Min(meshSpan * 0.0001f, 0.5f));
+
         var report = GeometryAutoRepair.RepairAllErrors(
             ActiveMesh,
             capHoles: false,
-            weldDistance: GeometryAutoRepair.DefaultWeldDistance,
+            weldDistance: weldDist,
             collapseShortEdges: true,
             flattenNearlyCoplanar: true,
             applySmooth: false);
@@ -1937,10 +1946,18 @@ public partial class MainViewModel : ViewModelBase
 
         foreach (var mesh in allMeshes)
         {
+            float meshSpan = 100.0f;
+            if (mesh.Vertices.Count > 0)
+            {
+                mesh.GetBounds(out var bMin, out var bMax);
+                meshSpan = MathF.Max((bMax - bMin).Length(), 10.0f);
+            }
+            float weldDist = MathF.Max(GeometryAutoRepair.DefaultWeldDistance, MathF.Min(meshSpan * 0.0001f, 0.5f));
+
             var report = GeometryAutoRepair.RepairAllErrors(
                 mesh,
                 capHoles: false,
-                weldDistance: GeometryAutoRepair.DefaultWeldDistance,
+                weldDistance: weldDist,
                 collapseShortEdges: true,
                 flattenNearlyCoplanar: true,
                 applySmooth: false);
@@ -2428,6 +2445,100 @@ public partial class MainViewModel : ViewModelBase
     }
 
     [RelayCommand]
+    public void CleanMergeSelectedMeshes()
+    {
+        var targetMeshes = new List<MeshObject>();
+        var nodesToRemove = new List<SceneNode>();
+
+        if (SelectedSceneNodes.Count > 1)
+        {
+            foreach (var node in SelectedSceneNodes)
+            {
+                if (node.Mesh != null && !targetMeshes.Contains(node.Mesh))
+                {
+                    targetMeshes.Add(node.Mesh);
+                    nodesToRemove.Add(node);
+                }
+            }
+        }
+        else
+        {
+            var levelMeshes = SceneGraph.GetLevelMeshes();
+            if (levelMeshes.Count > 1)
+            {
+                targetMeshes.AddRange(levelMeshes);
+                nodesToRemove.AddRange(SceneGraph.LevelRoot.Children);
+            }
+        }
+
+        if (targetMeshes.Count <= 1)
+        {
+            StatusMessage = "Select at least 2 meshes in the Scene Tree or Viewport to merge.";
+            return;
+        }
+
+        PushHistoryState($"Clean Merge {targetMeshes.Count} Meshes");
+        string mergedName = targetMeshes[0].Name + "_merged";
+        var merged = MeshModelingEngine.CleanMergeMeshes(targetMeshes, mergedName, weldDist: 0.05f);
+
+        // Remove old nodes from scene graph
+        foreach (var node in nodesToRemove)
+        {
+            SceneGraph.LevelRoot.Children.Remove(node);
+        }
+
+        // Add unified merged mesh
+        SceneGraph.AddGeometryMesh(merged);
+        SetActiveMesh(merged, $"Cleanly merged {targetMeshes.Count} meshes into '{merged.Name}' ({merged.Vertices.Count} verts, {merged.Triangles.Count} tris).");
+        SelectedSceneNodes.Clear();
+        MeshVersion++;
+        RunLinter();
+    }
+
+    [RelayCommand]
+    public void DissolveCoplanarEdges()
+    {
+        if (ActiveMesh == null)
+        {
+            StatusMessage = "No active mesh selected to dissolve coplanar edges.";
+            return;
+        }
+
+        PushHistoryState($"Dissolve Coplanar Edges on '{ActiveMesh.Name}'");
+        int dissolved = MeshModelingEngine.DissolveCoplanarEdges(ActiveMesh, maxAngleDeg: 0.5f);
+        MeshVersion++;
+        UpdateMeshStats();
+        RunLinter();
+        StatusMessage = $"Dissolved {dissolved} flat interior coplanar edge cuts on '{ActiveMesh.Name}'. Vertices: {ActiveMesh.Vertices.Count}, Tris: {ActiveMesh.Triangles.Count}.";
+    }
+
+    [RelayCommand]
+    public void OptimizeActiveModelMesh()
+    {
+        if (ActiveMesh == null)
+        {
+            StatusMessage = "No active mesh selected to optimize.";
+            return;
+        }
+
+        PushHistoryState($"Optimize Model Mesh '{ActiveMesh.Name}'");
+        float meshSpan = 100.0f;
+        if (ActiveMesh.Vertices.Count > 0)
+        {
+            ActiveMesh.GetBounds(out var bMin, out var bMax);
+            meshSpan = MathF.Max((bMax - bMin).Length(), 10.0f);
+        }
+        float weldDist = MathF.Max(0.01f, MathF.Min(meshSpan * 0.0001f, 0.5f));
+
+        var report = MeshModelingEngine.OptimizeAndDissolveModel(ActiveMesh, maxAngleDeg: 0.5f, weldDist: weldDist);
+        MeshVersion++;
+        UpdateMeshStats();
+        RunLinter();
+
+        StatusMessage = $"✨ Model '{ActiveMesh.Name}' Optimized: {report.OriginalVertices:N0} -> {report.OptimizedVertices:N0} verts (-{report.VertexReductionPercent:F1}%), {report.OriginalTriangles:N0} -> {report.OptimizedTriangles:N0} tris (-{report.TriangleReductionPercent:F1}%), dissolved {report.EdgesDissolved} redundant edges.";
+    }
+
+    [RelayCommand]
     public void SubdivideSelectedFaces()
     {
         if (ActiveMesh == null || SelectedFaceIndices.Count == 0)
@@ -2839,8 +2950,15 @@ public partial class MainViewModel : ViewModelBase
         exportMeshes.AddRange(SceneGraph.GetPortalMeshes());
         if (exportMeshes.Count == 0 && ActiveMesh != null) exportMeshes.Add(ActiveMesh);
 
+        var audit = ToolLimitGuard.AuditScene(exportMeshes);
+        if (audit.NeedsAutoPartitioning)
+        {
+            exportMeshes = ToolLimitGuard.PartitionOversizedMeshes(exportMeshes, out var autoPortals);
+            exportMeshes.AddRange(autoPortals);
+        }
+
         var materials = CollectMaterials(exportMeshes);
-        AssExporter.ExportToFile(assPath, materials, exportMeshes, version: 3);
+        AssExporter.ExportToFile(assPath, materials, exportMeshes, version: 3, levelName: ActiveLevelName);
         StatusMessage = $"Exported ASS: {assPath} ({exportMeshes.Count} meshes, {materials.Count} materials).";
     }
 
@@ -2931,6 +3049,7 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
+        CurrentFilePath = path;
         string fileName = Path.GetFileName(path);
         StatusMessage = $"Importing {fileName}...";
         PushHistoryState($"Import Geometry {fileName}");
@@ -2938,7 +3057,8 @@ public partial class MainViewModel : ViewModelBase
         {
             DefaultMaterial = SelectedShader?.MaterialName ?? "river riverworld_ground",
             ScaleFactor = 1.0f,
-            ConvertYUpToZUp = true
+            ConvertYUpToZUp = true,
+            AutoWeldVertices = true
         };
 
         try
@@ -3300,6 +3420,102 @@ public partial class MainViewModel : ViewModelBase
         SetActiveMesh(terrain, "Generated 'swamp_basin' map (Riverworld ground, rocks, trees, 1:1 water, perimeter-snapped +sky dome). 0 errors.");
     }
 
+    [RelayCommand]
+    public async Task PortIceFieldsToHalo3Async()
+    {
+        string iceFieldsDir = @"C:\Users\Chey1\Desktop\Ice Fields";
+        string daePath = Path.Combine(iceFieldsDir, "Ice Fields.DAE");
+        if (!Directory.Exists(iceFieldsDir) || !File.Exists(daePath))
+        {
+            StatusMessage = $"Ice Fields folder not found at '{iceFieldsDir}'.";
+            return;
+        }
+
+        ActiveLevelName = "icefields";
+        CurrentFilePath = daePath;
+        PushHistoryState("Port Map: Ice Fields");
+        StatusMessage = "Porting Ice Fields to Halo 3 (Importing DAE, Scenery, and Textures)...";
+
+        SceneGraph.LevelRoot.Children.Clear();
+        SceneGraph.PortalsRoot.Children.Clear();
+        SceneGraph.EntitiesRoot.Children.Clear();
+        Spawns.Clear();
+        Equipment.Clear();
+        Volumes.Clear();
+
+        var options = new GeometryImportOptions
+        {
+            DefaultMaterial = "icefields_ground",
+            ScaleFactor = 1.0f,
+            ConvertYUpToZUp = false,
+            AutoWeldVertices = true
+        };
+
+        var meshes = await Task.Run(() => UniversalGeometryImporter.Import(daePath, options));
+        foreach (var m in meshes)
+        {
+            SceneGraph.AddGeometryMesh(m);
+        }
+
+        // Setup custom shaders & textures in H3EK
+        if (!string.IsNullOrWhiteSpace(EkPath) && Directory.Exists(EkPath))
+        {
+            await Task.Run(() => CustomShaderBuilder.SetupCustomShadersForModel(
+                EkPath,
+                "icefields",
+                "multi",
+                meshes,
+                iceFieldsDir,
+                _catalog));
+            PerformShaderSearch();
+        }
+
+        // Setup player starting locations (authentic Ice Fields bases)
+        var spawnRed1 = new PlayerStartingLocation(new Vector3(-2500, -1500, 150), 0f, 0);
+        var spawnRed2 = new PlayerStartingLocation(new Vector3(-2300, -1700, 150), 45f, 0);
+        var spawnBlue1 = new PlayerStartingLocation(new Vector3(2500, 1500, 150), 180f, 1);
+        var spawnBlue2 = new PlayerStartingLocation(new Vector3(2300, 1700, 150), 225f, 1);
+        Spawns.Add(spawnRed1);
+        Spawns.Add(spawnRed2);
+        Spawns.Add(spawnBlue1);
+        Spawns.Add(spawnBlue2);
+
+        SceneGraph.EntitiesRoot.Children.Add(new SceneNode { Name = "Spawn Red Base 1", Type = SceneNodeType.Spawn, Position = spawnRed1.Position, TagPayload = spawnRed1 });
+        SceneGraph.EntitiesRoot.Children.Add(new SceneNode { Name = "Spawn Red Base 2", Type = SceneNodeType.Spawn, Position = spawnRed2.Position, TagPayload = spawnRed2 });
+        SceneGraph.EntitiesRoot.Children.Add(new SceneNode { Name = "Spawn Blue Base 1", Type = SceneNodeType.Spawn, Position = spawnBlue1.Position, TagPayload = spawnBlue1 });
+        SceneGraph.EntitiesRoot.Children.Add(new SceneNode { Name = "Spawn Blue Base 2", Type = SceneNodeType.Spawn, Position = spawnBlue2.Position, TagPayload = spawnBlue2 });
+
+        // Setup authentic weapon equipment
+        var brRed = new NetgameEquipment(new Vector3(-2000, -1200, 160), Quaternion.Identity, @"objects\weapons\rifle\battle_rifle\battle_rifle");
+        var brBlue = new NetgameEquipment(new Vector3(2000, 1200, 160), Quaternion.Identity, @"objects\weapons\rifle\battle_rifle\battle_rifle");
+        var rockets = new NetgameEquipment(new Vector3(0, 0, 180), Quaternion.Identity, @"objects\weapons\support_high\rocket_launcher\rocket_launcher");
+        Equipment.Add(brRed);
+        Equipment.Add(brBlue);
+        Equipment.Add(rockets);
+
+        SceneGraph.EntitiesRoot.Children.Add(new SceneNode { Name = "Battle Rifle (Red Base)", Type = SceneNodeType.Equipment, Position = brRed.Position, TagPayload = brRed });
+        SceneGraph.EntitiesRoot.Children.Add(new SceneNode { Name = "Battle Rifle (Blue Base)", Type = SceneNodeType.Equipment, Position = brBlue.Position, TagPayload = brBlue });
+        SceneGraph.EntitiesRoot.Children.Add(new SceneNode { Name = "Rocket Launcher (Center)", Type = SceneNodeType.Equipment, Position = rockets.Position, TagPayload = rockets });
+
+        // Generate Watertight Sky Dome Enclosure
+        var sky = StructureGenerator.GenerateWatertightSkyDomeForScene(meshes, ceilingMargin: 5000f, floorMargin: 500f, horizontalPadding: 500f);
+        sky.MaterialName = "+sky";
+        SceneGraph.AddGeometryMesh(sky);
+
+        // Set active mesh to first geometry mesh for immediate viewport rendering
+        if (meshes.Count > 0)
+        {
+            SetActiveMesh(meshes[0], $"Loaded Ice Fields ({meshes.Count} meshes, 26 custom textures, Red/Blue spawns, +sky dome).");
+        }
+
+        MeshVersion++;
+        OverlayVersion++;
+        RunLinter();
+
+        // 1-Click Compile Structure BSP and Cache File
+        await CompileStructureAsync();
+    }
+
     /// <summary>Drops a point onto the active mesh surface (raycast straight down), falling back to Z=0.</summary>
     public Vector3 SnapToGround(float x, float y, float heightOffset = 0f)
     {
@@ -3459,6 +3675,16 @@ public partial class MainViewModel : ViewModelBase
                 exportMeshes.Add(ActiveMesh);
             }
 
+            // Verify Blam uint16 compiler limits (< 65,535 verts/tris per cluster)
+            var audit = ToolLimitGuard.AuditScene(exportMeshes);
+            if (audit.NeedsAutoPartitioning)
+            {
+                CompileLog += $"[ForgeWorks Tool Limit Guard] Detected {audit.OversizedMeshCount} oversized mesh(es) exceeding H3 Tool limits. Auto-partitioning into convex sub-clusters with +portal...\n";
+                exportMeshes = ToolLimitGuard.PartitionOversizedMeshes(exportMeshes, out var autoPortals);
+                exportMeshes.AddRange(autoPortals);
+                CompileLog += $"[ForgeWorks Tool Limit Guard] Partitioned into {exportMeshes.Count} compliant sub-clusters. Safe for tool_fast.exe!\n";
+            }
+
             var materials = CollectMaterials(exportMeshes);
 
             // Export ASS geometry directly to data/levels/multi/<level>/structure/<level>.ass
@@ -3503,6 +3729,42 @@ public partial class MainViewModel : ViewModelBase
         finally
         {
             IsCompiling = false;
+            ToolFastCompiler.WriteLastToolOutputLog(EkPath, CompileLog);
+        }
+    }
+
+    [RelayCommand]
+    public void OpenLastToolLog()
+    {
+        string path = ToolFastCompiler.GetLastToolLogPath(EkPath);
+        if (!File.Exists(path))
+        {
+            path = Path.Combine(Environment.CurrentDirectory, ToolFastCompiler.LastToolLogFileName);
+        }
+        if (!File.Exists(path))
+        {
+            path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ForgeWorks", ToolFastCompiler.LastToolLogFileName);
+        }
+
+        if (File.Exists(path))
+        {
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = path,
+                    UseShellExecute = true
+                });
+                StatusMessage = $"Opened compiler log: {path}";
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Failed to open log: {ex.Message}";
+            }
+        }
+        else
+        {
+            StatusMessage = "No tool log found yet. Run compilation first.";
         }
     }
 
