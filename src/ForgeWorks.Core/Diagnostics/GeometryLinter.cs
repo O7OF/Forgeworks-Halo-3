@@ -46,25 +46,58 @@ public sealed class GeometryLinter
             if (openIssues.Count > 0)
             {
                 var stitchedIssues = new HashSet<LintIssue>();
-                for (int i = 0; i < openIssues.Count; i++)
+                const float cellSize = 10.0f;
+                var spatialGrid = new Dictionary<(int, int, int), List<LintIssue>>();
+
+                (int, int, int) GetCell(Vector3 p) =>
+                    ((int)MathF.Floor(p.X / cellSize), (int)MathF.Floor(p.Y / cellSize), (int)MathF.Floor(p.Z / cellSize));
+
+                foreach (var a in openIssues)
                 {
-                    var a = openIssues[i];
+                    var mid = (a.SegmentA!.Value + a.SegmentB!.Value) * 0.5f;
+                    var cell = GetCell(mid);
+                    if (!spatialGrid.TryGetValue(cell, out var list))
+                    {
+                        list = new List<LintIssue>(4);
+                        spatialGrid[cell] = list;
+                    }
+                    list.Add(a);
+                }
+
+                foreach (var a in openIssues)
+                {
+                    if (stitchedIssues.Contains(a)) continue;
                     var a0 = a.SegmentA!.Value;
                     var a1 = a.SegmentB!.Value;
+                    var mid = (a0 + a1) * 0.5f;
+                    var (cx, cy, cz) = GetCell(mid);
 
-                    for (int j = i + 1; j < openIssues.Count; j++)
+                    bool matched = false;
+                    for (int dx = -1; dx <= 1 && !matched; dx++)
                     {
-                        var b = openIssues[j];
-                        var b0 = b.SegmentA!.Value;
-                        var b1 = b.SegmentB!.Value;
-
-                        // Check if edge (a0, a1) matches opposing edge (b1, b0) within 0.15 units
-                        if ((Vector3.DistanceSquared(a0, b1) < 0.05f && Vector3.DistanceSquared(a1, b0) < 0.05f) ||
-                            (Vector3.DistanceSquared(a0, b0) < 0.05f && Vector3.DistanceSquared(a1, b1) < 0.05f))
+                        for (int dy = -1; dy <= 1 && !matched; dy++)
                         {
-                            stitchedIssues.Add(a);
-                            stitchedIssues.Add(b);
-                            break;
+                            for (int dz = -1; dz <= 1 && !matched; dz++)
+                            {
+                                if (spatialGrid.TryGetValue((cx + dx, cy + dy, cz + dz), out var bucket))
+                                {
+                                    foreach (var b in bucket)
+                                    {
+                                        if (ReferenceEquals(a, b) || stitchedIssues.Contains(b)) continue;
+                                        var b0 = b.SegmentA!.Value;
+                                        var b1 = b.SegmentB!.Value;
+
+                                        if ((Vector3.DistanceSquared(a0, b1) < 0.05f && Vector3.DistanceSquared(a1, b0) < 0.05f) ||
+                                            (Vector3.DistanceSquared(a0, b0) < 0.05f && Vector3.DistanceSquared(a1, b1) < 0.05f))
+                                        {
+                                            stitchedIssues.Add(a);
+                                            stitchedIssues.Add(b);
+                                            matched = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -87,7 +120,10 @@ public sealed class GeometryLinter
             return issues;
         }
 
-        mesh.RecalculateNormals();
+        if (mesh.Vertices.Count > 0 && mesh.Vertices[0].Normal == Vector3.Zero)
+        {
+            mesh.RecalculateNormals();
+        }
 
         var edgeMap = new Dictionary<(int, int), List<int>>();
         void AddEdge(int vA, int vB, int triIdx)

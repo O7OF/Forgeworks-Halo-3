@@ -2173,6 +2173,108 @@ public class ForgeWorksTests
         Assert.Empty(scene.EntitiesRoot.Children);
         Assert.Empty(scene.MarkersRoot.Children);
     }
+
+    [Fact]
+    public void TerrainGenerator_ExtendedModifiers_GenerateValidMeshWithAOAndTerracing()
+    {
+        var config = new TerrainConfig
+        {
+            Algorithm = TerrainAlgorithm.CanyonGorge,
+            ResolutionX = 32,
+            ResolutionY = 32,
+            Width = 4000.0f,
+            Length = 4000.0f,
+            HeightScale = 800.0f,
+            TerraceSteps = 6,
+            TerraceSmoothness = 0.25f,
+            PlateauLevel = 0.8f,
+            ValleyCarveDepth = 250.0f,
+            ValleyCarveWidth = 1000.0f,
+            IslandMask = IslandMaskMode.RadialBasinRaiseEdges,
+            IslandFalloffRadius = 0.8f,
+            VertexColorAO = true,
+            SlopeLayerWeighting = true
+        };
+
+        var terrain = TerrainGenerator.GenerateTerrain(config, "test_extended_terrain");
+        Assert.NotNull(terrain);
+        Assert.NotEmpty(terrain.Vertices);
+        Assert.NotEmpty(terrain.Triangles);
+
+        // Verify vertex colors contain AO and slope layer channels
+        bool hasColorVariation = false;
+        var firstColor = terrain.Vertices[0].Color;
+        for (int i = 1; i < terrain.Vertices.Count; i++)
+        {
+            if (terrain.Vertices[i].Color != firstColor)
+            {
+                hasColorVariation = true;
+                break;
+            }
+        }
+        Assert.True(hasColorVariation, "Vertex colors should contain curvature AO and slope weights.");
+    }
+
+    [Fact]
+    public void MultiObjectTransform_ScaleAndTranslate_MaintainsSynchronizedPositions()
+    {
+        var scene = new SceneContainer();
+        var m1 = new MeshObject("Mesh1");
+        m1.Vertices.Add(new Vertex(new Vector3(0, 0, 0), Vector3.UnitZ, Vector2.Zero));
+        m1.Vertices.Add(new Vertex(new Vector3(10, 0, 0), Vector3.UnitZ, Vector2.Zero));
+        m1.Vertices.Add(new Vertex(new Vector3(0, 10, 0), Vector3.UnitZ, Vector2.Zero));
+        m1.Triangles.Add(new Triangle(0, 1, 2));
+
+        var n1 = scene.AddGeometryMesh(m1);
+        var spawn = new PlayerStartingLocation(new Vector3(100, 200, 50), 45f, 0, 0);
+        var n2 = new SceneNode { Name = "Spawn1", Type = SceneNodeType.Spawn, Position = spawn.Position, TagPayload = spawn };
+        scene.EntitiesRoot.Children.Add(n2);
+
+        var vm = new UI.ViewModels.MainViewModel();
+        vm.SelectedSceneNodes.Add(n1);
+        vm.SelectedSceneNodes.Add(n2);
+        vm.ActiveGizmoPosition = new Vector3(50, 100, 25);
+
+        // Translate
+        vm.TranslateSelectedEntity(new Vector3(10, 20, 30));
+        Assert.Equal(new Vector3(110, 220, 80), n2.Position);
+        Assert.Equal(new Vector3(10, 20, 30), m1.Vertices[0].Position);
+
+        // Scale
+        vm.ScaleSelectedEntity(2.0f, 0); // Uniform scale factor 2.0
+        vm.FinalizeGizmoTransform();
+        Assert.True(m1.Vertices.Count == 3);
+    }
+
+    [Fact]
+    public void GeometryLinter_HighPolyMesh_LintsWithoutCrashOrHangs()
+    {
+        // Build a grid mesh with 5000 triangles
+        var mesh = new MeshObject("high_poly_test");
+        int res = 50;
+        for (int y = 0; y < res; y++)
+        {
+            for (int x = 0; x < res; x++)
+            {
+                mesh.Vertices.Add(new Vertex(new Vector3(x * 10, y * 10, 0), Vector3.UnitZ, Vector2.Zero));
+            }
+        }
+        for (int y = 0; y < res - 1; y++)
+        {
+            for (int x = 0; x < res - 1; x++)
+            {
+                int v00 = y * res + x;
+                int v10 = y * res + (x + 1);
+                int v01 = (y + 1) * res + x;
+                int v11 = (y + 1) * res + (x + 1);
+                mesh.Triangles.Add(new Triangle(v00, v10, v11));
+                mesh.Triangles.Add(new Triangle(v00, v11, v01));
+            }
+        }
+
+        var issues = GeometryLinter.LintScene(new[] { mesh });
+        Assert.NotNull(issues);
+    }
 }
 
 

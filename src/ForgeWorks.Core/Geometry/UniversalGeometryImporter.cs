@@ -145,7 +145,7 @@ public static class UniversalGeometryImporter
                 meshObj.Vertices.Add(v);
             }
 
-            // Triangles / Faces
+            // Triangles / Faces (Robust N-Gon Fan Triangulation)
             for (int f = 0; f < aMesh.FaceCount; f++)
             {
                 var face = aMesh.Faces[f];
@@ -153,15 +153,19 @@ public static class UniversalGeometryImporter
                 {
                     meshObj.Triangles.Add(new Triangle(face.Indices[0], face.Indices[1], face.Indices[2], 0));
                 }
-                else if (face.IndexCount == 4)
+                else if (face.IndexCount >= 4)
                 {
-                    // Quad split
-                    meshObj.Triangles.Add(new Triangle(face.Indices[0], face.Indices[1], face.Indices[2], 0));
-                    meshObj.Triangles.Add(new Triangle(face.Indices[0], face.Indices[2], face.Indices[3], 0));
+                    for (int j = 1; j < face.IndexCount - 1; j++)
+                    {
+                        meshObj.Triangles.Add(new Triangle(face.Indices[0], face.Indices[j], face.Indices[j + 1], 0));
+                    }
                 }
             }
 
-            meshObj.RecalculateNormals();
+            if (!aMesh.HasNormals)
+            {
+                meshObj.RecalculateNormals();
+            }
             results.Add(meshObj);
         }
 

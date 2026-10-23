@@ -37,6 +37,15 @@ public enum TerrainTopologyType
     Polygonal    // Jittered centroid dual polygonal Voronoi-style cells
 }
 
+public enum IslandMaskMode
+{
+    None,
+    RadialIslandSinkEdges, // Circular island falling off into deep water
+    RadialBasinRaiseEdges, // Ring of mountains enclosing central arena basin
+    SquareBasinBowl,       // Box arena valley with raised perimeter
+    InvertedCraterCenter   // Deep central crater depression
+}
+
 public sealed class TerrainConfig
 {
     public TerrainAlgorithm Algorithm { get; set; } = TerrainAlgorithm.MountainPassValley;
@@ -71,6 +80,17 @@ public sealed class TerrainConfig
     public float PerimeterCliffHeight { get; set; } = 600.0f;
     public bool NoTiling { get; set; } = false;
     public float UvTileScale { get; set; } = 300.0f;
+
+    // Extended Procedural Modifiers (v2.1)
+    public int TerraceSteps { get; set; } = 0;              // 0 = disabled, 1..32 = stepped terraces
+    public float TerraceSmoothness { get; set; } = 0.35f;   // 0.05 = razor cliff step, 1.0 = soft rolling
+    public IslandMaskMode IslandMask { get; set; } = IslandMaskMode.None;
+    public float IslandFalloffRadius { get; set; } = 0.75f; // Radius (0..1) where island water falloff begins
+    public float PlateauLevel { get; set; } = 1.0f;         // 1.0 = unclipped, <1.0 = flat mesa table tops
+    public float ValleyCarveDepth { get; set; } = 0.0f;     // Canyon/river valley depth carved across map
+    public float ValleyCarveWidth { get; set; } = 1400.0f;  // Width of carved central canyon
+    public bool VertexColorAO { get; set; } = true;         // Curvature & ambient occlusion in vertex colors
+    public bool SlopeLayerWeighting { get; set; } = true;   // Automated slope-based multi-layer shader weights
 }
 
 public sealed class TerrainGenerator
@@ -263,6 +283,146 @@ public sealed class TerrainGenerator
                 break;
         }
 
+        // 1.5. Extended Procedural Modifiers (Valley Carving, Island Mask, Terracing, Plateau)
+
+        // Valley Riverbed / Canyon Wash Carving
+        if (config.ValleyCarveDepth > 0f)
+        {
+            float valleyWidth = MathF.Max(config.ValleyCarveWidth, 100.0f);
+            for (int x = 0; x < resX; x++)
+            {
+                for (int y = 0; y < resY; y++)
+                {
+                    float wx = startX + x * dx;
+                    float wy = startY + y * dy;
+                    float meander = MathF.Sin(wy * 0.0006f + (config.Seed * 0.1f)) * (config.Width * 0.22f);
+                    float dist = MathF.Abs(wx - meander);
+                    if (dist < valleyWidth)
+                    {
+                        float t = dist / valleyWidth;
+                        float profile = t * t * (3.0f - 2.0f * t); // Smoothstep U-valley
+                        heightMap[x, y] -= (1.0f - profile) * config.ValleyCarveDepth;
+                    }
+                }
+            }
+        }
+
+        // Island / Basin Mask Falloff
+        if (config.IslandMask != IslandMaskMode.None)
+        {
+            float halfX = (resX - 1) * 0.5f;
+            float halfY = (resY - 1) * 0.5f;
+            float sinkTarget = -config.HeightScale * 0.35f;
+
+            for (int x = 0; x < resX; x++)
+            {
+                for (int y = 0; y < resY; y++)
+                {
+                    float nx = (x - halfX) / halfX;
+                    float ny = (y - halfY) / halfY;
+                    float r = MathF.Sqrt(nx * nx + ny * ny);
+
+                    switch (config.IslandMask)
+                    {
+                        case IslandMaskMode.RadialIslandSinkEdges:
+                            if (r >= config.IslandFalloffRadius)
+                            {
+                                float t = Math.Clamp((r - config.IslandFalloffRadius) / (1.414f - config.IslandFalloffRadius), 0f, 1f);
+                                float s = t * t * (3.0f - 2.0f * t);
+                                heightMap[x, y] = Lerp(heightMap[x, y], sinkTarget, s);
+                            }
+                            break;
+
+                        case IslandMaskMode.RadialBasinRaiseEdges:
+                            float basinRim = MathF.Max(config.HeightScale * 1.2f, 800.0f);
+                            if (r >= 0.40f)
+                            {
+                                float t = Math.Clamp((r - 0.40f) / 0.60f, 0f, 1f);
+                                float s = t * t * (3.0f - 2.0f * t);
+                                heightMap[x, y] = Lerp(heightMap[x, y], heightMap[x, y] + basinRim, s);
+                            }
+                            break;
+
+                        case IslandMaskMode.SquareBasinBowl:
+                            float dBox = MathF.Max(MathF.Abs(nx), MathF.Abs(ny));
+                            if (dBox >= 0.50f)
+                            {
+                                float t = Math.Clamp((dBox - 0.50f) / 0.50f, 0f, 1f);
+                                float s = t * t * (3.0f - 2.0f * t);
+                                heightMap[x, y] += s * config.HeightScale * 0.8f;
+                            }
+                            break;
+
+                        case IslandMaskMode.InvertedCraterCenter:
+                            if (r < 0.65f)
+                            {
+                                float t = 1.0f - (r / 0.65f);
+                                float s = t * t * (3.0f - 2.0f * t);
+                                heightMap[x, y] -= s * config.HeightScale * 0.7f;
+                            }
+                            break;
+                    }
+                }
+            }
+        }
+
+        // Terracing / Step Bench Quantization (Sandtrap & Sierra 117 sedimentary rock strata)
+        if (config.TerraceSteps > 0)
+        {
+            float curMin = float.MaxValue, curMax = float.MinValue;
+            for (int x = 0; x < resX; x++)
+                for (int y = 0; y < resY; y++)
+                {
+                    curMin = MathF.Min(curMin, heightMap[x, y]);
+                    curMax = MathF.Max(curMax, heightMap[x, y]);
+                }
+            float curSpan = MathF.Max(curMax - curMin, 1.0f);
+            float smoothness = Math.Clamp(config.TerraceSmoothness, 0.02f, 0.98f);
+
+            for (int x = 0; x < resX; x++)
+            {
+                for (int y = 0; y < resY; y++)
+                {
+                    float normH = (heightMap[x, y] - curMin) / curSpan;
+                    float stepVal = normH * config.TerraceSteps;
+                    float stepInt = MathF.Floor(stepVal);
+                    float frac = stepVal - stepInt;
+
+                    // Smoothstep transition band between steps
+                    float lower = 0.5f - smoothness * 0.5f;
+                    float upper = 0.5f + smoothness * 0.5f;
+                    float blend = Math.Clamp((frac - lower) / (upper - lower), 0f, 1f);
+                    blend = blend * blend * (3.0f - 2.0f * blend);
+
+                    float terracedNorm = (stepInt + blend) / config.TerraceSteps;
+                    heightMap[x, y] = curMin + terracedNorm * curSpan;
+                }
+            }
+        }
+
+        // Plateau Mesa Table-Top Clamping
+        if (config.PlateauLevel < 0.999f && config.PlateauLevel > 0.05f)
+        {
+            float curMin = float.MaxValue, curMax = float.MinValue;
+            for (int x = 0; x < resX; x++)
+                for (int y = 0; y < resY; y++)
+                {
+                    curMin = MathF.Min(curMin, heightMap[x, y]);
+                    curMax = MathF.Max(curMax, heightMap[x, y]);
+                }
+            float plateauH = curMin + (curMax - curMin) * Math.Clamp(config.PlateauLevel, 0.1f, 0.98f);
+            for (int x = 0; x < resX; x++)
+            {
+                for (int y = 0; y < resY; y++)
+                {
+                    if (heightMap[x, y] > plateauH)
+                    {
+                        heightMap[x, y] = plateauH;
+                    }
+                }
+            }
+        }
+
         // 2. Realistic Outer Perimeter Cliff Walls & Flattened Rim Plateau for Clean Skybox Sealing
         if (config.OuterCliffWalls)
         {
@@ -393,7 +553,7 @@ public sealed class TerrainGenerator
         // 8. Recalculate Vertex Normals
         mesh.RecalculateNormals();
 
-        // 9. Layered Blend Colors for Blam Terrain Shaders
+        // 9. Layered Blend Colors & Ambient Occlusion for Blam Terrain Shaders
         for (int i = 0; i < mesh.Vertices.Count; i++)
         {
             var v = mesh.Vertices[i];
@@ -404,7 +564,21 @@ public sealed class TerrainGenerator
             float peakWeight = Math.Clamp((elevationNorm - config.PeakElevationThreshold) * 4.0f, 0.0f, 1.0f);
             float baseWeight = Math.Max(0.0f, 1.0f - rockWeight - peakWeight);
 
-            mesh.Vertices[i].Color = new Vector4(baseWeight, rockWeight, peakWeight, 1.0f);
+            // Ambient Occlusion / Concavity shading based on normal orientation and crevice shadowing
+            float ao = 1.0f;
+            if (config.VertexColorAO)
+            {
+                ao = Math.Clamp(0.70f + 0.30f * v.Normal.Z, 0.55f, 1.0f);
+            }
+
+            if (config.SlopeLayerWeighting)
+            {
+                mesh.Vertices[i].Color = new Vector4(baseWeight * ao, rockWeight * ao, peakWeight * ao, 1.0f);
+            }
+            else
+            {
+                mesh.Vertices[i].Color = new Vector4(ao, ao, ao, 1.0f);
+            }
         }
 
         return mesh;

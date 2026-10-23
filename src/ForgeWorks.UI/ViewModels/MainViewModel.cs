@@ -92,6 +92,26 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private float _terrainUvTileScale = 300.0f;
     [ObservableProperty] private int _terrainTopologyIndex = 0; // 0=Quads, 1=Triangles, 2=Hexagons, 3=Polygonal
 
+    // Extended Procedural Modifiers (v2.1)
+    [ObservableProperty] private int _terrainTerraceSteps = 0;              // 0 = disabled, 1..32 steps
+    [ObservableProperty] private float _terrainTerraceSmoothness = 0.35f;   // 0.05..1.0
+    [ObservableProperty] private int _terrainIslandMaskIndex = 0;           // 0=None, 1=RadialIslandSinkEdges, 2=RadialBasinRaiseEdges, 3=SquareBasinBowl, 4=InvertedCraterCenter
+    [ObservableProperty] private float _terrainIslandFalloffRadius = 0.75f; // 0.2..1.0
+    [ObservableProperty] private float _terrainPlateauLevel = 1.0f;         // 0.2..1.0 (1.0 = no clipping)
+    [ObservableProperty] private float _terrainValleyCarveDepth = 0.0f;     // 0..1000
+    [ObservableProperty] private float _terrainValleyCarveWidth = 1400.0f;  // 200..4000
+    [ObservableProperty] private bool _terrainVertexAO = true;              // Curvature & ambient occlusion
+    [ObservableProperty] private bool _terrainSlopeLayering = true;         // Automated slope-based multi-layer shader weights
+
+    public ObservableCollection<string> IslandMaskModes { get; } = new()
+    {
+        "None (Full Boundary)",
+        "Radial Island (Sink Edges into Sea)",
+        "Radial Basin (Mountain Ring Arena)",
+        "Square Basin (Box Arena Bowl)",
+        "Inverted Crater (Depressed Arena Center)"
+    };
+
     public ObservableCollection<string> TerrainTopologies { get; } = new()
     {
         "Quads (Dual Alternating Diagonals)",
@@ -561,7 +581,7 @@ public partial class MainViewModel : ViewModelBase
         return null;
     }
 
-    public void SetActiveMesh(MeshObject mesh, string status = "Selected mesh.")
+    public void SetActiveMesh(MeshObject mesh, string status = "Selected mesh.", bool frameCamera = false)
     {
         ActiveMesh = mesh;
         if (SelectedSpawn == null && SelectedEquipment == null && SelectedVolume == null)
@@ -570,8 +590,7 @@ public partial class MainViewModel : ViewModelBase
             ActiveGizmoPosition = (bMin + bMax) * 0.5f;
         }
         MeshVersion++;
-        FrameRequestId++;
-        RunLinter();
+        if (frameCamera) FrameRequestId++;
         StatusMessage = status;
     }
 
@@ -607,7 +626,16 @@ public partial class MainViewModel : ViewModelBase
             NoTiling = TerrainNoTiling,
             UvTileScale = TerrainUvTileScale,
             Topology = (TerrainTopologyType)Math.Clamp(TerrainTopologyIndex, 0, Enum.GetValues<TerrainTopologyType>().Length - 1),
-            DefaultMaterial = SelectedShader?.MaterialName ?? "river riverworld_ground"
+            DefaultMaterial = SelectedShader?.MaterialName ?? "river riverworld_ground",
+            TerraceSteps = TerrainTerraceSteps,
+            TerraceSmoothness = TerrainTerraceSmoothness,
+            IslandMask = (IslandMaskMode)Math.Clamp(TerrainIslandMaskIndex, 0, Enum.GetValues<IslandMaskMode>().Length - 1),
+            IslandFalloffRadius = TerrainIslandFalloffRadius,
+            PlateauLevel = TerrainPlateauLevel,
+            ValleyCarveDepth = TerrainValleyCarveDepth,
+            ValleyCarveWidth = TerrainValleyCarveWidth,
+            VertexColorAO = TerrainVertexAO,
+            SlopeLayerWeighting = TerrainSlopeLayering
         };
 
         var mesh = TerrainGenerator.GenerateTerrain(config, $"{ActiveLevelName}_terrain");
@@ -615,7 +643,8 @@ public partial class MainViewModel : ViewModelBase
         SceneGraph.LevelRoot.Children.Clear();
         var node = SceneGraph.AddGeometryMesh(mesh);
         SelectedSceneNode = node;
-        SetActiveMesh(mesh, $"Generated procedural terrain ({config.Algorithm}): {mesh.Vertices.Count} vertices, {mesh.Triangles.Count} triangles (Outer cliffs sealed).");
+        SetActiveMesh(mesh, $"Generated procedural terrain ({config.Algorithm}): {mesh.Vertices.Count} vertices, {mesh.Triangles.Count} triangles (Outer cliffs sealed).", frameCamera: true);
+        RunLinter();
     }
 
     [RelayCommand]
@@ -808,6 +837,77 @@ public partial class MainViewModel : ViewModelBase
         PerimeterCliffHeight = 600.0f;
         ErosionDrops = 0;
         ThermalErosionIterations = 0;
+        GenerateTerrain();
+    }
+
+    [RelayCommand]
+    public void ApplyPresetTerracedCanyon()
+    {
+        TerrainAlgorithmIndex = (int)TerrainAlgorithm.CanyonGorge;
+        TerrainResX = 56;
+        TerrainResY = 56;
+        TerrainWidth = 7000.0f;
+        TerrainLength = 7000.0f;
+        TerrainHeightScale = 1200.0f;
+        TerrainTerraceSteps = 8;
+        TerrainTerraceSmoothness = 0.25f;
+        TerrainValleyCarveDepth = 350.0f;
+        TerrainValleyCarveWidth = 1600.0f;
+        TerrainPlateauLevel = 0.88f;
+        TerrainIslandMaskIndex = (int)IslandMaskMode.None;
+        OuterCliffWalls = true;
+        PerimeterCliffHeight = 700.0f;
+        ErosionDrops = 3000;
+        ThermalErosionIterations = 4;
+        TerrainVertexAO = true;
+        TerrainSlopeLayering = true;
+        GenerateTerrain();
+    }
+
+    [RelayCommand]
+    public void ApplyPresetRadialArena()
+    {
+        TerrainAlgorithmIndex = (int)TerrainAlgorithm.RollingHills;
+        TerrainResX = 52;
+        TerrainResY = 52;
+        TerrainWidth = 6500.0f;
+        TerrainLength = 6500.0f;
+        TerrainHeightScale = 750.0f;
+        TerrainTerraceSteps = 0;
+        TerrainValleyCarveDepth = 0.0f;
+        TerrainPlateauLevel = 1.0f;
+        TerrainIslandMaskIndex = (int)IslandMaskMode.RadialBasinRaiseEdges;
+        TerrainIslandFalloffRadius = 0.70f;
+        OuterCliffWalls = true;
+        PerimeterCliffHeight = 600.0f;
+        ErosionDrops = 2500;
+        ThermalErosionIterations = 2;
+        TerrainVertexAO = true;
+        TerrainSlopeLayering = true;
+        GenerateTerrain();
+    }
+
+    [RelayCommand]
+    public void ApplyPresetMesaArena()
+    {
+        TerrainAlgorithmIndex = (int)TerrainAlgorithm.MesaPlateau;
+        TerrainResX = 56;
+        TerrainResY = 56;
+        TerrainWidth = 6800.0f;
+        TerrainLength = 6800.0f;
+        TerrainHeightScale = 1100.0f;
+        TerrainTerraceSteps = 5;
+        TerrainTerraceSmoothness = 0.20f;
+        TerrainPlateauLevel = 0.65f;
+        TerrainValleyCarveDepth = 200.0f;
+        TerrainValleyCarveWidth = 1200.0f;
+        TerrainIslandMaskIndex = (int)IslandMaskMode.None;
+        OuterCliffWalls = true;
+        PerimeterCliffHeight = 650.0f;
+        ErosionDrops = 2000;
+        ThermalErosionIterations = 4;
+        TerrainVertexAO = true;
+        TerrainSlopeLayering = true;
         GenerateTerrain();
     }
 
@@ -1030,18 +1130,53 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
-        // 2. Multi-selected nodes translation
+        // 2. Multi-selected nodes translation (Fast $O(N)$ translation without redundant normal recalculation)
         if (SelectedSceneNodes.Count > 1)
         {
             foreach (var node in SelectedSceneNodes)
             {
                 if (node.Mesh != null)
                 {
-                    for (int i = 0; i < node.Mesh.Vertices.Count; i++)
-                        node.Mesh.Vertices[i].Position += delta;
-                    node.Mesh.RecalculateNormals();
+                    var verts = node.Mesh.Vertices;
+                    int count = verts.Count;
+                    for (int i = 0; i < count; i++)
+                        verts[i].Position += delta;
                 }
                 node.Position += delta;
+
+                // Synchronize entity position if node holds a scenario TagPayload
+                if (node.TagPayload is PlayerStartingLocation s)
+                {
+                    int idx = Spawns.IndexOf(s);
+                    var updated = new PlayerStartingLocation(s.Position + delta, s.FacingAngle, s.TeamDesignator, s.GameTypeFlags);
+                    if (idx >= 0) Spawns[idx] = updated;
+                    node.TagPayload = updated;
+                    if (SelectedSpawn == s) SelectedSpawn = updated;
+                }
+                else if (node.TagPayload is NetgameEquipment eq)
+                {
+                    int idx = Equipment.IndexOf(eq);
+                    var updated = new NetgameEquipment(eq.Position + delta, eq.Orientation, eq.ItemTagPath, eq.SpawnType, eq.RespawnTime);
+                    if (idx >= 0) Equipment[idx] = updated;
+                    node.TagPayload = updated;
+                    if (SelectedEquipment == eq) SelectedEquipment = updated;
+                }
+                else if (node.TagPayload is TriggerVolume vol)
+                {
+                    int idx = Volumes.IndexOf(vol);
+                    var updated = new TriggerVolume(vol.Name, vol.Position + delta, vol.Extents, vol.Rotation, vol.VolumeType);
+                    if (idx >= 0) Volumes[idx] = updated;
+                    node.TagPayload = updated;
+                    if (SelectedVolume == vol) SelectedVolume = updated;
+                }
+                else if (node.TagPayload is ModelMarker m)
+                {
+                    int idx = Markers.IndexOf(m);
+                    var updated = new ModelMarker(m.Name, m.NodeIndex, m.Position + delta, m.Rotation, m.Radius);
+                    if (idx >= 0) Markers[idx] = updated;
+                    node.TagPayload = updated;
+                    if (SelectedMarker == m) SelectedMarker = updated;
+                }
             }
             if (ActiveGizmoPosition.HasValue) ActiveGizmoPosition += delta;
             MeshVersion++;
@@ -1092,9 +1227,11 @@ public partial class MainViewModel : ViewModelBase
         }
         else if (ActiveMesh != null)
         {
-            for (int i = 0; i < ActiveMesh.Vertices.Count; i++)
+            var verts = ActiveMesh.Vertices;
+            int count = verts.Count;
+            for (int i = 0; i < count; i++)
             {
-                ActiveMesh.Vertices[i].Position += delta;
+                verts[i].Position += delta;
             }
             if (ActiveGizmoPosition.HasValue)
                 ActiveGizmoPosition = ActiveGizmoPosition.Value + delta;
@@ -1132,13 +1269,12 @@ public partial class MainViewModel : ViewModelBase
                 else p *= factor;
                 ActiveMesh.Vertices[vIdx].Position = origin + p;
             }
-            ActiveMesh.RecalculateNormals();
             MeshVersion++;
             StatusMessage = $"Scaled {SelectedFaceIndices.Count} selected face(s) (Axis: {axis}, Factor: {factor:F2})";
             return;
         }
 
-        // 2. Multi-selected nodes scaling
+        // 2. Multi-selected nodes scaling (Optimized multi-object transform)
         if (SelectedSceneNodes.Count > 1 && ActiveGizmoPosition.HasValue)
         {
             Vector3 origin = ActiveGizmoPosition.Value;
@@ -1146,16 +1282,17 @@ public partial class MainViewModel : ViewModelBase
             {
                 if (node.Mesh != null)
                 {
-                    for (int i = 0; i < node.Mesh.Vertices.Count; i++)
+                    var verts = node.Mesh.Vertices;
+                    int count = verts.Count;
+                    for (int i = 0; i < count; i++)
                     {
-                        var p = node.Mesh.Vertices[i].Position - origin;
+                        var p = verts[i].Position - origin;
                         if (axis == 1) p.X *= factor;
                         else if (axis == 2) p.Y *= factor;
                         else if (axis == 3) p.Z *= factor;
                         else p *= factor;
-                        node.Mesh.Vertices[i].Position = origin + p;
+                        verts[i].Position = origin + p;
                     }
-                    node.Mesh.RecalculateNormals();
                 }
                 var np = node.Position - origin;
                 if (axis == 1) np.X *= factor;
@@ -1163,6 +1300,45 @@ public partial class MainViewModel : ViewModelBase
                 else if (axis == 3) np.Z *= factor;
                 else np *= factor;
                 node.Position = origin + np;
+
+                // Synchronize TagPayload positions & extents if applicable
+                if (node.TagPayload is PlayerStartingLocation s)
+                {
+                    int idx = Spawns.IndexOf(s);
+                    var updated = new PlayerStartingLocation(node.Position, s.FacingAngle, s.TeamDesignator, s.GameTypeFlags);
+                    if (idx >= 0) Spawns[idx] = updated;
+                    node.TagPayload = updated;
+                    if (SelectedSpawn == s) SelectedSpawn = updated;
+                }
+                else if (node.TagPayload is NetgameEquipment eq)
+                {
+                    int idx = Equipment.IndexOf(eq);
+                    var updated = new NetgameEquipment(node.Position, eq.Orientation, eq.ItemTagPath, eq.SpawnType, eq.RespawnTime);
+                    if (idx >= 0) Equipment[idx] = updated;
+                    node.TagPayload = updated;
+                    if (SelectedEquipment == eq) SelectedEquipment = updated;
+                }
+                else if (node.TagPayload is TriggerVolume vol)
+                {
+                    int idx = Volumes.IndexOf(vol);
+                    Vector3 ext = vol.Extents;
+                    if (axis == 1) ext.X *= factor;
+                    else if (axis == 2) ext.Y *= factor;
+                    else if (axis == 3) ext.Z *= factor;
+                    else ext *= factor;
+                    var updated = new TriggerVolume(vol.Name, node.Position, ext, vol.Rotation, vol.VolumeType);
+                    if (idx >= 0) Volumes[idx] = updated;
+                    node.TagPayload = updated;
+                    if (SelectedVolume == vol) SelectedVolume = updated;
+                }
+                else if (node.TagPayload is ModelMarker m)
+                {
+                    int idx = Markers.IndexOf(m);
+                    var updated = new ModelMarker(m.Name, m.NodeIndex, node.Position, m.Rotation, m.Radius);
+                    if (idx >= 0) Markers[idx] = updated;
+                    node.TagPayload = updated;
+                    if (SelectedMarker == m) SelectedMarker = updated;
+                }
             }
             MeshVersion++;
             OverlayVersion++;
@@ -1174,14 +1350,16 @@ public partial class MainViewModel : ViewModelBase
         if (ActiveMesh != null && ActiveGizmoPosition.HasValue)
         {
             Vector3 origin = ActiveGizmoPosition.Value;
-            for (int i = 0; i < ActiveMesh.Vertices.Count; i++)
+            var verts = ActiveMesh.Vertices;
+            int count = verts.Count;
+            for (int i = 0; i < count; i++)
             {
-                var p = ActiveMesh.Vertices[i].Position - origin;
+                var p = verts[i].Position - origin;
                 if (axis == 1) p.X *= factor;
                 else if (axis == 2) p.Y *= factor;
                 else if (axis == 3) p.Z *= factor;
                 else p *= factor; // Uniform scale
-                ActiveMesh.Vertices[i].Position = origin + p;
+                verts[i].Position = origin + p;
             }
             MeshSculptEngine.EnsureCorrectUvScaling(ActiveMesh, TerrainUvTileScale);
             MeshVersion++;
@@ -1203,6 +1381,24 @@ public partial class MainViewModel : ViewModelBase
                 OverlayVersion++;
                 StatusMessage = $"Scaled trigger volume '{updated.Name}' extents to ({ext.X:F0}, {ext.Y:F0}, {ext.Z:F0})";
             }
+        }
+    }
+
+    /// <summary>Finalizes normal vectors when transform gizmo mouse dragging ends.</summary>
+    public void FinalizeGizmoTransform()
+    {
+        if (SelectedSceneNodes.Count > 1)
+        {
+            foreach (var node in SelectedSceneNodes)
+            {
+                node.Mesh?.RecalculateNormals();
+            }
+            MeshVersion++;
+        }
+        else if (ActiveMesh != null)
+        {
+            ActiveMesh.RecalculateNormals();
+            MeshVersion++;
         }
     }
 

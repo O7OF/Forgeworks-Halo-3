@@ -401,9 +401,18 @@ void main()
             return;
         }
 
-        var allVerts = new List<float>();
-        var allTris = new List<uint>();
-        var allLines = new List<uint>();
+        int totalVerts = 0;
+        int totalTris = 0;
+        for (int i = 0; i < allMeshes.Count; i++)
+        {
+            totalVerts += allMeshes[i].Vertices.Count;
+            totalTris += allMeshes[i].Triangles.Count;
+        }
+
+        bool needLines = vm.ShowWireframe;
+        var allVerts = new List<float>(totalVerts * FloatsPerVertex);
+        var allTris = new List<uint>(totalTris * 3);
+        var allLines = needLines ? new List<uint>(totalTris * 6) : new List<uint>(0);
 
         foreach (var mesh in allMeshes)
         {
@@ -456,9 +465,12 @@ void main()
                         allTris.Add(v1);
                         allTris.Add(v2);
 
-                        allLines.Add(v0); allLines.Add(v1);
-                        allLines.Add(v1); allLines.Add(v2);
-                        allLines.Add(v2); allLines.Add(v0);
+                        if (needLines)
+                        {
+                            allLines.Add(v0); allLines.Add(v1);
+                            allLines.Add(v1); allLines.Add(v2);
+                            allLines.Add(v2); allLines.Add(v0);
+                        }
                     }
 
                     uint subCount = (uint)allTris.Count - subTriStart;
@@ -483,9 +495,12 @@ void main()
                     allTris.Add(v1);
                     allTris.Add(v2);
 
-                    allLines.Add(v0); allLines.Add(v1);
-                    allLines.Add(v1); allLines.Add(v2);
-                    allLines.Add(v2); allLines.Add(v0);
+                    if (needLines)
+                    {
+                        allLines.Add(v0); allLines.Add(v1);
+                        allLines.Add(v1); allLines.Add(v2);
+                        allLines.Add(v2); allLines.Add(v0);
+                    }
                 }
 
                 uint triCount = (uint)allTris.Count - triStart;
@@ -504,7 +519,6 @@ void main()
 
         var vertsArray = allVerts.ToArray();
         var trisArray = allTris.ToArray();
-        var linesArray = allLines.ToArray();
 
         _gl!.BindVertexArray(_meshVao);
         _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _meshVbo);
@@ -512,9 +526,13 @@ void main()
             _gl.BufferData(BufferTargetARB.ArrayBuffer, (nuint)(vertsArray.Length * sizeof(float)), p, BufferUsageARB.DynamicDraw);
         SetupVertexLayout();
 
-        _gl.BindBuffer(BufferTargetARB.ElementArrayBuffer, _meshLineEbo);
-        fixed (uint* p = linesArray)
-            _gl.BufferData(BufferTargetARB.ElementArrayBuffer, (nuint)(linesArray.Length * sizeof(uint)), p, BufferUsageARB.DynamicDraw);
+        if (needLines && _meshLineIndexCount > 0)
+        {
+            var linesArray = allLines.ToArray();
+            _gl.BindBuffer(BufferTargetARB.ElementArrayBuffer, _meshLineEbo);
+            fixed (uint* p = linesArray)
+                _gl.BufferData(BufferTargetARB.ElementArrayBuffer, (nuint)(linesArray.Length * sizeof(uint)), p, BufferUsageARB.DynamicDraw);
+        }
 
         _gl.BindBuffer(BufferTargetARB.ElementArrayBuffer, _meshTriEbo);
         fixed (uint* p = trisArray)
@@ -1293,7 +1311,14 @@ void main()
         {
             _isDraggingGizmo = false;
             _draggedGizmoAxis = 0;
-            if (Vm is { } vmG) BuildGizmo(vmG);
+            if (Vm is { } vmG)
+            {
+                if (vmG.GizmoMode == GizmoMode.Scale)
+                {
+                    vmG.FinalizeGizmoTransform();
+                }
+                BuildGizmo(vmG);
+            }
         }
         if (_isStroking)
         {

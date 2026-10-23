@@ -13,7 +13,7 @@
         x:Class="ForgeWorks.UI.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Icon="/Assets/avalonia-logo.ico"
-        Title="ForgeWorks Studio - Halo 3 Blam! Engine Desktop Editor (Sapien + Guerilla + Blender + Blockbench)"
+        Title="ForgeWorks Studio v2.1.0 - Halo 3 Blam! Engine Desktop Editor (Sapien + Guerilla + Blender + Blockbench)"
         Background="#181a1f">
 
     <Window.Styles>
@@ -131,6 +131,18 @@
                             <MenuItem Header="🚀 Generate 'swamp_basin' Map" Command="{Binding GenerateSwampBasinMapCommand}"/>
                             <Separator/>
                             <MenuItem Header="Generate Procedural Terrain" Command="{Binding GenerateTerrainCommand}"/>
+                            <MenuItem Header="Terrain Presets">
+                                <MenuItem Header="Mountain Pass Valley" Command="{Binding ApplyPresetValleyCommand}"/>
+                                <MenuItem Header="Canyon Gorge" Command="{Binding ApplyPresetCanyonCommand}"/>
+                                <MenuItem Header="Rolling Hills" Command="{Binding ApplyPresetRollingHillsCommand}"/>
+                                <MenuItem Header="Meteor Crater" Command="{Binding ApplyPresetCraterCommand}"/>
+                                <MenuItem Header="Mesa Plateau" Command="{Binding ApplyPresetMesaCommand}"/>
+                                <MenuItem Header="Desert Dunes" Command="{Binding ApplyPresetDunesCommand}"/>
+                                <MenuItem Header="Island Atoll" Command="{Binding ApplyPresetIslandCommand}"/>
+                                <MenuItem Header="Terraced Canyon" Command="{Binding ApplyPresetTerracedCanyonCommand}"/>
+                                <MenuItem Header="Radial Basin Arena" Command="{Binding ApplyPresetRadialArenaCommand}"/>
+                                <MenuItem Header="Mesa Arena" Command="{Binding ApplyPresetMesaArenaCommand}"/>
+                            </MenuItem>
                             <MenuItem Header="Generate Rock Archetype" Command="{Binding GenerateRockCommand}"/>
                             <MenuItem Header="Scatter Rocks on Terrain" Command="{Binding ScatterRocksCommand}"/>
                             <MenuItem Header="Generate Foliage Tree" Command="{Binding GenerateFoliageCommand}"/>
@@ -732,7 +744,7 @@
                                 <!-- Terrain Presets (11 Rich Procedural Patterns) -->
                                 <Border Background="#121316" CornerRadius="4" Padding="6">
                                     <StackPanel Spacing="4">
-                                        <TextBlock Text="Terrain Presets (11 Patterns)" FontWeight="Bold" FontSize="11" Foreground="#38bdf8"/>
+                                        <TextBlock Text="Terrain Presets (14 Patterns)" FontWeight="Bold" FontSize="11" Foreground="#38bdf8"/>
                                         <WrapPanel Margin="0,2,0,0">
                                             <Button Command="{Binding ApplyPresetValleyCommand}" Background="#1e293b" Foreground="#f8fafc" FontSize="10" Margin="2" Padding="6,3" Content="Valley"/>
                                             <Button Command="{Binding ApplyPresetCanyonCommand}" Background="#1e293b" Foreground="#f8fafc" FontSize="10" Margin="2" Padding="6,3" Content="Canyon"/>
@@ -745,6 +757,9 @@
                                             <Button Command="{Binding ApplyPresetCalderaCommand}" Background="#1e293b" Foreground="#f8fafc" FontSize="10" Margin="2" Padding="6,3" Content="Caldera"/>
                                             <Button Command="{Binding ApplyPresetAlpinePeaksCommand}" Background="#1e293b" Foreground="#f8fafc" FontSize="10" Margin="2" Padding="6,3" Content="Alpine Peaks"/>
                                             <Button Command="{Binding ApplyPresetBasaltColumnsCommand}" Background="#1e293b" Foreground="#f8fafc" FontSize="10" Margin="2" Padding="6,3" Content="Basalt Terrace"/>
+                                            <Button Command="{Binding ApplyPresetTerracedCanyonCommand}" Background="#1e293b" Foreground="#38bdf8" FontSize="10" Margin="2" Padding="6,3" Content="Terraced Canyon"/>
+                                            <Button Command="{Binding ApplyPresetRadialArenaCommand}" Background="#1e293b" Foreground="#a78bfa" FontSize="10" Margin="2" Padding="6,3" Content="Radial Arena"/>
+                                            <Button Command="{Binding ApplyPresetMesaArenaCommand}" Background="#1e293b" Foreground="#f97316" FontSize="10" Margin="2" Padding="6,3" Content="Mesa Arena"/>
                                         </WrapPanel>
                                     </StackPanel>
                                 </Border>
@@ -829,6 +844,55 @@
                                 </Grid>
 
                                 <CheckBox Content="No Tiling (1:1 Continuous Canvas)" IsChecked="{Binding TerrainNoTiling}" FontSize="11" Margin="0,2,0,0" ToolTip.Tip="Map entire landscape seamlessly from 0.0 to 1.0 across the canvas with zero repeating tiles"/>
+
+                                <!-- Extended Procedural Modifiers & Options (v2.1) -->
+                                <Border Background="#121316" BorderBrush="#252932" BorderThickness="1" CornerRadius="4" Padding="6" Margin="0,2,0,0">
+                                    <StackPanel Spacing="6">
+                                        <TextBlock Text="🛠️ Modifiers &amp; Options" FontWeight="Bold" FontSize="11" Foreground="#38bdf8"/>
+
+                                        <!-- Boundary / Island Mask -->
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Text="Boundary / Island Mask:" FontSize="10" Foreground="#94a3b8"/>
+                                            <ComboBox ItemsSource="{Binding IslandMaskModes}" SelectedIndex="{Binding TerrainIslandMaskIndex}" Height="26" HorizontalAlignment="Stretch" FontSize="10"/>
+                                        </StackPanel>
+
+                                        <Grid ColumnDefinitions="*,*">
+                                            <StackPanel Grid.Column="0" Margin="0,0,4,0">
+                                                <TextBlock Text="Island Falloff Radius:" FontSize="10" Foreground="#94a3b8"/>
+                                                <NumericUpDown Value="{Binding TerrainIslandFalloffRadius}" Minimum="0.2" Maximum="1.0" Increment="0.05"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1" Margin="4,0,0,0">
+                                                <TextBlock Text="Plateau Level (Mesa):" FontSize="10" Foreground="#94a3b8"/>
+                                                <NumericUpDown Value="{Binding TerrainPlateauLevel}" Minimum="0.1" Maximum="1.0" Increment="0.05"/>
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <Grid ColumnDefinitions="*,*">
+                                            <StackPanel Grid.Column="0" Margin="0,0,4,0">
+                                                <TextBlock Text="Terrace Steps:" FontSize="10" Foreground="#94a3b8"/>
+                                                <NumericUpDown Value="{Binding TerrainTerraceSteps}" Minimum="0" Maximum="32"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1" Margin="4,0,0,0">
+                                                <TextBlock Text="Terrace Smoothness:" FontSize="10" Foreground="#94a3b8"/>
+                                                <NumericUpDown Value="{Binding TerrainTerraceSmoothness}" Minimum="0.05" Maximum="1.0" Increment="0.05"/>
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <Grid ColumnDefinitions="*,*">
+                                            <StackPanel Grid.Column="0" Margin="0,0,4,0">
+                                                <TextBlock Text="Valley Carve Depth:" FontSize="10" Foreground="#94a3b8"/>
+                                                <NumericUpDown Value="{Binding TerrainValleyCarveDepth}" Minimum="0" Maximum="2000" Increment="50"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1" Margin="4,0,0,0">
+                                                <TextBlock Text="Valley Carve Width:" FontSize="10" Foreground="#94a3b8"/>
+                                                <NumericUpDown Value="{Binding TerrainValleyCarveWidth}" Minimum="200" Maximum="5000" Increment="100"/>
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <CheckBox Content="Vertex AO &amp; Curvature Shading" IsChecked="{Binding TerrainVertexAO}" FontSize="10" Foreground="#f8fafc" ToolTip.Tip="Calculates local mesh concavity and valley occlusions directly into vertex color alpha/tint."/>
+                                        <CheckBox Content="Slope-Based Shader Layering" IsChecked="{Binding TerrainSlopeLayering}" FontSize="10" Foreground="#f8fafc" ToolTip.Tip="Encodes rock, swale grass, and dirt shader blend weights automatically based on surface incline."/>
+                                    </StackPanel>
+                                </Border>
 
                                 <Button Command="{Binding GenerateTerrainCommand}" Background="#0284c7" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="0,2,0,0">
                                     <TextBlock Text="⚡ Generate Procedural Terrain"/>
