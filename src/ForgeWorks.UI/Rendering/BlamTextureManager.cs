@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
+using System.Text.RegularExpressions;
 using Silk.NET.OpenGL;
 
 namespace ForgeWorks.UI.Rendering;
@@ -177,19 +178,99 @@ public sealed class BlamTextureManager : IDisposable
             }
         }
 
-        // Search H3EK data/levels/<type>/<level>/bitmaps/
-        if (!string.IsNullOrWhiteSpace(ekPath) && !string.IsNullOrWhiteSpace(activeLevelName) && Directory.Exists(ekPath))
+        // Search H3EK data/levels/<type>/<level>/bitmaps/ and inspect shader tags
+        if (!string.IsNullOrWhiteSpace(ekPath) && Directory.Exists(ekPath))
         {
-            string ekBitmaps = Path.Combine(ekPath, "data", "levels", "multi", activeLevelName, "bitmaps");
-            if (Directory.Exists(ekBitmaps))
+            string dataLevels = Path.Combine(ekPath, "data", "levels");
+            if (Directory.Exists(dataLevels))
+            {
+                // 1. Check active level bitmaps
+                if (!string.IsNullOrWhiteSpace(activeLevelName))
+                {
+                    string ekBitmaps = Path.Combine(dataLevels, "multi", activeLevelName, "bitmaps");
+                    if (Directory.Exists(ekBitmaps))
+                    {
+                        foreach (var cand in candidates)
+                        {
+                            foreach (var ext in extensions)
+                            {
+                                string p = Path.Combine(ekBitmaps, cand + ext);
+                                if (File.Exists(p)) return p;
+                            }
+                        }
+                    }
+                }
+
+                // 2. Check prefix map bitmaps (e.g. "chill", "riverworld", "deadlock")
+                string prefix = "";
+                int space = cleanName.IndexOf(' ');
+                if (space > 0) prefix = cleanName[..space];
+                if (string.IsNullOrEmpty(prefix))
+                {
+                    int us = cleanName.IndexOf('_');
+                    if (us > 0) prefix = cleanName[..us];
+                }
+
+                var candidateFolders = new List<string>();
+                if (!string.IsNullOrEmpty(prefix))
+                {
+                    candidateFolders.Add(prefix);
+                    if (prefix.Equals("river", StringComparison.OrdinalIgnoreCase)) candidateFolders.Add("riverworld");
+                    if (prefix.Equals("dead", StringComparison.OrdinalIgnoreCase)) candidateFolders.Add("deadlock");
+                    if (prefix.Equals("sal", StringComparison.OrdinalIgnoreCase)) candidateFolders.Add("salvation");
+                    if (prefix.Equals("zan", StringComparison.OrdinalIgnoreCase)) candidateFolders.Add("zanzibar");
+                    if (prefix.Equals("sb", StringComparison.OrdinalIgnoreCase)) candidateFolders.Add("snowbound");
+                    if (prefix.Equals("iso", StringComparison.OrdinalIgnoreCase)) candidateFolders.Add("isolation");
+                    if (prefix.Equals("con", StringComparison.OrdinalIgnoreCase)) candidateFolders.Add("construct");
+                    if (prefix.Equals("cyber", StringComparison.OrdinalIgnoreCase)) candidateFolders.Add("cyberdyne");
+                    if (prefix.Equals("mpshare", StringComparison.OrdinalIgnoreCase)) candidateFolders.Add("shared");
+                }
+                candidateFolders.Add("shared");
+
+                string[] subDirs = { "multi", "solo", "dlc", "shared" };
+                foreach (var folder in candidateFolders)
+                {
+                    foreach (var sub in subDirs)
+                    {
+                        string dir = Path.Combine(dataLevels, sub, folder, "bitmaps");
+                        if (Directory.Exists(dir))
+                        {
+                            foreach (var cand in candidates)
+                            {
+                                foreach (var ext in extensions)
+                                {
+                                    string p = Path.Combine(dir, cand + ext);
+                                    if (File.Exists(p)) return p;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 3. Inspect shader tags in tags\ to resolve exact bitmap references
+            string tagsLevels = Path.Combine(ekPath, "tags", "levels");
+            if (Directory.Exists(tagsLevels))
             {
                 foreach (var cand in candidates)
                 {
-                    foreach (var ext in extensions)
+                    try
                     {
-                        string p = Path.Combine(ekBitmaps, cand + ext);
-                        if (File.Exists(p)) return p;
+                        var matchingShaderTags = Directory.GetFiles(tagsLevels, $"{cand}.shader*", SearchOption.AllDirectories);
+                        if (matchingShaderTags.Length > 0)
+                        {
+                            byte[] raw = File.ReadAllBytes(matchingShaderTags[0]);
+                            string ascii = System.Text.Encoding.ASCII.GetString(raw);
+                            var m = Regex.Match(ascii, @"levels\\([a-zA-Z0-9_\\]+)\\bitmaps\\([a-zA-Z0-9_]+)");
+                            if (m.Success)
+                            {
+                                string relBitm = m.Value; // e.g. levels\multi\chill\bitmaps\chill_snow
+                                string tifPath = Path.Combine(ekPath, "data", relBitm + ".tif");
+                                if (File.Exists(tifPath)) return tifPath;
+                            }
+                        }
                     }
+                    catch { }
                 }
             }
         }

@@ -215,17 +215,18 @@ public sealed class AssExporter
             return !string.IsNullOrEmpty(defaultLevelPrefix) ? $"{defaultLevelPrefix} ground" : "river riverworld_ground";
         string m = mat.Trim();
 
+        // Remap legacy generic editor placeholder 'boxcanvas' brushes to valid Halo 3 environment shaders
+        if (m.StartsWith("boxcanvas", StringComparison.OrdinalIgnoreCase))
+        {
+            return !string.IsNullOrEmpty(defaultLevelPrefix) ? $"{defaultLevelPrefix} ground" : "river riverworld_ground";
+        }
+
         // Extract semantic flags: %, !, %!, +, $, @, ~
         string prefix = "";
         while (m.Length > 0 && (m[0] == '%' || m[0] == '!' || m[0] == '+' || m[0] == '$' || m[0] == '@' || m[0] == '~'))
         {
             prefix += m[0];
             m = m[1..];
-        }
-
-        if (m.StartsWith("boxcanvas", StringComparison.OrdinalIgnoreCase))
-        {
-            return "river riverworld_ground";
         }
 
         // Clean out colons, slashes, and invalid characters from material identifier

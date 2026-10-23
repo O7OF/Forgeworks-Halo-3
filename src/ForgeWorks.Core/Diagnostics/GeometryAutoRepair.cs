@@ -350,15 +350,27 @@ public sealed class GeometryAutoRepair
             CapBoundaryHoles(mesh, report);
         }
 
-        // Step 4: Fallback for un-sealable meshes
+        // Step 4: Fallback for un-sealable meshes or open canyon rims
         int remainingOpen = CountOpenEdges(mesh);
         if (remainingOpen > 0 && !mesh.MaterialName.StartsWith("+sky", StringComparison.OrdinalIgnoreCase) && !mesh.Name.StartsWith("+sky", StringComparison.OrdinalIgnoreCase))
         {
             bool isMainStructure = mesh.Name.Contains("terrain", StringComparison.OrdinalIgnoreCase)
                 || mesh.Name.Contains("ground", StringComparison.OrdinalIgnoreCase)
-                || mesh.Name.Contains("bsp", StringComparison.OrdinalIgnoreCase);
+                || mesh.Name.Contains("bsp", StringComparison.OrdinalIgnoreCase)
+                || mesh.Name.Contains("cliff", StringComparison.OrdinalIgnoreCase)
+                || mesh.Name.Contains("icefields", StringComparison.OrdinalIgnoreCase);
 
-            if (!isMainStructure)
+            if (isMainStructure)
+            {
+                // Automatically seal open canyon/cliff rims across the top with +sky ceiling
+                int sealedCount = SealMeshAcrossTop(mesh, ceilingMargin: 1000.0f);
+                if (sealedCount > 0)
+                {
+                    report.HolesCapped += sealedCount;
+                    report.OpenEdgesBridged += sealedCount;
+                }
+            }
+            else
             {
                 if (!mesh.MaterialName.StartsWith("!") && !mesh.MaterialName.StartsWith("%!"))
                 {
@@ -1477,6 +1489,16 @@ public sealed class GeometryAutoRepair
             return;
         }
 
+        static bool IsDecalOrCard(string name)
+        {
+            string lower = name.ToLowerInvariant();
+            return lower.Contains("light") || lower.Contains("symbol") || lower.Contains("ladder") ||
+                   lower.Contains("teleporter") || lower.Contains("shield") || lower.Contains("stripe") ||
+                   lower.Contains("arrow") || lower.Contains("decal") || lower.Contains("chainlink") ||
+                   lower.Contains("grate") || lower.Contains("fence") || lower.Contains("leaf") ||
+                   lower.Contains("leaves") || lower.Contains("branch") || lower.Contains("vine");
+        }
+
         string mat = mesh.MaterialName;
         bool isWater = (mesh.Name.Contains("water", StringComparison.OrdinalIgnoreCase) && !mesh.Name.Contains("watertight", StringComparison.OrdinalIgnoreCase))
             || (mat.Contains("water", StringComparison.OrdinalIgnoreCase) && !mat.Contains("watertight", StringComparison.OrdinalIgnoreCase))
@@ -1490,10 +1512,20 @@ public sealed class GeometryAutoRepair
             mesh.IsCollideable = false;
             report.WaterQuadsFixed++;
         }
+        else if (IsDecalOrCard(mat) || IsDecalOrCard(mesh.Name))
+        {
+            // Decals and thin surface cards in Blam must be marked render-only (%! or !) to prevent open edge BSP errors
+            string clean = mat.TrimEnd('!');
+            if (!clean.StartsWith("%!") && !clean.StartsWith("!"))
+            {
+                clean = "%!" + clean.TrimStart('%');
+            }
+            mesh.MaterialName = clean;
+            mesh.IsCollideable = false;
+        }
         else if (mat.StartsWith("%"))
         {
             // Foliage / two-sided cards in Blam: prefix '%!' makes them render-only without collision.
-            // Strip any trailing '!' so Tool does not fail tag resolution.
             string clean = mat.TrimEnd('!');
             if (!clean.StartsWith("%!"))
             {
@@ -1515,6 +1547,15 @@ public sealed class GeometryAutoRepair
                 mesh.MaterialSlots[i] = sMat.TrimEnd('!');
                 report.WaterQuadsFixed++;
             }
+            else if (IsDecalOrCard(sMat))
+            {
+                string clean = sMat.TrimEnd('!');
+                if (!clean.StartsWith("%!") && !clean.StartsWith("!"))
+                {
+                    clean = "%!" + clean.TrimStart('%');
+                }
+                mesh.MaterialSlots[i] = clean;
+            }
             else if (sMat.StartsWith("%"))
             {
                 string clean = sMat.TrimEnd('!');
@@ -1531,5 +1572,158 @@ public sealed class GeometryAutoRepair
                 mesh.MaterialSlots[i] = clean;
             }
         }
+    }
+
+    /// <summary>
+    /// Seals any open map across the top (canyon walls, cliff perimeters, outdoor arena boundaries).
+    /// Detects the outer boundary loops of open edges and caps them across the top with inward-facing +sky triangles,
+    /// transforming an open sheet or canyon into a completely sealed, 100% airtight manifold volume with 0 open edges.
+    /// </summary>
+    public static int SealMeshAcrossTop(MeshObject mesh, float ceilingMargin = 1000.0f, string skyMaterial = "+sky")
+    {
+        if (mesh == null || mesh.Vertices.Count == 0 || mesh.Triangles.Count == 0) return 0;
+
+        int skyMatIdx = mesh.MaterialSlots.IndexOf(skyMaterial);
+        if (skyMatIdx < 0)
+        {
+            skyMatIdx = mesh.MaterialSlots.Count;
+            mesh.MaterialSlots.Add(skyMaterial);
+        }
+
+        // 1. Find all open boundary edges (edges with exactly 1 triangle face)
+        var edgeCount = new Dictionary<(int, int), int>();
+        var halfEdges = new Dictionary<int, List<int>>();
+
+        foreach (var tri in mesh.Triangles)
+        {
+            void AddEdge(int u, int v)
+            {
+                var k = u < v ? (u, v) : (v, u);
+                edgeCount[k] = edgeCount.GetValueOrDefault(k, 0) + 1;
+            }
+            AddEdge(tri.V0, tri.V1);
+            AddEdge(tri.V1, tri.V2);
+            AddEdge(tri.V2, tri.V0);
+        }
+
+        foreach (var tri in mesh.Triangles)
+        {
+            void AddHalf(int u, int v)
+            {
+                var k = u < v ? (u, v) : (v, u);
+                if (edgeCount.TryGetValue(k, out int c) && c == 1)
+                {
+                    if (!halfEdges.TryGetValue(u, out var list))
+                    {
+                        list = new List<int>(1);
+                        halfEdges[u] = list;
+                    }
+                    list.Add(v);
+                }
+            }
+            AddHalf(tri.V0, tri.V1);
+            AddHalf(tri.V1, tri.V2);
+            AddHalf(tri.V2, tri.V0);
+        }
+
+        if (halfEdges.Count == 0) return 0;
+
+        // 2. Trace boundary loops
+        var visited = new HashSet<(int, int)>();
+        var loops = new List<List<int>>();
+
+        foreach (var kvp in halfEdges)
+        {
+            int start = kvp.Key;
+            foreach (int next in kvp.Value)
+            {
+                if (visited.Contains((start, next))) continue;
+
+                var loop = new List<int> { start };
+                visited.Add((start, next));
+                int curr = next;
+
+                while (curr != start)
+                {
+                    loop.Add(curr);
+                    if (halfEdges.TryGetValue(curr, out var candidates) && candidates.Count > 0)
+                    {
+                        int picked = -1;
+                        foreach (var c in candidates)
+                        {
+                            if (!visited.Contains((curr, c)))
+                            {
+                                picked = c;
+                                break;
+                            }
+                        }
+                        if (picked != -1)
+                        {
+                            visited.Add((curr, picked));
+                            curr = picked;
+                        }
+                        else break;
+                    }
+                    else break;
+                }
+
+                if (curr == start && loop.Count >= 3)
+                {
+                    loops.Add(loop);
+                }
+            }
+        }
+
+        if (loops.Count == 0) return 0;
+
+        int totalSealed = 0;
+        foreach (var loop in loops)
+        {
+            int n = loop.Count;
+            if (n < 3) continue;
+
+            Vector3 sum = Vector3.Zero;
+            float maxZ = float.MinValue;
+            for (int i = 0; i < n; i++)
+            {
+                var pos = mesh.Vertices[loop[i]].Position;
+                sum += pos;
+                maxZ = MathF.Max(maxZ, pos.Z);
+            }
+            Vector3 center = sum / n;
+            float ceilingZ = maxZ + MathF.Max(ceilingMargin, 500.0f);
+
+            float signedArea = 0f;
+            for (int i = 0; i < n; i++)
+            {
+                var p0 = mesh.Vertices[loop[i]].Position;
+                var p1 = mesh.Vertices[loop[(i + 1) % n]].Position;
+                signedArea += (p0.X * p1.Y - p1.X * p0.Y);
+            }
+
+            int apexIdx = mesh.Vertices.Count;
+            var apex = new Vertex(new Vector3(center.X, center.Y, ceilingZ), -Vector3.UnitZ);
+            apex.UVs.Add(new Vector2(0.5f, 0.5f));
+            mesh.Vertices.Add(apex);
+
+            for (int i = 0; i < n; i++)
+            {
+                int p0 = loop[i];
+                int p1 = loop[(i + 1) % n];
+
+                if (signedArea >= 0f)
+                {
+                    mesh.Triangles.Add(new Triangle(p0, p1, apexIdx, skyMatIdx));
+                }
+                else
+                {
+                    mesh.Triangles.Add(new Triangle(p1, p0, apexIdx, skyMatIdx));
+                }
+                totalSealed++;
+            }
+        }
+
+        mesh.RecalculateNormals();
+        return totalSealed;
     }
 }

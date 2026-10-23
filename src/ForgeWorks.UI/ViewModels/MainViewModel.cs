@@ -93,6 +93,7 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private int _cellularStyleIndex = 0;    // 0=Caldera, 1=BasaltTerrace, 2=CrackedBasin
     [ObservableProperty] private bool _outerCliffWalls = true;
     [ObservableProperty] private float _perimeterCliffHeight = 600.0f;
+    [ObservableProperty] private bool _terrainSealAcrossTop = true;
     [ObservableProperty] private bool _terrainNoTiling = true;
     [ObservableProperty] private float _terrainUvTileScale = 300.0f;
     [ObservableProperty] private int _terrainTopologyIndex = 0; // 0=Quads, 1=Triangles, 2=Hexagons, 3=Polygonal
@@ -563,23 +564,27 @@ public partial class MainViewModel : ViewModelBase
     private void InitializeShaderCatalog()
     {
         string? root = FindProjectRoot(AppContext.BaseDirectory);
-        if (root == null)
-        {
-            _catalog = new HaloShaderCatalog();
-            return;
-        }
+        string bShaders = root != null ? Path.Combine(root, "halo3_blender_shaders.txt") : "";
+        string rShaders = root != null ? Path.Combine(root, "halo3_shaders.txt") : "";
 
-        string bShaders = Path.Combine(root, "halo3_blender_shaders.txt");
-        string rShaders = Path.Combine(root, "halo3_shaders.txt");
+        string targetEk = !string.IsNullOrEmpty(EkPath) && Directory.Exists(EkPath)
+            ? EkPath
+            : @"C:\Program Files (x86)\Steam\steamapps\common\H3EK";
+
         if (File.Exists(bShaders))
         {
-            _catalog = HaloShaderCatalog.LoadFromFiles(bShaders, rShaders);
-            PerformShaderSearch();
+            _catalog = HaloShaderCatalog.LoadFromFiles(bShaders, rShaders, Directory.Exists(targetEk) ? targetEk : null);
         }
         else
         {
             _catalog = new HaloShaderCatalog();
+            if (Directory.Exists(targetEk))
+            {
+                _catalog.LoadFromEditingKit(targetEk);
+            }
         }
+
+        PerformShaderSearch();
     }
 
     private static string? FindProjectRoot(string startDir)
@@ -636,6 +641,7 @@ public partial class MainViewModel : ViewModelBase
             ThermalErosionIterations = ThermalErosionIterations,
             OuterCliffWalls = OuterCliffWalls,
             PerimeterCliffHeight = PerimeterCliffHeight,
+            SealAcrossTop = TerrainSealAcrossTop,
             NoTiling = TerrainNoTiling,
             UvTileScale = TerrainUvTileScale,
             Topology = (TerrainTopologyType)Math.Clamp(TerrainTopologyIndex, 0, Enum.GetValues<TerrainTopologyType>().Length - 1),
@@ -2714,11 +2720,11 @@ public partial class MainViewModel : ViewModelBase
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
                 FileName = sapienExe,
-                Arguments = $@"levels\multi\{ActiveLevelName}\{ActiveLevelName}",
+                Arguments = "",
                 WorkingDirectory = EkPath,
                 UseShellExecute = true
             });
-            StatusMessage = $"Launched external sapien.exe for scenario 'levels\\multi\\{ActiveLevelName}\\{ActiveLevelName}'.";
+            StatusMessage = "Launched Sapien.exe into the scenario picker menu.";
         }
         catch (Exception ex)
         {

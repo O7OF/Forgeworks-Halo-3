@@ -78,6 +78,8 @@ public sealed class TerrainConfig
     // Realistic perimeter cliff walls & flattened plateau rim for skybox sealing
     public bool OuterCliffWalls { get; set; } = true;
     public float PerimeterCliffHeight { get; set; } = 600.0f;
+    public bool SealAcrossTop { get; set; } = false;        // Automatically seals maps across top with +sky ceiling (0 open edges)
+    public float CeilingHeight { get; set; } = 2500.0f;     // Skybox ceiling clearance above highest terrain peak
     public bool NoTiling { get; set; } = false;
     public float UvTileScale { get; set; } = 300.0f;
 
@@ -548,6 +550,28 @@ public sealed class TerrainGenerator
                 mesh.Triangles.Add(new Triangle(t0, b0, t1));
                 mesh.Triangles.Add(new Triangle(t1, b0, b1));
             }
+
+            // Seal bottom cap of skirt with center centroid fan so bottom is 100% closed
+            int floorCenterIdx = mesh.Vertices.Count;
+            float cX = startX + config.Width * 0.5f;
+            float cY = startY + config.Length * 0.5f;
+            var floorCenter = new Vertex(new Vector3(cX, cY, floorZ), -Vector3.UnitZ);
+            floorCenter.UVs.Add(new Vector2(0.5f, 0.5f));
+            mesh.Vertices.Add(floorCenter);
+
+            for (int i = 0; i < perimCount; i++)
+            {
+                int next = (i + 1) % perimCount;
+                int b0 = floorBaseIdx + i;
+                int b1 = floorBaseIdx + next;
+                mesh.Triangles.Add(new Triangle(b0, b1, floorCenterIdx));
+            }
+        }
+
+        // 6. Seal Map Across Top (eliminates all open edge errors across outer cliffs / skybox)
+        if (config.SealAcrossTop)
+        {
+            SealTerrainAcrossTop(mesh, heightMap, resX, resY, startX, startY, dx, dy, config);
         }
 
         // 8. Recalculate Vertex Normals
@@ -1199,6 +1223,107 @@ public sealed class TerrainGenerator
                 mesh.Triangles.Add(new Triangle(cIdx, i10, i11));
                 mesh.Triangles.Add(new Triangle(cIdx, i11, i01));
                 mesh.Triangles.Add(new Triangle(cIdx, i01, i00));
+            }
+        }
+    }
+
+    private static void SealTerrainAcrossTop(MeshObject mesh, float[,] heightMap, int resX, int resY, float startX, float startY, float dx, float dy, TerrainConfig config)
+    {
+        if (mesh == null || mesh.Vertices.Count == 0 || resX < 2 || resY < 2) return;
+
+        // Ensure +sky material exists in MaterialSlots
+        int skyMatIdx = mesh.MaterialSlots.IndexOf("+sky");
+        if (skyMatIdx < 0)
+        {
+            skyMatIdx = mesh.MaterialSlots.Count;
+            mesh.MaterialSlots.Add("+sky");
+        }
+
+        // Determine top rim height and ceiling elevation
+        float maxH = float.MinValue;
+        for (int x = 0; x < resX; x++)
+            for (int y = 0; y < resY; y++)
+                maxH = MathF.Max(maxH, heightMap[x, y]);
+
+        float ceilingZ = maxH + MathF.Max(config.CeilingHeight, 1000.0f);
+        float spanX = MathF.Max(config.Width, 1.0f);
+        float spanY = MathF.Max(config.Length, 1.0f);
+
+        if (config.Topology == TerrainTopologyType.Quads)
+        {
+            // For Quad topology, vertices are indexed as y * resX + x.
+            // Create a ceiling grid where the boundary vertices reuse the exact perimeter vertices of the terrain,
+            // and interior ceiling vertices are placed at ceilingZ facing downward (-Vector3.UnitZ).
+            int[,] ceilingIndices = new int[resX, resY];
+
+            for (int y = 0; y < resY; y++)
+            {
+                for (int x = 0; x < resX; x++)
+                {
+                    bool isBoundary = (x == 0 || x == resX - 1 || y == 0 || y == resY - 1);
+                    if (isBoundary)
+                    {
+                        // Stitched 1:1 with terrain rim: exact same vertex index!
+                        ceilingIndices[x, y] = y * resX + x;
+                    }
+                    else
+                    {
+                        float px = startX + x * dx;
+                        float py = startY + y * dy;
+                        // Arched dome toward center
+                        float nx = MathF.Abs(x - (resX - 1) * 0.5f) / ((resX - 1) * 0.5f);
+                        float ny = MathF.Abs(y - (resY - 1) * 0.5f) / ((resY - 1) * 0.5f);
+                        float dist = MathF.Max(nx, ny);
+                        float arch = MathF.Cos(dist * MathF.PI * 0.5f) * 500.0f;
+
+                        var vCeil = new Vertex(new Vector3(px, py, ceilingZ + arch), -Vector3.UnitZ);
+                        vCeil.UVs.Add(new Vector2((px - startX) / spanX, (py - startY) / spanY));
+                        ceilingIndices[x, y] = mesh.Vertices.Count;
+                        mesh.Vertices.Add(vCeil);
+                    }
+                }
+            }
+
+            // Add downward-facing ceiling quads (wound in reverse of terrain so boundary half-edges match 1:1)
+            for (int y = 0; y < resY - 1; y++)
+            {
+                for (int x = 0; x < resX - 1; x++)
+                {
+                    int c0 = ceilingIndices[x, y];
+                    int c1 = ceilingIndices[x + 1, y];
+                    int c2 = ceilingIndices[x, y + 1];
+                    int c3 = ceilingIndices[x + 1, y + 1];
+
+                    // Downward-facing normals (-Z)
+                    mesh.Triangles.Add(new Triangle(c0, c3, c1, skyMatIdx));
+                    mesh.Triangles.Add(new Triangle(c0, c2, c3, skyMatIdx));
+                }
+            }
+        }
+        else
+        {
+            // For other topologies: trace outer perimeter loop and cap with downward-facing centroid fan
+            var perimeterIndices = new List<int>();
+            for (int x = 0; x < resX; x++) perimeterIndices.Add(x);
+            for (int y = 1; y < resY; y++) perimeterIndices.Add(y * resX + (resX - 1));
+            for (int x = resX - 2; x >= 0; x--) perimeterIndices.Add((resY - 1) * resX + x);
+            for (int y = resY - 2; y > 0; y--) perimeterIndices.Add(y * resX);
+
+            int perimCount = perimeterIndices.Count;
+            int apexIdx = mesh.Vertices.Count;
+            float cX = startX + config.Width * 0.5f;
+            float cY = startY + config.Length * 0.5f;
+            var apex = new Vertex(new Vector3(cX, cY, ceilingZ + 1000.0f), -Vector3.UnitZ);
+            apex.UVs.Add(new Vector2(0.5f, 0.5f));
+            mesh.Vertices.Add(apex);
+
+            for (int i = 0; i < perimCount; i++)
+            {
+                int next = (i + 1) % perimCount;
+                int p0 = perimeterIndices[i];
+                int p1 = perimeterIndices[next];
+                // Downward facing: p0 -> p1 -> apex
+                mesh.Triangles.Add(new Triangle(p0, p1, apexIdx, skyMatIdx));
             }
         }
     }

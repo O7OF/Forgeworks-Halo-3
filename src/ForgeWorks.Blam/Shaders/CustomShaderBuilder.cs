@@ -137,10 +137,11 @@ public static class CustomShaderBuilder
         {
             string[] candidateTemplates = new[]
             {
-                Path.Combine(ekPath, "tags", "shaders", "invalid.shader"),
-                Path.Combine(ekPath, "tags", "levels", "multi", "custom_canvas", "shaders", "blue_panel_light.shader"),
                 Path.Combine(ekPath, "tags", "levels", "multi", "chill", "shaders", "chill_metal.shader"),
-                Path.Combine(ekPath, "tags", "levels", "multi", "salvation", "shaders", "sal_rock.shader")
+                Path.Combine(ekPath, "tags", "levels", "multi", "chill", "shaders", "chill_snow.shader"),
+                Path.Combine(ekPath, "tags", "levels", "multi", "riverworld", "shaders", "riverworld_ground.shader"),
+                Path.Combine(ekPath, "tags", "levels", "multi", "salvation", "shaders", "sal_rock.shader"),
+                Path.Combine(ekPath, "tags", "levels", "multi", "custom_canvas", "shaders", "blue_panel_light.shader")
             };
 
             foreach (var candidate in candidateTemplates)
@@ -150,39 +151,58 @@ public static class CustomShaderBuilder
                     try
                     {
                         byte[] raw = File.ReadAllBytes(candidate);
-                        byte[] bitmBytes = Encoding.ASCII.GetBytes("bitm");
+                        string ascii = Encoding.ASCII.GetString(raw);
 
-                        // Look for bitmap tag reference chunk ('bitm') in tag file
-                        for (int i = 0; i <= raw.Length - 8; i++)
+                        // Find existing base map bitmap path in template (e.g. levels\multi\riverworld\bitmaps\riverworld_metal)
+                        // Must NOT match _bump normal maps!
+                        var matches = Regex.Matches(ascii, @"levels\\multi\\[a-zA-Z0-9_\\]+\\bitmaps\\[a-zA-Z0-9_]+");
+                        bool replaced = false;
+
+                        foreach (Match m in matches)
                         {
-                            if (raw[i] == bitmBytes[0] && raw[i + 1] == bitmBytes[1] &&
-                                raw[i + 2] == bitmBytes[2] && raw[i + 3] == bitmBytes[3])
+                            if (m.Value.EndsWith("_bump", StringComparison.OrdinalIgnoreCase)) continue;
+
+                            int offset = m.Index;
+                            int origLen = m.Length;
+                            byte[] newBytes = Encoding.ASCII.GetBytes(bitmRef);
+
+                            int copyLen = Math.Min(newBytes.Length, origLen);
+                            Array.Copy(newBytes, 0, raw, offset, copyLen);
+                            // Null-terminate and zero pad remainder if new string is shorter
+                            for (int k = copyLen; k < origLen; k++)
                             {
-                                int strOffset = i + 8;
-                                if (strOffset < raw.Length - 64)
-                                {
-                                    byte[] newPath = Encoding.ASCII.GetBytes(bitmRef + "\0");
-                                    int copyLen = Math.Min(newPath.Length, 128);
-                                    if (strOffset + copyLen <= raw.Length)
-                                    {
-                                        Array.Copy(newPath, 0, raw, strOffset, copyLen);
-                                    }
-                                }
+                                raw[offset + k] = 0;
                             }
+                            replaced = true;
+                            break;
                         }
 
-                        File.WriteAllBytes(fullShaderTagPath, raw);
-                        return;
+                        if (replaced)
+                        {
+                            File.WriteAllBytes(fullShaderTagPath, raw);
+                            return;
+                        }
                     }
                     catch
                     {
-                        // Fall back to clean binary synthesis
+                        // Fall back to next candidate
                     }
                 }
             }
         }
 
-        // Standalone binary synthesis for .shader (rmsh) tag
+        // Standalone fallback: copy any valid available retail shader in tags
+        if (!string.IsNullOrEmpty(ekPath) && Directory.Exists(ekPath))
+        {
+            string anyShader = Path.Combine(ekPath, "tags", "levels", "multi", "chill", "shaders", "chill_metal.shader");
+            if (File.Exists(anyShader))
+            {
+                File.Copy(anyShader, fullShaderTagPath, overwrite: true);
+                return;
+            }
+        }
+
+        // Standalone binary synthesis for .shader (rmsh) tag (used in unit tests / mock environments)
         using var stream = File.Create(fullShaderTagPath);
         using var writer = new BinaryWriter(stream, Encoding.ASCII);
 

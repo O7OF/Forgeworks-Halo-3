@@ -11,7 +11,9 @@ public sealed record HaloShaderEntry(
     string ShaderType,
     string LevelPrefix,
     string Category = "General",
-    bool IsVerified = false
+    bool IsVerified = false,
+    string? TexturePath = null,
+    bool IsTerrainShader = false
 );
 
 public sealed class HaloShaderCatalog
@@ -39,7 +41,7 @@ public sealed class HaloShaderCatalog
         "Special"
     };
 
-    public static HaloShaderCatalog LoadFromFiles(string blenderShadersFile, string? rawTagPathsFile = null)
+    public static HaloShaderCatalog LoadFromFiles(string blenderShadersFile, string? rawTagPathsFile = null, string? ekPath = null)
     {
         var catalog = new HaloShaderCatalog();
 
@@ -53,7 +55,219 @@ public sealed class HaloShaderCatalog
             catalog.ParseRawTagPathsFile(rawTagPathsFile);
         }
 
+        if (!string.IsNullOrEmpty(ekPath) && Directory.Exists(ekPath))
+        {
+            catalog.LoadFromEditingKit(ekPath);
+        }
+
         return catalog;
+    }
+
+    /// <summary>
+    /// Scans H3EK tags and data directories to load all authentic Halo 3 shaders and textures.
+    /// Indexes terrain folders from every map (multiplayer, solo, dlc) and filters out
+    /// non-environment shaders (holograms, cortana, vfx) that do not render on terrain.
+    /// </summary>
+    public void LoadFromEditingKit(string ekPath)
+    {
+        if (string.IsNullOrWhiteSpace(ekPath) || !Directory.Exists(ekPath)) return;
+
+        string tagsDir = Path.Combine(ekPath, "tags");
+        string dataDir = Path.Combine(ekPath, "data");
+        if (!Directory.Exists(tagsDir)) return;
+
+        // 1. Parse shader_collections.txt to map prefixes <-> directories
+        var prefixToDir = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var dirToPrefix = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        string collectionsPath = Path.Combine(tagsDir, "levels", "shader_collections.txt");
+        if (File.Exists(collectionsPath))
+        {
+            foreach (var rawLine in File.ReadAllLines(collectionsPath))
+            {
+                string line = rawLine.Trim();
+                if (string.IsNullOrEmpty(line) || line.StartsWith(";")) continue;
+
+                var parts = line.Split(new[] { '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length >= 2)
+                {
+                    string prefix = parts[0].Trim();
+                    string relDir = parts[1].Trim().TrimEnd('\\', '/').ToLowerInvariant();
+                    prefixToDir[prefix] = relDir;
+                    dirToPrefix.TryAdd(relDir, prefix);
+                    // Also map directory with trailing /shaders or without
+                    if (relDir.EndsWith("shaders"))
+                    {
+                        string parent = Path.GetDirectoryName(relDir)?.ToLowerInvariant() ?? "";
+                        if (!string.IsNullOrEmpty(parent)) dirToPrefix.TryAdd(parent, prefix);
+                    }
+                    else
+                    {
+                        dirToPrefix.TryAdd($"{relDir}\\shaders", prefix);
+                    }
+                }
+            }
+        }
+
+        // 2. Scan tags\levels (and tags\scenarios\shaders) for all valid shaders
+        var searchRoots = new List<string>();
+        string levelsTags = Path.Combine(tagsDir, "levels");
+        if (Directory.Exists(levelsTags)) searchRoots.Add(levelsTags);
+        string scenariosTags = Path.Combine(tagsDir, "scenarios", "shaders");
+        if (Directory.Exists(scenariosTags)) searchRoots.Add(scenariosTags);
+
+        var shaderExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ".shader",
+            ".shader_terrain",
+            ".shader_foliage",
+            ".shader_water",
+            ".shader_custom"
+        };
+
+        foreach (var root in searchRoots)
+        {
+            try
+            {
+                var files = Directory.EnumerateFiles(root, "*.*", SearchOption.AllDirectories);
+                foreach (var file in files)
+                {
+                    string ext = Path.GetExtension(file);
+                    if (!shaderExtensions.Contains(ext)) continue;
+
+                    string relTagPath = Path.GetRelativePath(tagsDir, file);
+                    string lowerPath = relTagPath.ToLowerInvariant();
+
+                    // Filter out shaders that do not render as environment geometry (holograms, VFX, UI)
+                    if (!IsEnvironmentRenderable(lowerPath, ext))
+                        continue;
+
+                    string fileNameWithoutExt = Path.GetFileNameWithoutExtension(file);
+                    string relDir = Path.GetDirectoryName(relTagPath)?.ToLowerInvariant() ?? "";
+
+                    // Check if shader is in a terrain folder or has terrain shader type
+                    bool isTerrainFolder = lowerPath.Contains(@"\terrain\") || lowerPath.Contains(@"/terrain/") ||
+                                           lowerPath.Contains(@"\nature\") || lowerPath.Contains(@"/nature/") ||
+                                           relDir.EndsWith("terrain") || ext.Equals(".shader_terrain", StringComparison.OrdinalIgnoreCase);
+
+                    // Determine prefix from shader_collections.txt or directory path
+                    string prefix = "";
+                    if (dirToPrefix.TryGetValue(relDir, out var mappedPrefix))
+                    {
+                        prefix = mappedPrefix;
+                    }
+                    else
+                    {
+                        // Check if part of levels\multi\<level> or levels\dlc\<level> or levels\solo\<level>
+                        var parts = relDir.Split(new[] { '\\', '/' });
+                        int levelsIdx = Array.FindIndex(parts, p => p.Equals("levels", StringComparison.OrdinalIgnoreCase));
+                        if (levelsIdx >= 0 && levelsIdx + 2 < parts.Length)
+                        {
+                            string mapFolder = parts[levelsIdx + 2];
+                            if (LevelPrefixAliases.TryGetValue(mapFolder, out var alias))
+                            {
+                                prefix = alias;
+                            }
+                            else
+                            {
+                                prefix = mapFolder;
+                            }
+                        }
+                        else if (parts.Length > 0)
+                        {
+                            prefix = parts[^1];
+                        }
+                    }
+
+                    string matName = !string.IsNullOrEmpty(prefix)
+                        ? $"{prefix} {fileNameWithoutExt}"
+                        : fileNameWithoutExt;
+
+                    // Check if corresponding texture exists in data\
+                    string? matchingTexture = null;
+                    if (Directory.Exists(dataDir))
+                    {
+                        string candidateTif = Path.Combine(dataDir, relDir.Replace("shaders", "bitmaps"), $"{fileNameWithoutExt}.tif");
+                        if (File.Exists(candidateTif))
+                        {
+                            matchingTexture = candidateTif;
+                        }
+                        else
+                        {
+                            // Check direct bitmaps folder
+                            string directTif = Path.Combine(dataDir, relDir, $"{fileNameWithoutExt}.tif");
+                            if (File.Exists(directTif)) matchingTexture = directTif;
+                        }
+                    }
+
+                    string category = isTerrainFolder ? "Terrain" : DetermineCategory(matName, relTagPath, ext);
+                    bool isVerified = true; // Actual H3EK tag files on disk are verified working retail shaders!
+
+                    var entry = new HaloShaderEntry(
+                        MaterialName: matName,
+                        TagPath: relTagPath,
+                        ShaderType: ext,
+                        LevelPrefix: prefix,
+                        Category: category,
+                        IsVerified: isVerified,
+                        TexturePath: matchingTexture,
+                        IsTerrainShader: isTerrainFolder
+                    );
+
+                    AddEntry(entry);
+
+                    // Also add alias without prefix if not already present
+                    if (!string.IsNullOrEmpty(prefix) && !_byMaterialName.ContainsKey(fileNameWithoutExt))
+                    {
+                        _byMaterialName[fileNameWithoutExt] = entry;
+                    }
+                }
+            }
+            catch
+            {
+                // Directory enumeration fallback
+            }
+        }
+    }
+
+    /// <summary>
+    /// Validates whether a shader tag renders as opaque/solid environment geometry in-game.
+    /// Excludes holograms, Cortana VFX, UI screens, particles, null/invisibles, and decals.
+    /// </summary>
+    public static bool IsEnvironmentRenderable(string lowerTagPath, string extension)
+    {
+        // 1. Reject non-environment shader extensions
+        if (extension.Equals(".shader_halogram", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".shader_cortana", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".shader_decal", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        // 2. Reject VFX, UI, cinematic, and particles folders
+        if (lowerTagPath.Contains(@"\fx\") || lowerTagPath.Contains(@"/fx/") ||
+            lowerTagPath.Contains(@"\effects\") || lowerTagPath.Contains(@"/effects/") ||
+            lowerTagPath.Contains(@"\particles\") || lowerTagPath.Contains(@"/particles/") ||
+            lowerTagPath.Contains(@"\ui\") || lowerTagPath.Contains(@"/ui/") ||
+            lowerTagPath.Contains(@"\cinematics\") || lowerTagPath.Contains(@"/cinematics/") ||
+            lowerTagPath.Contains(@"\null_object\") || lowerTagPath.Contains(@"/null_object/"))
+        {
+            return false;
+        }
+
+        // 3. Reject invisible, clip, and utility shaders
+        string fn = Path.GetFileNameWithoutExtension(lowerTagPath);
+        if (fn.Equals("invisible", StringComparison.OrdinalIgnoreCase) ||
+            fn.Equals("player_clip", StringComparison.OrdinalIgnoreCase) ||
+            fn.Equals("bullet_clip", StringComparison.OrdinalIgnoreCase) ||
+            fn.Equals("player_physics", StringComparison.OrdinalIgnoreCase) ||
+            fn.Equals("seamsealer", StringComparison.OrdinalIgnoreCase) ||
+            fn.Equals("invalid", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return true;
     }
 
     public void ParseBlenderShadersFile(string filePath)
@@ -82,6 +296,9 @@ public sealed class HaloShaderCatalog
                 string tagPath = match.Groups[2].Value.Trim();
                 string type = match.Groups[3].Value.Trim();
 
+                if (!IsEnvironmentRenderable(tagPath.ToLowerInvariant(), type))
+                    continue;
+
                 // Extract prefix from material name (e.g. "boxcanvas blue_panel_light" -> "boxcanvas")
                 int spaceIdx = matName.IndexOf(' ');
                 string prefix = spaceIdx > 0 ? matName[..spaceIdx] : currentLevel;
@@ -100,6 +317,10 @@ public sealed class HaloShaderCatalog
         {
             string trimmed = line.Trim();
             if (string.IsNullOrEmpty(trimmed) || !trimmed.Contains("shaders"))
+                continue;
+
+            string ext = Path.GetExtension(trimmed);
+            if (!IsEnvironmentRenderable(trimmed.ToLowerInvariant(), ext))
                 continue;
 
             // e.g. "levels\dlc\armory\shaders\armory_cliff"
@@ -139,6 +360,20 @@ public sealed class HaloShaderCatalog
         ["construct"] = "con",
         ["cyberdyne"] = "cyber",
         ["shared"] = "mpshare",
+        ["boxcanvas"] = "boxcanvas",
+        ["chill"] = "chill",
+        ["guardian"] = "guardian",
+        ["highground"] = "highground",
+        ["bunkerworld"] = "bunkerworld",
+        ["icefields"] = "icefields",
+        ["docks"] = "docks",
+        ["ghosttown"] = "ghosttown",
+        ["armory"] = "armory",
+        ["avalanche"] = "s3dava",
+        ["lockout"] = "s3dlock",
+        ["powerhouse"] = "s3dpwhs",
+        ["waterfall"] = "s3dwtf",
+        ["reactor"] = "s3dreactor"
     };
 
     public static string DetermineCategory(string matName, string tagPath, string shaderType)
@@ -152,7 +387,7 @@ public sealed class HaloShaderCatalog
             return "Foliage & Bark";
         if (lower.Contains("rock") || lower.Contains("cliff") || lower.Contains("stone") || lower.Contains("boulder") || lower.Contains("basalt") || lower.Contains("crag") || lower.Contains("gravel") || lower.Contains("rubble"))
             return "Rock & Cliff";
-        if (lower.Contains("terrain") || lower.Contains("ground") || lower.Contains("sand") || lower.Contains("dirt") || lower.Contains("mud") || lower.Contains("earth") || lower.Contains("snow"))
+        if (lower.Contains("terrain") || lower.Contains("ground") || lower.Contains("sand") || lower.Contains("dirt") || lower.Contains("mud") || lower.Contains("earth") || lower.Contains("snow") || lower.Contains("ice") || lower.Contains("icefields") || lower.Contains("glacier"))
             return "Terrain";
         if (lower.Contains("covenant") || lower.Contains("purple") || lower.Contains("hull") || lower.Contains("brute") || lower.Contains("forerunner") || lower.Contains("sentinel"))
             return "Covenant";
@@ -164,7 +399,7 @@ public sealed class HaloShaderCatalog
     private static readonly HashSet<string> VerifiedLevelPrefixes = new(StringComparer.OrdinalIgnoreCase)
     {
         "river", "chill", "construct", "con", "guardian", "highground", "bunkerworld",
-        "deadlock", "lockout", "salvation", "snowbound", "sb", "zanzibar", "zan", "cyber", "cyberdyne", "boxcanvas"
+        "deadlock", "lockout", "salvation", "snowbound", "sb", "zanzibar", "zan", "cyber", "cyberdyne", "boxcanvas", "icefields"
     };
 
     public static bool CheckIsVerified(string matName, string tagPath, string levelPrefix)
@@ -176,14 +411,22 @@ public sealed class HaloShaderCatalog
         string lower = (matName + " " + tagPath).ToLowerInvariant();
         return lower.Contains("riverworld") || lower.Contains("chill") || lower.Contains("construct") ||
                lower.Contains("guardian") || lower.Contains("highground") || lower.Contains("bunkerworld") ||
-               lower.Contains("snowbound") || lower.Contains("zanzibar");
+               lower.Contains("snowbound") || lower.Contains("zanzibar") || lower.Contains("icefields");
     }
 
     private void AddEntry(HaloShaderEntry rawEntry)
     {
-        string category = DetermineCategory(rawEntry.MaterialName, rawEntry.TagPath, rawEntry.ShaderType);
+        string category = rawEntry.Category != "General" && rawEntry.Category != "Custom"
+            ? rawEntry.Category
+            : DetermineCategory(rawEntry.MaterialName, rawEntry.TagPath, rawEntry.ShaderType);
+
         bool isVerified = rawEntry.IsVerified || CheckIsVerified(rawEntry.MaterialName, rawEntry.TagPath, rawEntry.LevelPrefix);
-        var entry = rawEntry with { Category = category, IsVerified = isVerified };
+        bool isTerrain = rawEntry.IsTerrainShader || category == "Terrain" ||
+                         rawEntry.ShaderType.Contains("terrain", StringComparison.OrdinalIgnoreCase) ||
+                         rawEntry.TagPath.EndsWith(".shader_terrain", StringComparison.OrdinalIgnoreCase) ||
+                         rawEntry.TagPath.Contains(@"\terrain\", StringComparison.OrdinalIgnoreCase);
+
+        var entry = rawEntry with { Category = category, IsVerified = isVerified, IsTerrainShader = isTerrain };
 
         if (_byMaterialName.TryAdd(entry.MaterialName, entry))
         {
@@ -203,17 +446,16 @@ public sealed class HaloShaderCatalog
             }
             catList.Add(entry);
 
-            if (category == "Terrain" || entry.ShaderType.Contains("terrain", StringComparison.OrdinalIgnoreCase) ||
-                entry.TagPath.EndsWith(".shader_terrain", StringComparison.OrdinalIgnoreCase))
+            if (isTerrain)
             {
                 _terrainShaders.Add(entry);
             }
         }
     }
 
-    public void RegisterCustomShader(string materialName, string tagPath, string levelPrefix = "", string category = "Custom")
+    public void RegisterCustomShader(string materialName, string tagPath, string levelPrefix = "", string category = "Custom", string? texturePath = null)
     {
-        AddEntry(new HaloShaderEntry(materialName, tagPath, ".shader", levelPrefix, category, IsVerified: true));
+        AddEntry(new HaloShaderEntry(materialName, tagPath, ".shader", levelPrefix, category, IsVerified: true, TexturePath: texturePath));
     }
 
     public bool IsValidShader(string materialName)

@@ -13,7 +13,7 @@
         x:Class="ForgeWorks.UI.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Icon="/Assets/avalonia-logo.ico"
-        Title="ForgeWorks Studio v2.1.0 - Halo 3 Blam! Engine Desktop Editor (Sapien + Guerilla + Blender + Blockbench)"
+        Title="ForgeWorks Studio v2.2.0 - Halo 3 Blam! Engine Desktop Editor (Sapien + Guerilla + Blender + Blockbench)"
         Background="#181a1f">
 
     <Window.Styles>
@@ -509,8 +509,8 @@
                     <Button Command="{Binding ToggleTestPlayCommand}" Background="#16a34a" Foreground="White" FontWeight="Bold" ToolTip.Tip="First-Person Ground Collision Walking Simulator (WASD to walk, Space to jump, ESC to exit)">
                         <TextBlock Text="🎮 Test Play"/>
                     </Button>
-                    <Button Command="{Binding LaunchExternalSapienCommand}" Background="#1e293b" Foreground="#38bdf8" ToolTip.Tip="Launch external sapien.exe from H3EK">
-                        <TextBlock Text="🚀 Launch Sapien.exe"/>
+                    <Button Command="{Binding LaunchExternalSapienCommand}" Background="#1e293b" Foreground="#38bdf8" ToolTip.Tip="Launch external sapien.exe into the scenario picker menu">
+                        <TextBlock Text="🚀 Launch Sapien (Pick Scenario)"/>
                     </Button>
                 </StackPanel>
 
@@ -531,11 +531,6 @@
 
                 <!-- Right: Quick Fix & 1-Click Compile Actions -->
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                    <Button Command="{Binding PortIceFieldsToHalo3Command}" Background="#0284c7" Foreground="White" FontWeight="Bold" ToolTip.Tip="1-Click Port Ice Fields map to Halo 3 (Imports DAE, Scenery, and all 26 custom textures, then builds structure and map)">
-                        <StackPanel Orientation="Horizontal" Spacing="5">
-                            <TextBlock Text="❄️ Port Ice Fields"/>
-                        </StackPanel>
-                    </Button>
                     <Button Command="{Binding AutoRepairAllCommand}" Background="#059669" Foreground="White" FontWeight="Bold" ToolTip.Tip="Auto-weld vertices, remove duplicate faces and dissolve degenerates without destroying mesh topology">
                         <StackPanel Orientation="Horizontal" Spacing="5">
                             <TextBlock Text="🛠️ Fix Geo Errors"/>
@@ -793,6 +788,7 @@
                                 <Border Background="#121316" BorderBrush="#252932" BorderThickness="1" CornerRadius="4" Padding="6">
                                     <StackPanel Spacing="4">
                                         <CheckBox Content="Perimeter Cliff Rim (Watertight Sky Seal)" IsChecked="{Binding OuterCliffWalls}" FontSize="10" Foreground="#38bdf8" FontWeight="SemiBold" ToolTip.Tip="Outer perimeter rises into steep mountain walls and flattens into a plateau rim on top, making the sky seal look realistic and seamless."/>
+                                        <CheckBox Content="Seal Across Top (+Sky Ceiling)" IsChecked="{Binding TerrainSealAcrossTop}" FontSize="10" Foreground="#4ade80" FontWeight="SemiBold" ToolTip.Tip="Automatically bridges and seals map across the top cliff rim with downward-facing +sky ceiling, eliminating 100% of open edge errors in Tool &amp; Sapien."/>
                                         <Grid ColumnDefinitions="Auto,*" IsVisible="{Binding OuterCliffWalls}">
                                             <TextBlock Grid.Column="0" Text="Perimeter Height:" FontSize="10" Foreground="#94a3b8" VerticalAlignment="Center" Margin="0,0,6,0"/>
                                             <NumericUpDown Grid.Column="1" Value="{Binding PerimeterCliffHeight}" Minimum="100" Maximum="3000"/>
