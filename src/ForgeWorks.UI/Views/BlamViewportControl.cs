@@ -1476,6 +1476,38 @@ void main()
         }
         else if (props.IsLeftButtonPressed)
         {
+            if (!alt && Vm is { } vmObj && vmObj.SelectionMode == SubElementSelectionMode.Object && vmObj.ToolMode == ViewportTool.Navigate)
+            {
+                var ray = MeshSculptEngine.ScreenPointToRay(
+                    new Vector2((float)_lastPointerPos.X, (float)_lastPointerPos.Y),
+                    (float)Bounds.Width, (float)Bounds.Height, _camera);
+
+                MeshObject? hitMesh = null;
+                float closestDist = float.MaxValue;
+                foreach (var m in vmObj.SceneGraph.GetLevelMeshes())
+                {
+                    if (MeshSculptEngine.RayIntersectsMesh(ray, m, out var hitPt, out _, out _))
+                    {
+                        float d = Vector3.Distance(ray.Origin, hitPt);
+                        if (d < closestDist)
+                        {
+                            closestDist = d;
+                            hitMesh = m;
+                        }
+                    }
+                }
+
+                if (hitMesh != null)
+                {
+                    var node = vmObj.SceneGraph.FindNodeForMesh(hitMesh);
+                    if (node != null)
+                    {
+                        vmObj.HandleNodeClicked(node, shift, ctrl);
+                        BuildGizmo(vmObj);
+                        RequestNextFrameRendering();
+                    }
+                }
+            }
             _isOrbiting = true; // Navigate tool: left-drag orbits
         }
 

@@ -4,6 +4,36 @@ All notable technical changes, architectural improvements, bug fixes, and patch 
 
 ---
 
+## [v2.4.1] - 2026-10-24
+
+### 1. Multi-Mesh Rigid Body Rotation & Shared Pivot Transformation
+- **The Issue**:
+  - Dragging the 3D Rotate Gizmo when multiple meshes were grabbed/selected only rotated `ActiveMesh` in place, leaving all other selected meshes stationary and unaligned.
+- **The Fix**:
+  - Revamped `RotateSelectedEntity` to inspect `SelectedSceneNodes.Count > 1`.
+  - Calculates the exact combined bounding box center across all selected objects (`ActiveGizmoPosition`).
+  - Rotates all vertices and normals of all grabbed meshes together as a single rigid body around the shared pivot.
+  - Rotates each node's position and synchronizes Sapien entity orientations (`PlayerStartingLocation`, `NetgameEquipment`, `TriggerVolume`, `ModelMarker`) using exact quaternion rotation math.
+
+### 2. Viewport 3D Object Picking & Multi-Selection
+- Implemented raycast mesh picking directly in the 3D Viewport in Object Mode:
+  - Left-clicking on a mesh selects it immediately.
+  - Shift-clicking or Ctrl-clicking meshes directly in the 3D viewport adds or toggles them in the multi-selection.
+  - Automatically updates the 3D transform gizmo to center on the combined selection.
+
+### 3. One-Click 90° Map & Selection Reorientation (Fixing Sideways Maps)
+- Added dedicated 90° flip operations to effortlessly fix imported maps and meshes that spawn in sideways:
+  - **`RotateEntireMapX90` / `RotateEntireMapY90` / `RotateEntireMapZ90`**: Rotates all level geometry, portals, spawns, and weapons by ±90° around the map's geometric bounding center.
+  - **`RotateSelectionX90` / `RotateSelectionY90` / `RotateSelectionZ90`**: Rotates whatever is currently selected (or the entire map if nothing selected) by ±90°.
+  - Added dedicated quick flip buttons (`⟳ X 90°`, `⟳ Y 90°`, `⟳ Z 90°`) directly in the 3D transform toolbar.
+  - Added `🔄 Rotate Selection / Map` submenu in the `Edit` menu.
+
+### 4. Select All Scene Objects (`Ctrl + A`)
+- Bound `Ctrl + A` and added **"Select All"** buttons in the `Edit` menu and Outliner toolbar.
+- Grabs all scene geometry and entities instantly, allowing the user to reposition, rescale, or reorient the entire level with a single keystroke.
+
+---
+
 ## [v2.4.0] - 2026-10-24
 
 ### 1. Riverworld Water Generation & Authentic Blam 4-Channel UV Architecture

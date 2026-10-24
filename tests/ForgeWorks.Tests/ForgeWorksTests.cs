@@ -12,6 +12,7 @@ using ForgeWorks.Blam.Scenario;
 using ForgeWorks.Blam.Shaders;
 using ForgeWorks.Blam.Tags;
 using ForgeWorks.Blam.Tool;
+using ForgeWorks.UI.ViewModels;
 using Xunit;
 
 namespace ForgeWorks.Tests;
@@ -3726,7 +3727,109 @@ public class ForgeWorksTests
             if (Directory.Exists(tempEk)) Directory.Delete(tempEk, true);
         }
     }
+
+    private static MeshObject CreateTestCube(string name, float size, Vector3 offset)
+    {
+        var m = new MeshObject(name);
+        float h = size * 0.5f;
+        m.Vertices.Add(new Vertex(new Vector3(-h, -h, -h) + offset, Vector3.UnitZ));
+        m.Vertices.Add(new Vertex(new Vector3(h, -h, -h) + offset, Vector3.UnitZ));
+        m.Vertices.Add(new Vertex(new Vector3(h, h, -h) + offset, Vector3.UnitZ));
+        m.Vertices.Add(new Vertex(new Vector3(-h, h, -h) + offset, Vector3.UnitZ));
+        m.Vertices.Add(new Vertex(new Vector3(-h, -h, h) + offset, Vector3.UnitZ));
+        m.Vertices.Add(new Vertex(new Vector3(h, -h, h) + offset, Vector3.UnitZ));
+        m.Vertices.Add(new Vertex(new Vector3(h, h, h) + offset, Vector3.UnitZ));
+        m.Vertices.Add(new Vertex(new Vector3(-h, h, h) + offset, Vector3.UnitZ));
+        m.Triangles.Add(new Triangle(0, 1, 2));
+        m.Triangles.Add(new Triangle(0, 2, 3));
+        m.Triangles.Add(new Triangle(4, 6, 5));
+        m.Triangles.Add(new Triangle(4, 7, 6));
+        return m;
+    }
+
+    [Fact]
+    public void RotateSelectedEntity_MultipleGrabbedMeshes_RotatesAllMeshesTogetherAroundSharedPivot()
+    {
+        var vm = new MainViewModel();
+        var cube1 = CreateTestCube("Cube_Left", 10f, new Vector3(-100f, 0f, 0f));
+        var cube2 = CreateTestCube("Cube_Right", 10f, new Vector3(100f, 0f, 0f));
+
+        var node1 = vm.SceneGraph.AddGeometryMesh(cube1);
+        var node2 = vm.SceneGraph.AddGeometryMesh(cube2);
+
+        vm.SelectedSceneNodes.Clear();
+        vm.SelectedSceneNodes.Add(node1);
+        vm.SelectedSceneNodes.Add(node2);
+        vm.UpdateMultiSelectionGizmo();
+
+        Assert.NotNull(vm.ActiveGizmoPosition);
+        Assert.True(MathF.Abs(vm.ActiveGizmoPosition.Value.X) < 1.0f); // Pivot center is at X=0
+
+        // Rotate 90 degrees around Z axis (yaw, axis 3)
+        vm.RotateSelectedEntity(MathF.PI * 0.5f, 3);
+
+        // Before: cube1 was at X=-100, Y=0; cube2 was at X=+100, Y=0
+        // After 90 deg rotation around (0,0,0) on Z:
+        // x' = x*cos - y*sin = 0
+        // y' = x*sin + y*cos:
+        // For cube1 (x=-100): y' = -100
+        // For cube2 (x=+100): y' = +100
+        float c1AvgY = cube1.Vertices.Average(v => v.Position.Y);
+        float c2AvgY = cube2.Vertices.Average(v => v.Position.Y);
+
+        Assert.True(MathF.Abs(c1AvgY - (-100f)) < 1.0f, $"Cube1 expected Y=-100, got {c1AvgY}");
+        Assert.True(MathF.Abs(c2AvgY - 100f) < 1.0f, $"Cube2 expected Y=100, got {c2AvgY}");
+    }
+
+    [Fact]
+    public void RotateMapByAngle_RotatesAllLevelMeshesAndEntitiesTogether()
+    {
+        var vm = new MainViewModel();
+        vm.ClearScene();
+        var terrain = CreateTestCube("Terrain_Base", 200f, Vector3.Zero);
+        var bunker = CreateTestCube("UNSC_Bunker", 20f, new Vector3(50f, 0f, 10f));
+
+        vm.SceneGraph.AddGeometryMesh(terrain);
+        vm.SceneGraph.AddGeometryMesh(bunker);
+
+        var spawn = new ForgeWorks.Blam.Scenario.PlayerStartingLocation(new Vector3(50f, 0f, 0f), 90f, 0, 0);
+        vm.Spawns.Add(spawn);
+
+        // Rotate entire map 90 degrees around Z (axis 3)
+        vm.RotateEntireMapZ90();
+
+        // Spawn was at (50, 0, 0). After 90 deg rotation: newPos should be near (0, 50, 0)
+        var rotatedSpawn = vm.Spawns[0];
+        Assert.True(MathF.Abs(rotatedSpawn.Position.Y - 50f) < 1.0f, $"Spawn Y expected 50, got {rotatedSpawn.Position.Y}");
+        Assert.True(MathF.Abs(rotatedSpawn.Position.X) < 1.0f, $"Spawn X expected 0, got {rotatedSpawn.Position.X}");
+        // Facing rotated by 90 deg: 90 + 90 = 180
+        Assert.Equal(180f, rotatedSpawn.FacingAngle);
+    }
+
+    [Fact]
+    public void RotateSelection_SidewaysMapReorientation_Rotates90DegreesOnX()
+    {
+        var vm = new MainViewModel();
+        vm.ClearScene();
+        var mesh = CreateTestCube("Sideways_Mesh", 20f, new Vector3(0f, 50f, 0f));
+
+        var node = vm.SceneGraph.AddGeometryMesh(mesh);
+        vm.SelectedSceneNodes.Add(node);
+        vm.SelectedSceneNode = node;
+        vm.SetActiveMesh(mesh);
+        vm.ActiveGizmoPosition = Vector3.Zero; // Rotate around world origin
+
+        // Rotate 90 deg on X (axis 1 - Pitch)
+        vm.RotateSelectionX90();
+
+        // (0, 50, 0) rotated 90 on X around origin: y' = y*cos - z*sin = 0; z' = y*sin + z*cos = 50
+        float avgZ = mesh.Vertices.Average(v => v.Position.Z);
+        float avgY = mesh.Vertices.Average(v => v.Position.Y);
+        Assert.True(MathF.Abs(avgZ - 50f) < 1.0f, $"Expected Z=50, got {avgZ}");
+        Assert.True(MathF.Abs(avgY) < 1.0f, $"Expected Y=0, got {avgY}");
+    }
 }
+
 
 
 

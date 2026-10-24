@@ -13,7 +13,7 @@
         x:Class="ForgeWorks.UI.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Icon="/Assets/avalonia-logo.ico"
-        Title="ForgeWorks Studio v2.4.0 - Blam Editing Suite For Halo 3"
+        Title="ForgeWorks Studio v2.4.1 - Blam Editing Suite For Halo 3"
         Background="#181a1f">
 
     <Window.Styles>
@@ -52,6 +52,7 @@
     </Window.Styles>
 
     <Window.KeyBindings>
+        <KeyBinding Gesture="Ctrl+A" Command="{Binding SelectAllSceneObjectsCommand}"/>
         <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveProjectCommand}"/>
         <KeyBinding Gesture="Ctrl+Shift+S" Command="{Binding SaveProjectAsCommand}"/>
         <KeyBinding Gesture="Ctrl+O" Command="{Binding OpenProjectCommand}"/>
@@ -120,10 +121,27 @@
                             <MenuItem Header="Undo" Command="{Binding UndoCommand}" InputGesture="Ctrl+Z"/>
                             <MenuItem Header="Redo" Command="{Binding RedoCommand}" InputGesture="Ctrl+Y"/>
                             <Separator/>
+                            <MenuItem Header="Select All Scene Objects" Command="{Binding SelectAllSceneObjectsCommand}" InputGesture="Ctrl+A"/>
                             <MenuItem Header="Selection Mode: Object (1)" Command="{Binding SetSelectionModeObjectCommand}"/>
                             <MenuItem Header="Selection Mode: Vertex (2)" Command="{Binding SetSelectionModeVertexCommand}"/>
                             <MenuItem Header="Selection Mode: Edge (3)" Command="{Binding SetSelectionModeEdgeCommand}"/>
                             <MenuItem Header="Selection Mode: Face (4)" Command="{Binding SetSelectionModeFaceCommand}"/>
+                            <Separator/>
+                            <MenuItem Header="🔄 Rotate Selection / Map">
+                                <MenuItem Header="Rotate Selected 90° X (Pitch Up)" Command="{Binding RotateSelectionX90Command}"/>
+                                <MenuItem Header="Rotate Selected -90° X (Pitch Down)" Command="{Binding RotateSelectionXMinus90Command}"/>
+                                <MenuItem Header="Rotate Selected 90° Y (Roll Left)" Command="{Binding RotateSelectionY90Command}"/>
+                                <MenuItem Header="Rotate Selected -90° Y (Roll Right)" Command="{Binding RotateSelectionYMinus90Command}"/>
+                                <MenuItem Header="Rotate Selected 90° Z (Yaw Turn)" Command="{Binding RotateSelectionZ90Command}"/>
+                                <MenuItem Header="Rotate Selected -90° Z" Command="{Binding RotateSelectionZMinus90Command}"/>
+                                <Separator/>
+                                <MenuItem Header="🌐 Rotate Entire Map 90° X (Fix Sideways Map)" Command="{Binding RotateEntireMapX90Command}"/>
+                                <MenuItem Header="🌐 Rotate Entire Map -90° X" Command="{Binding RotateEntireMapXMinus90Command}"/>
+                                <MenuItem Header="🌐 Rotate Entire Map 90° Y" Command="{Binding RotateEntireMapY90Command}"/>
+                                <MenuItem Header="🌐 Rotate Entire Map -90° Y" Command="{Binding RotateEntireMapYMinus90Command}"/>
+                                <MenuItem Header="🌐 Rotate Entire Map 90° Z" Command="{Binding RotateEntireMapZ90Command}"/>
+                                <MenuItem Header="🌐 Rotate Entire Map -90° Z" Command="{Binding RotateEntireMapZMinus90Command}"/>
+                            </MenuItem>
                             <Separator/>
                             <MenuItem Header="Extrude Selected Faces (E)" Command="{Binding ExtrudeSelectedFacesCommand}"/>
                             <MenuItem Header="Inset Selected Faces (I)" Command="{Binding InsetSelectedFacesCommand}"/>
@@ -363,6 +381,17 @@
                                     <TextBlock Text="⤢" FontSize="11" Foreground="#38bdf8"/>
                                     <TextBlock Text="Scale" FontSize="10"/>
                                 </StackPanel>
+                            </Button>
+                            <Separator Width="1" Height="14" Background="#334155" Margin="2,0"/>
+                            <!-- Quick 90° Flip & Map Reorientation Buttons -->
+                            <Button Command="{Binding RotateSelectionX90Command}" Background="#1e293b" Foreground="#f87171" FontWeight="SemiBold" Padding="5,3" ToolTip.Tip="Rotate Selection 90° on X (Pitch) - Fix sideways map or mesh">
+                                <TextBlock Text="⟳ X 90°" FontSize="9"/>
+                            </Button>
+                            <Button Command="{Binding RotateSelectionY90Command}" Background="#1e293b" Foreground="#4ade80" FontWeight="SemiBold" Padding="5,3" ToolTip.Tip="Rotate Selection 90° on Y (Roll) - Fix sideways map or mesh">
+                                <TextBlock Text="⟳ Y 90°" FontSize="9"/>
+                            </Button>
+                            <Button Command="{Binding RotateSelectionZ90Command}" Background="#1e293b" Foreground="#60a5fa" FontWeight="SemiBold" Padding="5,3" ToolTip.Tip="Rotate Selection 90° on Z (Yaw)">
+                                <TextBlock Text="⟳ Z 90°" FontSize="9"/>
                             </Button>
                         </StackPanel>
                     </Border>
@@ -1368,6 +1397,9 @@
                             </StackPanel>
                             
                             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="3">
+                                <Button Command="{Binding SelectAllSceneObjectsCommand}" Background="#1e293b" Foreground="#38bdf8" FontWeight="SemiBold" Padding="5,2" ToolTip.Tip="Select All Objects in Map (Ctrl+A)">
+                                    <TextBlock Text="Select All" FontSize="10"/>
+                                </Button>
                                 <Button Command="{Binding ClearSceneCommand}" Background="#dc2626" Foreground="White" FontWeight="Bold" Padding="5,2" ToolTip.Tip="Clear Scene (Remove all geometry and reset canvas)">
                                     <TextBlock Text="🧹 Clear" FontSize="10"/>
                                 </Button>

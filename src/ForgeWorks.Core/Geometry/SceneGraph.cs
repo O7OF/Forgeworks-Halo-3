@@ -211,6 +211,20 @@ public sealed class SceneContainer
     }
 
     /// <summary>
+    /// Finds the SceneNode in the scene hierarchy that references the specified mesh.
+    /// </summary>
+    public SceneNode? FindNodeForMesh(MeshObject mesh)
+    {
+        if (mesh == null) return null;
+        foreach (var node in GetAllNodesFlat())
+        {
+            if (node.Mesh == mesh)
+                return node;
+        }
+        return null;
+    }
+
+    /// <summary>
     /// Clears and resets geometry under b_levelroot.
     /// </summary>
     public void ClearGeometry()

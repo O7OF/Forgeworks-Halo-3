@@ -1,11 +1,11 @@
-# ForgeWorks Studio - Blam Editing Suite For Halo 3 (v2.4.0)
+# ForgeWorks Studio - Blam Editing Suite For Halo 3 (v2.4.1)
 
 [![.NET 10.0](https://img.shields.io/badge/.NET-10.0-blue.svg)](https://dotnet.microsoft.com/)
 [![Halo 3 MCC](https://img.shields.io/badge/Halo%203-H3EK%20MCC-green.svg)](https://store.steampowered.com/app/976730/Halo_The_Master_Chief_Collection/)
 [![Avalonia UI](https://img.shields.io/badge/UI-Avalonia%2011-purple.svg)](https://avaloniaui.net/)
 [![Silk.NET OpenGL](https://img.shields.io/badge/Renderer-Silk.NET%20OpenGL%203.3-orange.svg)](https://github.com/dotnet/Silk.NET)
 [![F# 9.0](https://img.shields.io/badge/F%23-9.0%20Mesh%20Math-blueviolet.svg)](https://fsharp.org/)
-[![Changelog](https://img.shields.io/badge/Changelog-v2.4.0-informational.svg)](CHANGELOG.md)
+[![Changelog](https://img.shields.io/badge/Changelog-v2.4.1-informational.svg)](CHANGELOG.md)
 
 **ForgeWorks Studio** is an all-in-one desktop environment designed specifically for Halo 3 Blam! Engine level design, DCC modeling, tag editing, and automated map compilation. It unifies previously fragmented community toolchains into a modern workstation combining procedural level design, 3D DCC blockout, Sapien scenario placement, Guerilla binary tag reflection, and 1-click compilation into Halo: The Master Chief Collection (MCC).
 
@@ -19,6 +19,8 @@
 ### 1. DCC 3D Modeling & Level Blockout
 - **Sub-Element Selection Modes**: Full Object (`1`), Vertex (`2`), Edge (`3`), and Face (`4`) selection.
 - **Topology Operations**: Face Extrusion (`E`), Insetting (`I`), Loop Cuts (`K`), Face Dissolution (`X`), Surface Subdivision, Normal Inversion, and Clean Mesh Merging.
+- **Multi-Mesh Rigid Body Rotation & Transformation**: Multi-select any combination of meshes or grab the entire map (`Ctrl + A`) to translate, scale, or rotate them together around a shared geometric pivot.
+- **One-Click 90° Map & Selection Reorientation**: Instantly fix maps or assets that spawn in sideways with dedicated 90° flip buttons (`⟳ X 90°`, `⟳ Y 90°`, `⟳ Z 90°`) for Pitch, Roll, and Yaw.
 - **3D Procedural Primitives**: Instant generation of Cubes/Boxes, Cylinder Pillars, Spheres, Cones, Torus Rings, Ground Planes, Wedge Ramps, and Hollow Rooms with customizable wall thickness.
 - **Interactive Transform Gizmos**: Screen-space projected Translation, Rotation, and Scaling gizmos with live numeric feedback.
 
@@ -215,6 +217,7 @@ dotnet fsi tests/run_icefields_pipeline.fsx
 
 | Shortcut | Action |
 | :--- | :--- |
+| **`Ctrl + A`** | Select All Objects in Map (grab entire level) |
 | **`Ctrl + N`** | New Project (clean scene graph and palette) |
 | **`Ctrl + S`** | Save current `.blam` project |
 | **`Ctrl + Shift + S`** | Save `.blam` project as new file |

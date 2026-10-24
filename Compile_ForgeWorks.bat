@@ -33,7 +33,7 @@ if %errorlevel% neq 0 (
     echo [WARNING] Some tests failed. Please review the output above.
 ) else (
     echo.
-    echo [SUCCESS] Solution compiled and all 109 tests passed with 0 errors!
+    echo [SUCCESS] Solution compiled and all 112 tests passed with 0 errors!
 )
 
 echo.

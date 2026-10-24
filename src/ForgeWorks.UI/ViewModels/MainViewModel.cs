@@ -1523,8 +1523,31 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
+    public static Vector3 RotatePointAroundAxis(Vector3 p, float cos, float sin, int axis)
+    {
+        if (axis == 1) // Rotate around X (pitch)
+        {
+            float y = p.Y * cos - p.Z * sin;
+            float z = p.Y * sin + p.Z * cos;
+            return new Vector3(p.X, y, z);
+        }
+        else if (axis == 2) // Rotate around Y (roll)
+        {
+            float x = p.X * cos + p.Z * sin;
+            float z = -p.X * sin + p.Z * cos;
+            return new Vector3(x, p.Y, z);
+        }
+        else // Rotate around Z (yaw)
+        {
+            float x = p.X * cos - p.Y * sin;
+            float y = p.X * sin + p.Y * cos;
+            return new Vector3(x, y, p.Z);
+        }
+    }
+
     public void RotateSelectedEntity(float angleRad, int axis)
     {
+        // 1. Sub-element face selection rotation
         if (SelectionMode == SubElementSelectionMode.Face && SelectedFaceIndices.Count > 0 && ActiveMesh != null && ActiveGizmoPosition.HasValue)
         {
             Vector3 origin = ActiveGizmoPosition.Value;
@@ -1542,25 +1565,7 @@ public partial class MainViewModel : ViewModelBase
             foreach (int vIdx in faceVerts)
             {
                 var p = ActiveMesh.Vertices[vIdx].Position - origin;
-                if (axis == 1)
-                {
-                    float y = p.Y * cos - p.Z * sin;
-                    float z = p.Y * sin + p.Z * cos;
-                    p = new Vector3(p.X, y, z);
-                }
-                else if (axis == 2)
-                {
-                    float x = p.X * cos + p.Z * sin;
-                    float z = -p.X * sin + p.Z * cos;
-                    p = new Vector3(x, p.Y, z);
-                }
-                else
-                {
-                    float x = p.X * cos - p.Y * sin;
-                    float y = p.X * sin + p.Y * cos;
-                    p = new Vector3(x, y, p.Z);
-                }
-                ActiveMesh.Vertices[vIdx].Position = origin + p;
+                ActiveMesh.Vertices[vIdx].Position = origin + RotatePointAroundAxis(p, cos, sin, axis);
             }
             ActiveMesh.RecalculateNormals();
             MeshVersion++;
@@ -1568,6 +1573,95 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
+        // 2. Multi-selected nodes rotation: Rotates all grabbed meshes and entities together as a unified rigid body
+        if (SelectedSceneNodes.Count > 1)
+        {
+            if (!ActiveGizmoPosition.HasValue) UpdateMultiSelectionGizmo();
+            if (ActiveGizmoPosition.HasValue)
+            {
+                Vector3 origin = ActiveGizmoPosition.Value;
+                float cos = MathF.Cos(angleRad);
+                float sin = MathF.Sin(angleRad);
+                var processedMeshes = new HashSet<MeshObject>();
+
+                foreach (var node in SelectedSceneNodes)
+                {
+                    if (node.Mesh != null && processedMeshes.Add(node.Mesh))
+                    {
+                        var verts = node.Mesh.Vertices;
+                        int count = verts.Count;
+                        for (int i = 0; i < count; i++)
+                        {
+                            var p = verts[i].Position - origin;
+                            verts[i].Position = origin + RotatePointAroundAxis(p, cos, sin, axis);
+                            verts[i].Normal = Vector3.Normalize(RotatePointAroundAxis(verts[i].Normal, cos, sin, axis));
+                        }
+                        node.Mesh.RecalculateNormals();
+                    }
+
+                    var np = node.Position - origin;
+                    node.Position = origin + RotatePointAroundAxis(np, cos, sin, axis);
+
+                    // Synchronize TagPayload positions & orientations if applicable
+                    if (node.TagPayload is PlayerStartingLocation s)
+                    {
+                        int idx = Spawns.IndexOf(s);
+                        Vector3 newPos = origin + RotatePointAroundAxis(s.Position - origin, cos, sin, axis);
+                        float newFacing = s.FacingAngle;
+                        if (axis == 3)
+                        {
+                            newFacing += angleRad * 180.0f / MathF.PI;
+                            while (newFacing > 360f) newFacing -= 360f;
+                            while (newFacing < 0f) newFacing += 360f;
+                        }
+                        var updated = new PlayerStartingLocation(newPos, newFacing, s.TeamDesignator, s.GameTypeFlags);
+                        if (idx >= 0) Spawns[idx] = updated;
+                        node.TagPayload = updated;
+                        if (SelectedSpawn == s) SelectedSpawn = updated;
+                    }
+                    else if (node.TagPayload is NetgameEquipment eq)
+                    {
+                        int idx = Equipment.IndexOf(eq);
+                        Vector3 newPos = origin + RotatePointAroundAxis(eq.Position - origin, cos, sin, axis);
+                        Vector3 axisVector = axis == 1 ? Vector3.UnitX : axis == 2 ? Vector3.UnitY : Vector3.UnitZ;
+                        var rotQ = Quaternion.CreateFromAxisAngle(axisVector, angleRad);
+                        var updated = new NetgameEquipment(newPos, rotQ * eq.Orientation, eq.ItemTagPath, eq.SpawnType, eq.RespawnTime);
+                        if (idx >= 0) Equipment[idx] = updated;
+                        node.TagPayload = updated;
+                        if (SelectedEquipment == eq) SelectedEquipment = updated;
+                    }
+                    else if (node.TagPayload is TriggerVolume vol)
+                    {
+                        int idx = Volumes.IndexOf(vol);
+                        Vector3 newPos = origin + RotatePointAroundAxis(vol.Position - origin, cos, sin, axis);
+                        Vector3 axisVector = axis == 1 ? Vector3.UnitX : axis == 2 ? Vector3.UnitY : Vector3.UnitZ;
+                        var rotQ = Quaternion.CreateFromAxisAngle(axisVector, angleRad);
+                        var updated = new TriggerVolume(vol.Name, newPos, vol.Extents, rotQ * vol.Rotation, vol.VolumeType);
+                        if (idx >= 0) Volumes[idx] = updated;
+                        node.TagPayload = updated;
+                        if (SelectedVolume == vol) SelectedVolume = updated;
+                    }
+                    else if (node.TagPayload is ModelMarker m)
+                    {
+                        int idx = Markers.IndexOf(m);
+                        Vector3 newPos = origin + RotatePointAroundAxis(m.Position - origin, cos, sin, axis);
+                        Vector3 axisVector = axis == 1 ? Vector3.UnitX : axis == 2 ? Vector3.UnitY : Vector3.UnitZ;
+                        var rotQ = Quaternion.CreateFromAxisAngle(axisVector, angleRad);
+                        var updated = new ModelMarker(m.Name, m.NodeIndex, newPos, rotQ * m.Rotation, m.Radius);
+                        if (idx >= 0) Markers[idx] = updated;
+                        node.TagPayload = updated;
+                        if (SelectedMarker == m) SelectedMarker = updated;
+                    }
+                }
+
+                MeshVersion++;
+                OverlayVersion++;
+                StatusMessage = $"Rotated {SelectedSceneNodes.Count} selected objects together on Axis {axis}.";
+                return;
+            }
+        }
+
+        // 3. Single mesh or entity rotation
         if (ActiveMesh != null && ActiveGizmoPosition.HasValue)
         {
             Vector3 origin = ActiveGizmoPosition.Value;
@@ -1577,25 +1671,8 @@ public partial class MainViewModel : ViewModelBase
             for (int i = 0; i < ActiveMesh.Vertices.Count; i++)
             {
                 var p = ActiveMesh.Vertices[i].Position - origin;
-                if (axis == 1) // Rotate around X (pitch)
-                {
-                    float y = p.Y * cos - p.Z * sin;
-                    float z = p.Y * sin + p.Z * cos;
-                    p = new Vector3(p.X, y, z);
-                }
-                else if (axis == 2) // Rotate around Y (roll)
-                {
-                    float x = p.X * cos + p.Z * sin;
-                    float z = -p.X * sin + p.Z * cos;
-                    p = new Vector3(x, p.Y, z);
-                }
-                else // Rotate around Z (yaw)
-                {
-                    float x = p.X * cos - p.Y * sin;
-                    float y = p.X * sin + p.Y * cos;
-                    p = new Vector3(x, y, p.Z);
-                }
-                ActiveMesh.Vertices[i].Position = origin + p;
+                ActiveMesh.Vertices[i].Position = origin + RotatePointAroundAxis(p, cos, sin, axis);
+                ActiveMesh.Vertices[i].Normal = Vector3.Normalize(RotatePointAroundAxis(ActiveMesh.Vertices[i].Normal, cos, sin, axis));
             }
             ActiveMesh.RecalculateNormals();
             MeshVersion++;
@@ -1614,6 +1691,183 @@ public partial class MainViewModel : ViewModelBase
                 StatusMessage = $"Rotated spawn facing to {newFacing:F0}°";
             }
         }
+    }
+
+    /// <summary>
+    /// Rotates the entire map (all geometry meshes and Sapien entities) around the map's bounding center.
+    /// Used when imported maps or terrains spawn in sideways and need 90-degree reorientation.
+    /// </summary>
+    public void RotateMapByAngle(float angleRad, int axis)
+    {
+        var levelMeshes = SceneGraph.GetLevelMeshes();
+        if (levelMeshes.Count == 0 && Spawns.Count == 0 && Equipment.Count == 0)
+        {
+            StatusMessage = "No map geometry or entities to rotate.";
+            return;
+        }
+
+        string axisName = axis == 1 ? "X (Pitch)" : axis == 2 ? "Y (Roll)" : "Z (Yaw)";
+        int deg = (int)MathF.Round(angleRad * 180.0f / MathF.PI);
+        PushHistoryState($"Rotate Entire Map {deg}° on {axisName}");
+
+        Vector3 min = new Vector3(float.MaxValue);
+        Vector3 max = new Vector3(float.MinValue);
+        bool hasBounds = false;
+
+        foreach (var mesh in levelMeshes)
+        {
+            if (mesh.Vertices.Count > 0)
+            {
+                var (bMin, bMax) = CsgBooleanEngine.ComputeBounds(mesh);
+                min = Vector3.Min(min, bMin);
+                max = Vector3.Max(max, bMax);
+                hasBounds = true;
+            }
+        }
+
+        Vector3 origin = hasBounds ? (min + max) * 0.5f : Vector3.Zero;
+        float cos = MathF.Cos(angleRad);
+        float sin = MathF.Sin(angleRad);
+
+        foreach (var mesh in levelMeshes)
+        {
+            var verts = mesh.Vertices;
+            int count = verts.Count;
+            for (int i = 0; i < count; i++)
+            {
+                var p = verts[i].Position - origin;
+                verts[i].Position = origin + RotatePointAroundAxis(p, cos, sin, axis);
+                verts[i].Normal = Vector3.Normalize(RotatePointAroundAxis(verts[i].Normal, cos, sin, axis));
+            }
+            mesh.RecalculateNormals();
+        }
+
+        foreach (var node in SceneGraph.GetAllNodesFlat())
+        {
+            if (node != SceneGraph.Root && node != SceneGraph.LevelRoot && node != SceneGraph.PortalsRoot)
+            {
+                var np = node.Position - origin;
+                node.Position = origin + RotatePointAroundAxis(np, cos, sin, axis);
+            }
+        }
+
+        for (int i = 0; i < Spawns.Count; i++)
+        {
+            var s = Spawns[i];
+            Vector3 newPos = origin + RotatePointAroundAxis(s.Position - origin, cos, sin, axis);
+            float newFacing = s.FacingAngle;
+            if (axis == 3)
+            {
+                newFacing = (newFacing + deg) % 360f;
+                if (newFacing < 0f) newFacing += 360f;
+            }
+            Spawns[i] = new PlayerStartingLocation(newPos, newFacing, s.TeamDesignator, s.GameTypeFlags);
+        }
+
+        Vector3 mapAxisVector = axis == 1 ? Vector3.UnitX : axis == 2 ? Vector3.UnitY : Vector3.UnitZ;
+        Quaternion mapRotQ = Quaternion.CreateFromAxisAngle(mapAxisVector, angleRad);
+
+        for (int i = 0; i < Equipment.Count; i++)
+        {
+            var eq = Equipment[i];
+            Vector3 newPos = origin + RotatePointAroundAxis(eq.Position - origin, cos, sin, axis);
+            Equipment[i] = new NetgameEquipment(newPos, mapRotQ * eq.Orientation, eq.ItemTagPath, eq.SpawnType, eq.RespawnTime);
+        }
+
+        for (int i = 0; i < Volumes.Count; i++)
+        {
+            var vol = Volumes[i];
+            Vector3 newPos = origin + RotatePointAroundAxis(vol.Position - origin, cos, sin, axis);
+            Volumes[i] = new TriggerVolume(vol.Name, newPos, vol.Extents, mapRotQ * vol.Rotation, vol.VolumeType);
+        }
+
+        for (int i = 0; i < Markers.Count; i++)
+        {
+            var m = Markers[i];
+            Vector3 newPos = origin + RotatePointAroundAxis(m.Position - origin, cos, sin, axis);
+            Markers[i] = new ModelMarker(m.Name, m.NodeIndex, newPos, mapRotQ * m.Rotation, m.Radius);
+        }
+
+        UpdateMultiSelectionGizmo();
+        MeshVersion++;
+        OverlayVersion++;
+        StatusMessage = $"Rotated entire map ({levelMeshes.Count} meshes, {Spawns.Count} spawns) by {deg}° on {axisName}.";
+    }
+
+    /// <summary>
+    /// Rotates the current selection (or entire map if nothing selected) by the specified angle on the specified axis.
+    /// </summary>
+    public void RotateSelectionByAngle(float angleRad, int axis)
+    {
+        if (SelectedSceneNodes.Count > 1)
+        {
+            string axisName = axis == 1 ? "X (Pitch)" : axis == 2 ? "Y (Roll)" : "Z (Yaw)";
+            int deg = (int)MathF.Round(angleRad * 180.0f / MathF.PI);
+            PushHistoryState($"Rotate Selection {deg}° on {axisName}");
+            RotateSelectedEntity(angleRad, axis);
+        }
+        else if (ActiveMesh != null || SelectedSceneNode != null)
+        {
+            string axisName = axis == 1 ? "X (Pitch)" : axis == 2 ? "Y (Roll)" : "Z (Yaw)";
+            int deg = (int)MathF.Round(angleRad * 180.0f / MathF.PI);
+            PushHistoryState($"Rotate Object {deg}° on {axisName}");
+            RotateSelectedEntity(angleRad, axis);
+        }
+        else
+        {
+            RotateMapByAngle(angleRad, axis);
+        }
+    }
+
+    [RelayCommand] public void RotateSelectionX90() => RotateSelectionByAngle(MathF.PI * 0.5f, 1);
+    [RelayCommand] public void RotateSelectionY90() => RotateSelectionByAngle(MathF.PI * 0.5f, 2);
+    [RelayCommand] public void RotateSelectionZ90() => RotateSelectionByAngle(MathF.PI * 0.5f, 3);
+    [RelayCommand] public void RotateSelectionXMinus90() => RotateSelectionByAngle(-MathF.PI * 0.5f, 1);
+    [RelayCommand] public void RotateSelectionYMinus90() => RotateSelectionByAngle(-MathF.PI * 0.5f, 2);
+    [RelayCommand] public void RotateSelectionZMinus90() => RotateSelectionByAngle(-MathF.PI * 0.5f, 3);
+
+    [RelayCommand] public void RotateEntireMapX90() => RotateMapByAngle(MathF.PI * 0.5f, 1);
+    [RelayCommand] public void RotateEntireMapY90() => RotateMapByAngle(MathF.PI * 0.5f, 2);
+    [RelayCommand] public void RotateEntireMapZ90() => RotateMapByAngle(MathF.PI * 0.5f, 3);
+    [RelayCommand] public void RotateEntireMapXMinus90() => RotateMapByAngle(-MathF.PI * 0.5f, 1);
+    [RelayCommand] public void RotateEntireMapYMinus90() => RotateMapByAngle(-MathF.PI * 0.5f, 2);
+    [RelayCommand] public void RotateEntireMapZMinus90() => RotateMapByAngle(-MathF.PI * 0.5f, 3);
+
+    [RelayCommand]
+    public void SelectAllSceneObjects()
+    {
+        var allNodes = SceneGraph.GetAllNodesFlat()
+            .Where(n => n != SceneGraph.Root && n != SceneGraph.LevelRoot && n != SceneGraph.PortalsRoot && n != SceneGraph.EntitiesRoot && n != SceneGraph.MarkersRoot)
+            .ToList();
+
+        if (allNodes.Count == 0)
+        {
+            var levelMeshes = SceneGraph.GetLevelMeshes();
+            foreach (var m in levelMeshes)
+            {
+                var n = SceneGraph.FindNodeForMesh(m);
+                if (n != null) allNodes.Add(n);
+            }
+        }
+
+        if (allNodes.Count == 0)
+        {
+            StatusMessage = "No objects in scene to select.";
+            return;
+        }
+
+        SelectedSceneNodes.Clear();
+        foreach (var node in allNodes)
+        {
+            node.IsSelected = true;
+            SelectedSceneNodes.Add(node);
+        }
+
+        SelectedSceneNode = allNodes.FirstOrDefault();
+        var primaryMesh = SelectedSceneNode?.Mesh ?? SceneGraph.GetLevelMeshes().FirstOrDefault();
+        if (primaryMesh != null) SetActiveMesh(primaryMesh);
+        UpdateMultiSelectionGizmo();
+        StatusMessage = $"Selected all {SelectedSceneNodes.Count} objects in map (Ctrl+A). Ready to rotate or transform together.";
     }
 
     [RelayCommand] public void SetGizmoModeTranslate() { GizmoMode = GizmoMode.Translate; StatusMessage = "Gizmo Mode: Move (Translate)"; }
@@ -2479,28 +2733,35 @@ public partial class MainViewModel : ViewModelBase
     {
         if (SelectedSceneNodes.Count > 1)
         {
-            Vector3 center = Vector3.Zero;
-            int count = 0;
+            Vector3 min = new Vector3(float.MaxValue);
+            Vector3 max = new Vector3(float.MinValue);
+            bool hasBounds = false;
             foreach (var n in SelectedSceneNodes)
             {
-                if (n.Mesh != null)
+                if (n.Mesh != null && n.Mesh.Vertices.Count > 0)
                 {
                     var (bMin, bMax) = CsgBooleanEngine.ComputeBounds(n.Mesh);
-                    center += (bMin + bMax) * 0.5f;
-                    count++;
+                    min = Vector3.Min(min, bMin);
+                    max = Vector3.Max(max, bMax);
+                    hasBounds = true;
                 }
                 else
                 {
-                    center += n.Position;
-                    count++;
+                    min = Vector3.Min(min, n.Position);
+                    max = Vector3.Max(max, n.Position);
+                    hasBounds = true;
                 }
             }
-            if (count > 0) ActiveGizmoPosition = center / count;
+            if (hasBounds) ActiveGizmoPosition = (min + max) * 0.5f;
         }
         else if (SelectedSceneNode?.Mesh != null)
         {
             var (bMin, bMax) = CsgBooleanEngine.ComputeBounds(SelectedSceneNode.Mesh);
             ActiveGizmoPosition = (bMin + bMax) * 0.5f;
+        }
+        else if (SelectedSceneNode != null)
+        {
+            ActiveGizmoPosition = SelectedSceneNode.Position;
         }
     }
 
