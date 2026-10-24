@@ -5,7 +5,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Width="1100" Height="750" MinWidth="800" MinHeight="500"
+        Width="1100" Height="750" MinWidth="500" MinHeight="380"
         WindowStartupLocation="CenterOwner"
         x:Class="ForgeWorks.UI.Views.TagEditorWindow"
         x:DataType="vm:MainViewModel"
@@ -18,6 +18,9 @@
             <Setter Property="CornerRadius" Value="4"/>
             <Setter Property="Padding" Value="8,4"/>
             <Setter Property="FontSize" Value="11"/>
+        </Style>
+        <Style Selector="Button > TextBlock">
+            <Setter Property="TextWrapping" Value="Wrap"/>
         </Style>
         <Style Selector="TextBox">
             <Setter Property="Background" Value="#0f1013"/>
@@ -40,24 +43,24 @@
     <Grid RowDefinitions="Auto,*,Auto">
         <!-- 1. GUERILLA HEADER BAR -->
         <Border Grid.Row="0" Background="#1c1f26" BorderBrush="#282d38" BorderThickness="0,0,0,1" Padding="12,8">
-            <Grid ColumnDefinitions="Auto,*,Auto">
-                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <WrapPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="0,0,12,4">
                     <Border Background="#0284c7" CornerRadius="4" Padding="6,2">
                         <TextBlock Text="{Binding ActiveTagDocument.TagGroupMagic, FallbackValue='scnr'}" FontWeight="Bold" FontSize="11" Foreground="White"/>
                     </Border>
                     <TextBlock Text="GUERILLA TAG EDITOR" FontWeight="Bold" FontSize="13" Foreground="#f8fafc" VerticalAlignment="Center"/>
-                    <TextBlock Text="{Binding ActiveTagDocument.FilePath}" FontSize="11" Foreground="#94a3b8" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                    <TextBlock Text="{Binding ActiveTagDocument.FilePath}" FontSize="11" Foreground="#94a3b8" VerticalAlignment="Center" Margin="8,0,0,0" TextTrimming="CharacterEllipsis" MaxWidth="500"/>
                 </StackPanel>
 
-                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <Button Command="{Binding RefreshGuerillaTagDocumentCommand}" Background="#27272a" Foreground="#e4e4e7">
+                <WrapPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,4">
+                    <Button Command="{Binding RefreshGuerillaTagDocumentCommand}" Background="#27272a" Foreground="#e4e4e7" Margin="0,0,8,0">
                         <TextBlock Text="🔄 Reload"/>
                     </Button>
                     <Button Command="{Binding SaveScenarioTagCommand}" Background="#059669" Foreground="White" FontWeight="Bold">
                         <TextBlock Text="💾 Save / Commit Tag"/>
                     </Button>
-                </StackPanel>
-            </Grid>
+                </WrapPanel>
+            </WrapPanel>
         </Border>
 
         <!-- 2. MAIN GUERILLA TAG BODY TABS -->

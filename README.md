@@ -1,11 +1,11 @@
-# ForgeWorks Studio - Blam Editing Suite For Halo 3 (v2.4.1)
+# ForgeWorks Studio - Blam Editing Suite For Halo 3 (v2.4.2)
 
 [![.NET 10.0](https://img.shields.io/badge/.NET-10.0-blue.svg)](https://dotnet.microsoft.com/)
 [![Halo 3 MCC](https://img.shields.io/badge/Halo%203-H3EK%20MCC-green.svg)](https://store.steampowered.com/app/976730/Halo_The_Master_Chief_Collection/)
 [![Avalonia UI](https://img.shields.io/badge/UI-Avalonia%2011-purple.svg)](https://avaloniaui.net/)
 [![Silk.NET OpenGL](https://img.shields.io/badge/Renderer-Silk.NET%20OpenGL%203.3-orange.svg)](https://github.com/dotnet/Silk.NET)
 [![F# 9.0](https://img.shields.io/badge/F%23-9.0%20Mesh%20Math-blueviolet.svg)](https://fsharp.org/)
-[![Changelog](https://img.shields.io/badge/Changelog-v2.4.1-informational.svg)](CHANGELOG.md)
+[![Changelog](https://img.shields.io/badge/Changelog-v2.4.2-informational.svg)](CHANGELOG.md)
 
 **ForgeWorks Studio** is an all-in-one desktop environment designed specifically for Halo 3 Blam! Engine level design, DCC modeling, tag editing, and automated map compilation. It unifies previously fragmented community toolchains into a modern workstation combining procedural level design, 3D DCC blockout, Sapien scenario placement, Guerilla binary tag reflection, and 1-click compilation into Halo: The Master Chief Collection (MCC).
 

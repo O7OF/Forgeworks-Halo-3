@@ -4,6 +4,35 @@ All notable technical changes, architectural improvements, bug fixes, and patch 
 
 ---
 
+## [v2.4.2] - 2026-10-24
+
+### 1. Responsive UI Layout & Button Auto-Wrapping Across All Workspaces
+- **The Issue**:
+  - On displays with lower resolution (720p/768p/1080p with high DPI scaling) or when the application window was resized, rigid horizontal `StackPanel` and multi-column `Grid` containers caused buttons in the contextual workbench ribbon, outliner header, paint toolbars, and compiler console to be pushed off-screen and rendered inaccessible.
+- **The Fix**:
+  - Replaced rigid single-row containers with responsive Avalonia `<WrapPanel Orientation="Horizontal">` across all UI elements, allowing toolbars to gracefully wrap onto subsequent lines when horizontal space is constrained.
+  - **Top Workspace Bar**: Map name, engine status, and global action controls now wrap dynamically.
+  - **Contextual Ribbon (All 5 Modes)**:
+    - Left transform cluster (Undo/Redo, Wireframe, Gizmo T/R/S, and 90° quick flips) now wraps cleanly.
+    - Mode 0 (Edit Mode): Sub-Element Selection, DCC Face Operations (Extrude, Inset, Loop Cut, Dissolve, Subdivide, Merge, Optimize, Dissolve Flat, Fit to Grid), and CSG buttons wrap automatically.
+    - Mode 1 (Sculpt Mode): Brush presets, radius/falloff/strength sliders, and elevation buttons wrap.
+    - Mode 2 (Paint Mode): Active material picker, Fill All, Auto UVs, Seal Top, and Layer toggles wrap.
+    - Mode 3 (Sapien Mode): Palette selection, netgame equipment, spawn point placement, and test play wrap.
+    - Mode 4 (Guerilla Mode): Save tag, reload schema, and floating tag studio launch buttons wrap.
+    - Right cluster: Quick Fix Geo and 1-Click Fast Compile wrap into available space.
+  - **Paint & Shaders Tab**: Active shader action bar converted to a 2-tier responsive layout with wrapped buttons (`🏷️ Apply`, `🎨 Paint`, `Fill All`, `📐 UVs`, `🛡️ +Sky`).
+  - **Scene Outliner Toolbar**: Reorganized into a 2-row layout with wrapping buttons (`Select All`, `🧹 Clear`, `+ Spawn`, `+ Weapon`, `👁️`, `🗑️`).
+  - **Geometry Linter & Fixer Panel**: Wrapped entire tab in a `<ScrollViewer>` with bounded issue list, guaranteeing all 8 automated repair buttons (`Fix Overlapping`, `Seal Open Edges`, `Sanitize Halo 3`, `Low-Poly 50%`, `Swampthing Fix`, `Fix All Geo`, `Generate Rim`, `Auto-Seal Entire Map`) are always visible and scrollable.
+  - **Streaming Compiler Console**: Header controls (`📄 Open Tool Log`, `📁 Setup Map Folders`, `⚡ 1-Click Fast Compile`) now wrap responsively.
+  - **Floating Tag Editor Window**: Converted Guerilla header to `WrapPanel` and enabled text trimming on file paths.
+
+### 2. Universal Button Text Wrapping & Scaled Window Thresholds
+- Added global `<Style Selector="Button > TextBlock"><Setter Property="TextWrapping" Value="Wrap"/></Style>` in both `MainWindow.axaml` and `TagEditorWindow.axaml`.
+- Lowered `MainWindow` minimum constraints from `MinWidth="1180" MinHeight="720"` down to `MinWidth="900" MinHeight="550"`.
+- Lowered `TagEditorWindow` minimum constraints from `MinWidth="800" MinHeight="500"` down to `MinWidth="500" MinHeight="380"`.
+
+---
+
 ## [v2.4.1] - 2026-10-24
 
 ### 1. Multi-Mesh Rigid Body Rotation & Shared Pivot Transformation

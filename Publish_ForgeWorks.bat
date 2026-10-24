@@ -1,6 +1,6 @@
 @echo off
 setlocal
-title ForgeWorks Studio v2.4.1 - Standalone Executable Publisher
+title ForgeWorks Studio v2.4.2 - Standalone Executable Publisher
 
 echo ===============================================================================
 echo            FORGEWORKS STUDIO - COMPILE TO STANDALONE EXECUTABLE (WIN-X64)
