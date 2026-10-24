@@ -71,7 +71,10 @@ public sealed class AssExporter
             writer.WriteLine($";MATERIAL {i}");
             writer.WriteLine($"\"{cleanMaterials[i]}\"");
             writer.WriteLine("\"\""); // Material variant
-            writer.WriteLine("0");
+            if (version >= 4)
+            {
+                writer.WriteLine("0");
+            }
             writer.WriteLine();
         }
 

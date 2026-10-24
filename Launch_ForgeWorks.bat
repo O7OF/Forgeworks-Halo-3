@@ -1,10 +1,10 @@
 @echo off
 setlocal
-title ForgeWorks Studio v2.3.1 - Halo 3 Blam Engine Desktop Editor
+title ForgeWorks Studio v2.3.2 - Halo 3 Blam Engine Desktop Editor
 
 echo ===============================================================================
 echo                      FORGEWORKS STUDIO - HALO 3 BLAM
-echo               (Blam Editing Suite For Halo 3 v2.3.1)
+echo               (Blam Editing Suite For Halo 3 v2.3.2)
 echo ===============================================================================
 echo.
 

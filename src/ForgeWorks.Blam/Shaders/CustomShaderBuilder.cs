@@ -29,7 +29,8 @@ public static class CustomShaderBuilder
     public const string BitmapMagic = "bitm";
 
     /// <summary>
-    /// Converts a PNG, JPG, or BMP file to an uncompressed 24/32-bit TIFF required by tool.exe 'tool bitmaps'.
+    /// Converts a PNG, JPG, or BMP file to an uncompressed 32-bit ARGB TIFF required by tool.exe 'tool bitmaps'.
+    /// Ensures power-of-two dimensions, strips GDI+ metadata tags, and enforces CompressionNone.
     /// </summary>
     public static bool ConvertImageToTif(string sourceImagePath, string targetTifPath)
     {
@@ -40,14 +41,85 @@ public static class CustomShaderBuilder
             var dir = Path.GetDirectoryName(targetTifPath);
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
 
-            using var image = Image.FromFile(sourceImagePath);
-            image.Save(targetTifPath, ImageFormat.Tiff);
+            byte[] bytes = File.ReadAllBytes(sourceImagePath);
+            using var ms = new MemoryStream(bytes);
+            using var src = Image.FromStream(ms);
+
+            int targetW = EnsurePowerOfTwo(src.Width);
+            int targetH = EnsurePowerOfTwo(src.Height);
+
+            using var bmp = new Bitmap(targetW, targetH, PixelFormat.Format32bppArgb);
+            using (var g = Graphics.FromImage(bmp))
+            {
+                g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
+                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
+                g.Clear(Color.Transparent);
+                g.DrawImage(src, new Rectangle(0, 0, targetW, targetH));
+            }
+
+            return SaveCleanTiff(bmp, targetTifPath);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public static bool SaveCleanTiff(Bitmap bmp, string targetTifPath)
+    {
+        try
+        {
+            var dir = Path.GetDirectoryName(targetTifPath);
+            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+
+            // Strip private GDI+ property items (tags 0x5110, 0x5111, 0x5112, 0x0301, etc.)
+            foreach (var propId in bmp.PropertyIdList)
+            {
+                try { bmp.RemovePropertyItem(propId); } catch { }
+            }
+
+            var tiffEncoder = GetTiffEncoder();
+            if (tiffEncoder != null)
+            {
+                using var encoderParams = new EncoderParameters(1);
+                encoderParams.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Compression, (long)EncoderValue.CompressionNone);
+                bmp.Save(targetTifPath, tiffEncoder, encoderParams);
+            }
+            else
+            {
+                bmp.Save(targetTifPath, ImageFormat.Tiff);
+            }
+
             return true;
         }
         catch
         {
             return false;
         }
+    }
+
+    private static int EnsurePowerOfTwo(int val)
+    {
+        if (val <= 64) return 64;
+        if (val >= 4096) return 4096;
+        if ((val & (val - 1)) == 0) return val;
+
+        int p = 64;
+        while (p < val && p < 4096) p <<= 1;
+        int prev = p >> 1;
+        return (val - prev < p - val) ? prev : p;
+    }
+
+    private static ImageCodecInfo? GetTiffEncoder()
+    {
+        var codecs = ImageCodecInfo.GetImageEncoders();
+        for (int i = 0; i < codecs.Length; i++)
+        {
+            if (codecs[i].FormatID == ImageFormat.Tiff.Guid)
+                return codecs[i];
+        }
+        return null;
     }
 
     /// <summary>
@@ -498,7 +570,7 @@ public static class CustomShaderBuilder
             g.Clear(baseColor);
             using var pen = new Pen(Color.FromArgb(140, 140, 150), 2);
             g.DrawRectangle(pen, 4, 4, 503, 503);
-            bmp.Save(targetTifPath, ImageFormat.Tiff);
+            SaveCleanTiff(bmp, targetTifPath);
         }
         catch
         {

@@ -30,6 +30,7 @@ public sealed class BlamViewportControl : OpenGlControlBase, ICustomHitTest
     private const int ModeTerrainBlend = 0;
     private const int ModeUnlit = 1;
     private const int ModeLitSolid = 2;
+    private const int ModeWater = 3;
 
     private GL? _gl;
     private bool _isGles;
@@ -264,6 +265,26 @@ void main()
 
         vec3 blended = colGrass.rgb * wGrass + colRock.rgb * wRock + colSnow.rgb * wSnow + colMud.rgb * wMud;
         FragColor = vec4(blended * lighting, 1.0);
+        return;
+    }
+
+    if (uMode == 3)
+    {
+        // Halo 3 / Blam realistic translucent water rendering
+        vec3 viewDir = vec3(0.0, 0.0, 1.0);
+        vec3 halfDir = normalize(normalize(uLightDir) + viewDir);
+        float spec = pow(max(dot(n, halfDir), 0.0), 36.0) * 0.70;
+        float fresnel = pow(1.0 - max(n.z, 0.0), 2.2) * 0.22;
+
+        vec3 waterTint = uBaseColor.rgb;
+        if (uHasTexture == 1)
+        {
+            vec4 texCol = texture(uDiffuseMap, vTexCoord * 4.0);
+            waterTint = mix(waterTint, texCol.rgb, 0.35);
+        }
+
+        vec3 litWater = (waterTint + fresnel) * (lighting * 1.15) + vec3(spec);
+        FragColor = vec4(clamp(litWater, 0.0, 1.0), uBaseColor.a);
         return;
     }
 
@@ -539,7 +560,8 @@ void main()
                     var (mode, color) = ClassifyMaterial(mesh, matIdx);
                     string matName = (matIdx >= 0 && matIdx < mesh.MaterialSlots.Count) ? mesh.MaterialSlots[matIdx] : mesh.MaterialName;
                     bool isSky = mesh.Name.StartsWith("+sky", StringComparison.OrdinalIgnoreCase) || matName.StartsWith("+sky", StringComparison.OrdinalIgnoreCase);
-                    bool isTransparent = isSky || mesh.Name.Contains("water", StringComparison.OrdinalIgnoreCase) || matName.Contains("water", StringComparison.OrdinalIgnoreCase) || matName.StartsWith("+portal", StringComparison.OrdinalIgnoreCase);
+                    bool isWater = IsWaterMaterial(mesh.Name, matName);
+                    bool isTransparent = isSky || isWater || matName.StartsWith("+portal", StringComparison.OrdinalIgnoreCase);
 
                     uint texId = 0;
                     bool hasTex = false;
@@ -583,7 +605,8 @@ void main()
                 var (mode, color) = ClassifyMaterial(mesh, 0);
                 string matName = mesh.MaterialSlots.Count > 0 ? mesh.MaterialSlots[0] : mesh.MaterialName;
                 bool isSky = mesh.Name.StartsWith("+sky", StringComparison.OrdinalIgnoreCase) || mesh.MaterialName.StartsWith("+sky", StringComparison.OrdinalIgnoreCase);
-                bool isTransparent = isSky || mesh.Name.Contains("water", StringComparison.OrdinalIgnoreCase) || mesh.MaterialName.Contains("water", StringComparison.OrdinalIgnoreCase) || mesh.MaterialName.StartsWith("+portal", StringComparison.OrdinalIgnoreCase);
+                bool isWater = IsWaterMaterial(mesh.Name, matName);
+                bool isTransparent = isSky || isWater || mesh.MaterialName.StartsWith("+portal", StringComparison.OrdinalIgnoreCase);
 
                 uint texId = 0;
                 bool hasTex = false;
@@ -1084,6 +1107,7 @@ void main()
                 }
 
                 // Pass 2: Transparent geometry (Water, Portals)
+                _gl.DepthMask(false); // Transparent surfaces do not occlude geometry behind them
                 foreach (var batch in _subBatches)
                 {
                     if (!batch.IsTransparent || batch.IsSky) continue;
@@ -1127,6 +1151,7 @@ void main()
 
                     _gl.Disable(EnableCap.CullFace);
                 }
+                _gl.DepthMask(true); // Re-enable depth writes
 
                 _gl.Disable(EnableCap.PolygonOffsetFill);
 
@@ -1251,6 +1276,20 @@ void main()
         }
     }
 
+    public static bool IsWaterMaterial(string meshName, string? materialName)
+    {
+        string n = meshName.ToLowerInvariant();
+        string mat = (materialName ?? "").ToLowerInvariant();
+        return n.Contains("water") || mat.Contains("water") ||
+               n.Contains("ocean") || mat.Contains("ocean") ||
+               n.Contains("lake")  || mat.Contains("lake")  ||
+               n.Contains("pond")  || mat.Contains("pond")  ||
+               (n.Contains("river") && !n.Contains("riverworld")) ||
+               (mat.Contains("river") && !mat.Contains("riverworld")) ||
+               mat.Contains("riverworld_water") ||
+               mat.Contains("swamp_water") || mat.Contains("waterfall");
+    }
+
     private static (int mode, Vector4 color) ClassifyMaterial(MeshObject mesh, int materialIndex)
     {
         string n = mesh.Name.ToLowerInvariant();
@@ -1258,8 +1297,8 @@ void main()
             ? mesh.MaterialSlots[materialIndex].ToLowerInvariant()
             : mesh.MaterialName.ToLowerInvariant();
 
-        if (n.Contains("water") || mat.Contains("water") || (mat.Contains("river") && !mat.Contains("riverworld") && !mat.Contains("tree") && !mat.Contains("bark") && !mat.Contains("leaf") && !mat.Contains("rock") && !mat.Contains("ground")) || mat.Contains("swamp_water") || mat.Contains("ocean") || mat.Contains("lake") || mat.Contains("waterfall"))
-            return (ModeLitSolid, new Vector4(0.18f, 0.48f, 0.75f, 0.65f));
+        if (IsWaterMaterial(mesh.Name, mat))
+            return (ModeWater, new Vector4(0.10f, 0.54f, 0.85f, 0.62f));
 
         if (n.StartsWith("+sky") || mat.StartsWith("+sky"))
             return (ModeLitSolid, new Vector4(0.28f, 0.45f, 0.72f, 0.35f));

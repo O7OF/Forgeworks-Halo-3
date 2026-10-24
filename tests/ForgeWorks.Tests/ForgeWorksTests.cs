@@ -3511,6 +3511,115 @@ public class ForgeWorksTests
         Assert.Equal(0, mesh.Triangles[0].MaterialIndex);
         Assert.Equal(1, mesh.Triangles[1].MaterialIndex);
     }
+
+    [Fact]
+    public void AssExporter_AssV3_DoesNotWritePropertyCountZero_FixingToolMaterialShaderFatalError()
+    {
+        var mesh = new MeshObject("test_cube");
+        mesh.Vertices.Add(new Vertex(new Vector3(0, 0, 0), Vector3.UnitZ));
+        mesh.Vertices.Add(new Vertex(new Vector3(10, 0, 0), Vector3.UnitZ));
+        mesh.Vertices.Add(new Vertex(new Vector3(10, 10, 0), Vector3.UnitZ));
+        mesh.Triangles.Add(new Triangle(0, 1, 2));
+
+        var materials = new List<string> { "chill chill_metal", "chill chill_snow" };
+
+        // 1. Export in ASS version 3 (default for Halo 3 structure compilation)
+        using var msV3 = new MemoryStream();
+        AssExporter.ExportToStream(msV3, materials, new List<MeshObject> { mesh }, version: 3);
+
+        msV3.Seek(0, SeekOrigin.Begin);
+        using var readerV3 = new StreamReader(msV3);
+        string contentV3 = readerV3.ReadToEnd();
+
+        // In ASS v3, materials are only Name and Variant. Property count "0" MUST NOT appear
+        // between the variant line and the next material, which caused Tool fatal exception:
+        // "-FATAL- material shader string is missing quotes: '0'"
+        Assert.Contains(";### MATERIALS ###\n2", contentV3.Replace("\r\n", "\n"));
+        Assert.Contains(";MATERIAL 0\n\"chill chill_metal\"\n\"\"\n\n", contentV3.Replace("\r\n", "\n"));
+        Assert.Contains(";MATERIAL 1\n\"chill chill_snow\"\n\"\"\n\n", contentV3.Replace("\r\n", "\n"));
+
+        // Must round-trip cleanly in AssImporter without skipping materials
+        msV3.Seek(0, SeekOrigin.Begin);
+        var importedV3 = AssImporter.ImportFromStream(msV3);
+        Assert.Single(importedV3);
+        Assert.Equal(2, importedV3[0].MaterialSlots.Count);
+        Assert.Equal("chill chill_metal", importedV3[0].MaterialSlots[0]);
+        Assert.Equal("chill chill_snow", importedV3[0].MaterialSlots[1]);
+
+        // 2. Export in ASS version 7 (Reach / H4)
+        using var msV7 = new MemoryStream();
+        AssExporter.ExportToStream(msV7, materials, new List<MeshObject> { mesh }, version: 7);
+
+        msV7.Seek(0, SeekOrigin.Begin);
+        using var readerV7 = new StreamReader(msV7);
+        string contentV7 = readerV7.ReadToEnd();
+
+        // In ASS v7, property count "0" must be serialized
+        Assert.Contains(";MATERIAL 0\n\"chill chill_metal\"\n\"\"\n0\n\n", contentV7.Replace("\r\n", "\n"));
+
+        msV7.Seek(0, SeekOrigin.Begin);
+        var importedV7 = AssImporter.ImportFromStream(msV7);
+        Assert.Single(importedV7);
+        Assert.Equal(2, importedV7[0].MaterialSlots.Count);
+    }
+
+    [Fact]
+    public void CustomShaderBuilder_ConvertImageToTif_ConvertsPngCleanly_WithPowerOfTwoAndNoExifTags()
+    {
+        string tempDir = Path.Combine(Path.GetTempPath(), "ForgeWorks_PngTest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            // 1. Create a non-power-of-two PNG image with irregular dimensions (e.g. 300x150)
+            string pngPath = Path.Combine(tempDir, "water_surface.png");
+            using (var bmp = new System.Drawing.Bitmap(300, 150, System.Drawing.Imaging.PixelFormat.Format32bppArgb))
+            {
+                using (var g = System.Drawing.Graphics.FromImage(bmp))
+                {
+                    g.Clear(System.Drawing.Color.FromArgb(180, 20, 140, 220));
+                }
+                bmp.Save(pngPath, System.Drawing.Imaging.ImageFormat.Png);
+            }
+
+            // 2. Convert to uncompressed TIFF using our enhanced pipeline
+            string tifPath = Path.Combine(tempDir, "water_surface.tif");
+            bool ok = CustomShaderBuilder.ConvertImageToTif(pngPath, tifPath);
+            Assert.True(ok, "PNG to TIFF conversion must succeed");
+            Assert.True(File.Exists(tifPath));
+
+            // 3. Inspect generated TIFF
+            using (var resultImg = new System.Drawing.Bitmap(tifPath))
+            {
+                // Dimensions must be rounded to valid power-of-two for Tool.exe bitmaps
+                Assert.Equal(256, resultImg.Width);
+                Assert.Equal(128, resultImg.Height);
+                Assert.Equal(System.Drawing.Imaging.PixelFormat.Format32bppArgb, resultImg.PixelFormat);
+
+                // Must have no private GDI+ property items (e.g. 0x5110, 0x5111, 0x5112)
+                Assert.DoesNotContain(0x5110, resultImg.PropertyIdList);
+                Assert.DoesNotContain(0x5111, resultImg.PropertyIdList);
+                Assert.DoesNotContain(0x5112, resultImg.PropertyIdList);
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public void BlamViewportControl_IsWaterMaterial_DetectsAllWaterVariations()
+    {
+        Assert.True(ForgeWorks.UI.Views.BlamViewportControl.IsWaterMaterial("water_volume", "!water_volume'"));
+        Assert.True(ForgeWorks.UI.Views.BlamViewportControl.IsWaterMaterial("lake_mesh", "lake"));
+        Assert.True(ForgeWorks.UI.Views.BlamViewportControl.IsWaterMaterial("ocean_floor", "ocean"));
+        Assert.True(ForgeWorks.UI.Views.BlamViewportControl.IsWaterMaterial("river_bed", "!river riverworld_water_rough'"));
+        Assert.True(ForgeWorks.UI.Views.BlamViewportControl.IsWaterMaterial("swamp", "swamp_water"));
+        Assert.True(ForgeWorks.UI.Views.BlamViewportControl.IsWaterMaterial("box", "mpshare water_clear"));
+
+        Assert.False(ForgeWorks.UI.Views.BlamViewportControl.IsWaterMaterial("terrain", "mpshare mp_sand"));
+        Assert.False(ForgeWorks.UI.Views.BlamViewportControl.IsWaterMaterial("cliff", "dead deadlock_cliff_rock"));
+    }
 }
 
 

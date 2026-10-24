@@ -1,4 +1,4 @@
-# ForgeWorks Studio - Blam Editing Suite For Halo 3 (v2.3.1)
+# ForgeWorks Studio - Blam Editing Suite For Halo 3 (v2.3.2)
 
 [![.NET 10.0](https://img.shields.io/badge/.NET-10.0-blue.svg)](https://dotnet.microsoft.com/)
 [![Halo 3 MCC](https://img.shields.io/badge/Halo%203-H3EK%20MCC-green.svg)](https://store.steampowered.com/app/976730/Halo_The_Master_Chief_Collection/)
@@ -14,6 +14,51 @@
 4. **Integrated Sapien Viewport**: 60+ FPS hardware-accelerated OpenGL 3.3 renderer with interactive 3D transform gizmos (Translate, Rotate, Scale), outliner hierarchy, scenario palette, and live entity editing.
 5. **Integrated Guerilla Tag Reflection**: In-memory inspection and mutation of `.scenario`, `.shader`, and `.bitmap` reflexives with automated retail template synthesis.
 6. **One-Click MCC Compilation**: Direct export to `.ass` (Amalgam Scene Specification v3) and automated streaming compilation via `tool_fast.exe` with instant launching into Sapien and MCC.
+
+---
+
+## What's New in v2.3.2 (Compiler Fatal Error & Water Rendering Hotfix)
+
+### 1. Fix ASS v3 Material Parser Crash (`-FATAL- material shader string is missing quotes: '0'`)
+- **Root Cause Identified**: In ASS (Amalgam Scene Specification) version 3—the native geometry format consumed by Halo 3's `tool_fast.exe structure` pipeline—material definitions consist solely of:
+  1. Material name string (quoted, e.g. `"base_rock"`)
+  2. Material variant string (quoted, e.g. `""`)
+  Unlike ASS version 4+ (which introduces property counts and key-value properties), ASS v3 does **not** read a property count integer. Because `AssExporter.cs` was unconditionally writing a property count line `"0"` after every material variant, Tool's Lexer/Parser read `"0"` as the next material's shader name string. Since `"0"` lacked quotation marks, Tool aborted immediately with:
+  `-FATAL- material shader string is missing quotes:  '0'`
+  `-FATAL- couldn't parse material #1`
+  `-FATAL- couldn't parse file 'data\levels\multi\custom_canvas\structure\custom_canvas.ass'`
+  `-ERROR- structure import pipeline failed for levels\multi\custom_canvas\custom_canvas`
+- **The Fix**:
+  - In `AssExporter.cs`, guarded property count serialization with `if (version >= 4)`. For ASS v3 files, only the material name and variant lines are written.
+  - In `AssImporter.cs`, updated the material parser to inspect the header version (`headerVersion >= 4`) before attempting to parse and consume property count lines.
+  - Added unit regression test `AssExporter_AssV3_DoesNotWritePropertyCountZero_FixingToolMaterialShaderFatalError` verifying round trips and zero unquoted tokens in ASS v3 output.
+
+### 2. PNG-to-TIFF Bitmap Conversion with Power-of-Two Scaling & GDI+ Tag Stripping
+- **Root Cause Identified**: When importing PNG textures to generate `.bitmap` tags, users encountered errors and libtiff warnings such as:
+  `TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\<name>.tif: unknown field with tag 20752 (0x5110) encountered.`
+  Standard GDI+ `image.Save(..., ImageFormat.Tiff)` writes private Windows EXIF/property tags (`0x5110`, `0x5111`, `0x5112`, `0x0301`, `0x0303`), non-power-of-two dimensions, and compressed or variable strip encodings that fail or throw warnings in `tool.exe bitmaps`.
+- **The Fix**:
+  - In `CustomShaderBuilder.cs`, revamped `ConvertImageToTif`:
+    - Reads raw image bytes into memory first to avoid file-locking on disk.
+    - Clamps and scales texture dimensions to power-of-two (64, 128, 256, 512, 1024, 2048, 4096) using high-quality bicubic resampling.
+    - Normalizes pixel format to 32bpp ARGB (`Format32bppArgb`).
+    - Strips all private GDI+ property items before saving.
+    - Saves clean, uncompressed TIFF strips using `EncoderValue.CompressionNone` (`System.Drawing.Imaging.Encoder.Compression`).
+  - Added unit regression test `CustomShaderBuilder_ConvertImageToTif_ConvertsPngCleanly_WithPowerOfTwoAndNoExifTags` verifying power-of-two dimensions and complete absence of private tags `0x5110`, `0x5111`, and `0x5112`.
+
+### 3. Realistic Water Rendering & Depth Mask Fix in Silk.NET Viewport
+- **Root Cause Identified**: Water surfaces in the 3D viewport had several visual defects:
+  1. Water meshes wrote their depth values into the OpenGL depth buffer (`glDepthMask(GL_TRUE)`). This caused the top surface of lakes and rivers to completely occlude underwater riverbeds, rocks, and terrain.
+  2. Water was rendered under `ModeLitSolid` and multiplied by standard diffuse lighting, turning water dark muddy grey/black in shadowed or ambient-lit environments.
+  3. Meshes with names or materials containing `lake`, `ocean`, `river`, `pond`, etc. were not recognized as transparent water, causing them to render as opaque solid geometry.
+  4. Cube-generated water volumes had averaged normals at corner vertices, slanting the water surface reflections at 45-degree angles.
+- **The Fix**:
+  - In `StructureGenerator.cs`, `GenerateWaterVolume` now forces top water vertices ($z = \text{max}$) to have pure upward normal `Vector3.UnitZ`, ensuring true horizontal surface reflections.
+  - In `BlamViewportControl.cs`:
+    - Added dedicated shader mode `ModeWater = 3` with translucent cyan coloring (`vec4(0.10, 0.54, 0.85, 0.62)`), procedural wave distortion, specular sunlight highlight (`pow(max(dot(n, halfDir), 0.0), 36.0) * 0.70`), and fresnel rim reflection.
+    - Implemented `IsWaterMaterial(...)` identifying keywords: `water`, `lake`, `ocean`, `river`, `pond`, `swamp_water`, `waterfall`, and `riverworld_water`.
+    - Wrapped transparent passes with `_gl.DepthMask(false)` and `_gl.DepthMask(true)`, allowing underwater terrain and lakebeds to render clearly beneath the translucent water surface.
+  - Added unit regression test `BlamViewportControl_IsWaterMaterial_DetectsAllWaterVariations`.
 
 ---
 

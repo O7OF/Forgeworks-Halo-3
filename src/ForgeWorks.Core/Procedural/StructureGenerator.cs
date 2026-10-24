@@ -157,6 +157,11 @@ public sealed class StructureGenerator
         mesh.Triangles.Add(new Triangle(0, 7, 4));
 
         mesh.RecalculateNormals();
+        // Enforce true vertical normals on top water surface for uniform specular reflection
+        for (int i = 0; i < 4; i++)
+        {
+            mesh.Vertices[i].Normal = Vector3.UnitZ;
+        }
         return mesh;
     }
 

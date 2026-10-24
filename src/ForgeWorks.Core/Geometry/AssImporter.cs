@@ -40,10 +40,16 @@ public sealed class AssImporter
             return string.Empty;
         }
 
+        int headerVersion = 3;
         while ((line = reader.ReadLine()) != null)
         {
             var trimmed = line.Trim();
-            if (trimmed.StartsWith(";### MATERIALS ###"))
+            if (trimmed.StartsWith(";### HEADER ###"))
+            {
+                string vStr = NextNonCommentLine();
+                if (int.TryParse(vStr, out int v)) headerVersion = v;
+            }
+            else if (trimmed.StartsWith(";### MATERIALS ###"))
             {
                 string countStr = NextNonCommentLine();
                 if (int.TryParse(countStr, out int matCount))
@@ -52,12 +58,15 @@ public sealed class AssImporter
                     {
                         string mName = NextNonCommentLine().Trim('"');
                         NextNonCommentLine(); // variant
-                        string propCountStr = NextNonCommentLine(); // property count
-                        if (int.TryParse(propCountStr, out int propCount))
+                        if (headerVersion >= 4)
                         {
-                            for (int p = 0; p < propCount; p++)
+                            string propCountStr = NextNonCommentLine(); // property count
+                            if (int.TryParse(propCountStr, out int propCount))
                             {
-                                NextNonCommentLine(); // consume property
+                                for (int p = 0; p < propCount; p++)
+                                {
+                                    NextNonCommentLine(); // consume property
+                                }
                             }
                         }
                         materials.Add(mName);

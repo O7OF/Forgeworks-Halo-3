@@ -13,7 +13,7 @@
         x:Class="ForgeWorks.UI.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Icon="/Assets/avalonia-logo.ico"
-        Title="ForgeWorks Studio v2.3.1 - Blam Editing Suite For Halo 3"
+        Title="ForgeWorks Studio v2.3.2 - Blam Editing Suite For Halo 3"
         Background="#181a1f">
 
     <Window.Styles>
