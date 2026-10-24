@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?>
+<doc>
+<assembly><name>ForgeWorks.FSharp</name></assembly>
+<members>
+<member name="M:ForgeWorks.FSharp.Math3D.calculateTriplanarUV(System.Numerics.Vector3,System.Numerics.Vector3,System.Single)">
+<summary>
+ Calculates distortion-free triplanar UV coordinates for a 3D position and normal
+</summary>
+</member>
+<member name="M:ForgeWorks.FSharp.Math3D.calculateGridFit(ForgeWorks.FSharp.Math3D.BoundingBox3D,System.Single,System.Boolean,System.Boolean)">
+<summary>
+ Computes uniform scale factor and translation offsets to fit an arbitrary bounding box
+ cleanly into targetGridExtent (e.g. 7000 units), centering at (0, 0) and aligning base at Z = 0.
+</summary>
+</member>
+<member name="T:ForgeWorks.FSharp.Math3D">
+<summary>
+ High-performance 3D spatial mathematics and grid fitting functions
+</summary>
+</member>
+<member name="M:ForgeWorks.FSharp.Noise.ridgedMultifractal2D(System.Single,System.Single,System.Int32,System.Single,System.Single)">
+<summary>
+ Ridged multifractal noise for sharp alpine mountain crests and ridges: 1.0 - abs(noise)
+</summary>
+</member>
+<member name="M:ForgeWorks.FSharp.Noise.domainWarp2D(System.Single,System.Single,System.Single,System.Int32)">
+<summary>
+ Domain-warped Perlin noise: f(p + warp * noise(p)) for natural river valleys &amp; canyon ridges
+</summary>
+</member>
+<member name="M:ForgeWorks.FSharp.Noise.fbm2D(System.Single,System.Single,System.Int32,System.Single,System.Single)">
+<summary>
+ Fractional Brownian Motion (fBm) accumulating multiple octaves of Perlin noise
+</summary>
+</member>
+<member name="M:ForgeWorks.FSharp.Noise.perlin2D(System.Single,System.Single)">
+<summary>
+ Computes 2D Perlin gradient noise in [-1, 1]
+</summary>
+</member>
+<member name="T:ForgeWorks.FSharp.Noise">
+<summary>
+ High-performance procedural noise generation: Simplex, fBm, Domain Warping, Ridge Multifractal
+</summary>
+</member>
+<member name="M:ForgeWorks.FSharp.Cellular.basaltHexagon(System.Single,System.Single,System.Single)">
+<summary>
+ Basalt Column generator: regular hexagonal honeycomb lattice with stepped pillar height
+</summary>
+</member>
+<member name="M:ForgeWorks.FSharp.Cellular.voronoi2D(System.Single,System.Single,System.Int32)">
+<summary>
+ Computes 2D Voronoi F1 and F2 Euclidean cell distances
+</summary>
+</member>
+<member name="T:ForgeWorks.FSharp.Cellular">
+<summary>
+ Cellular &amp; Voronoi mathematical algorithms for basalt columns, calderas, and cracked canyons
+</summary>
+</member>
+<member name="M:ForgeWorks.FSharp.Erosion.applyThermalErosion(System.Single[0:],System.Single,System.Single,System.Int32)">
+<summary>
+ Thermal erosion / Talus Slump: relaxes steep cliffs exceeding critical angle of repose
+</summary>
+</member>
+<member name="M:ForgeWorks.FSharp.Erosion.applyHydraulicErosion(System.Single[0:],ForgeWorks.FSharp.Erosion.HydraulicParams,System.Int32)">
+<summary>
+ Applies fast hydraulic droplet erosion directly to a 2D heightfield
+</summary>
+</member>
+<member name="T:ForgeWorks.FSharp.Erosion">
+<summary>
+ Advanced geomorphic terrain erosion: Hydraulic droplet simulations and Thermal talus slumping
+</summary>
+</member>
+<member name="M:ForgeWorks.FSharp.Laplacian.smoothMeshVertices(System.Numerics.Vector3[],System.Tuple{System.Int32,System.Int32,System.Int32}[],System.Int32,System.Single,ForgeWorks.FSharp.Laplacian.SmoothTarget,System.Boolean)">
+<summary>
+ Relaxes mesh vertex positions using neighbor-weighted Laplacian operator
+ If lockBoundaries is true, open perimeter vertices are strictly preserved to maintain airtight BSP sealing.
+</summary>
+</member>
+<member name="T:ForgeWorks.FSharp.Laplacian">
+<summary>
+ Laplacian smoothing &amp; curvature relaxation with boundary pinning for airtight BSP hulls
+</summary>
+</member>
+<member name="M:ForgeWorks.FSharp.Topology.generateRimFor2dPlaneWallsWithSky(System.Numerics.Vector3[],System.Tuple{System.Int32,System.Int32,System.Int32}[],System.Single,System.Single,System.Single)">
+<summary>
+ For maps with 2D plane walls (single-sided cliff walls/ridges),
+ generates a continuous horizontal rim ledge outwards from all open boundary edges,
+ then synthesizes an airtight +sky ceiling dome cap down to this rim.
+ This eradicates all open edge errors, achieving a 100% sealed BSP required for Sapien AI pathfinding.
+</summary>
+</member>
+<member name="M:ForgeWorks.FSharp.Topology.generateTopCeilingCap(System.Numerics.Vector3[],ForgeWorks.FSharp.Topology.BoundaryLoop,System.Single)">
+<summary>
+ Synthesizes an airtight top ceiling fan (e.g. +sky) connecting a top perimeter loop to a central ceiling apex
+</summary>
+</member>
+<member name="M:ForgeWorks.FSharp.Topology.chainBoundaryLoops(ForgeWorks.FSharp.Topology.DirectedEdge[])">
+<summary>
+ Chains directed boundary edges into continuous sequential loops
+</summary>
+</member>
+<member name="M:ForgeWorks.FSharp.Topology.findOpenBoundaryEdges(System.Tuple{System.Int32,System.Int32,System.Int32}[])">
+<summary>
+ Extracts directed open boundary half-edges (edges with no matching twin)
+</summary>
+</member>
+<member name="T:ForgeWorks.FSharp.Topology">
+<summary>
+ Mesh boundary topology analysis: Boundary loops, open edge detection, and airtight +sky ceiling synthesis
+</summary>
+</member>
+</members>
+</doc>
