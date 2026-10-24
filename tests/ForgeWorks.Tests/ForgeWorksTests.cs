@@ -3123,6 +3123,87 @@ public class ForgeWorksTests
         int openEdgesAfter = GeometryAutoRepair.CountOpenEdges(mesh);
         Assert.Equal(0, openEdgesAfter);
     }
+
+    [Fact]
+    public void FSharp_Math3D_FitToGrid_ScalesBoundsCorrectly()
+    {
+        var pts = new[]
+        {
+            new Vector3(-91096f, -101610f, 290f),
+            new Vector3(38052f, 37215f, 21857f)
+        };
+        var bounds = ForgeWorks.FSharp.Math3D.BoundingBox3D.FromPoints(pts);
+        Assert.False(bounds.IsEmpty);
+        Assert.True(bounds.MaxHorizontalSpan > 138000f);
+
+        var fit = ForgeWorks.FSharp.Math3D.calculateGridFit(bounds, 7000.0f, centerAtOrigin: true, groundBase: true);
+        Assert.True(fit.Scale > 0.045f && fit.Scale < 0.055f);
+
+        var p0Trans = fit.TransformPoint(pts[0]);
+        var p1Trans = fit.TransformPoint(pts[1]);
+
+        float newSpanX = MathF.Abs(p1Trans.X - p0Trans.X);
+        float newSpanY = MathF.Abs(p1Trans.Y - p0Trans.Y);
+        float maxSpan = MathF.Max(newSpanX, newSpanY);
+
+        Assert.True(MathF.Abs(maxSpan - 7000.0f) < 1.0f, $"Scaled span must be 7000 units, got {maxSpan}");
+        Assert.True(MathF.Abs(MathF.Min(p0Trans.Z, p1Trans.Z)) < 1.0f, "Base Z must be aligned to 0");
+    }
+
+    [Fact]
+    public void FSharp_Noise_And_Cellular_GenerateValidDistributions()
+    {
+        float p = ForgeWorks.FSharp.Noise.perlin2D(12.5f, 34.2f);
+        Assert.True(p >= -1.0f && p <= 1.0f);
+
+        float fbm = ForgeWorks.FSharp.Noise.fbm2D(5.0f, 7.0f, 4, 2.0f, 0.5f);
+        Assert.True(fbm >= -1.0f && fbm <= 1.0f);
+
+        float ridge = ForgeWorks.FSharp.Noise.ridgedMultifractal2D(2.0f, 3.0f, 3, 2.0f, 0.5f);
+        Assert.True(ridge >= 0.0f);
+
+        var vor = ForgeWorks.FSharp.Cellular.voronoi2D(4.5f, 6.2f, 42);
+        Assert.True(vor.DistanceF1 >= 0.0f);
+        Assert.True(vor.DistanceF2 >= vor.DistanceF1);
+
+        float hex = ForgeWorks.FSharp.Cellular.basaltHexagon(100.0f, 200.0f, 50.0f);
+        Assert.True(hex >= 0.0f && hex <= 1.0f);
+    }
+
+    [Fact]
+    public void CustomShaderBuilder_CleanMaterialIdentifier_ProducesConciseCanonicalNames()
+    {
+        Assert.Equal("ground", CustomShaderBuilder.CleanMaterialIdentifier("Material_icefieldsicefields_ground", "icefields"));
+        Assert.Equal("cliffs", CustomShaderBuilder.CleanMaterialIdentifier("Material_icefieldsicefields_cliff_walls", "icefields"));
+        Assert.Equal("roof", CustomShaderBuilder.CleanMaterialIdentifier("Material_icefieldsicefields_base_roof", "icefields"));
+        Assert.Equal("ramp", CustomShaderBuilder.CleanMaterialIdentifier("Material_icefieldsb40_bridgeramp", "icefields"));
+        Assert.Equal("metal", CustomShaderBuilder.CleanMaterialIdentifier("Material_icefieldsmetal_flat_generic", "icefields"));
+        Assert.Equal("floor", CustomShaderBuilder.CleanMaterialIdentifier("Material_icefieldsb40_metal_plate_floor_ext", "icefields"));
+        Assert.Equal("light_blue", CustomShaderBuilder.CleanMaterialIdentifier("Material_icefieldsicefields_base_lights_blue", "icefields"));
+        Assert.Equal("symbol_red", CustomShaderBuilder.CleanMaterialIdentifier("Material_icefieldsicefields_symbol_red", "icefields"));
+    }
+
+    [Fact]
+    public void MeshModelingEngine_FitSceneToGrid_ScalesMeshesCornerToCorner()
+    {
+        var m1 = new MeshObject("piece1");
+        m1.Vertices.Add(new Vertex(new Vector3(-50000, -20000, 100), Vector3.UnitZ));
+        m1.Vertices.Add(new Vertex(new Vector3(50000, 30000, 500), Vector3.UnitZ));
+        m1.Vertices.Add(new Vertex(new Vector3(0, 0, 1000), Vector3.UnitZ));
+        m1.Triangles.Add(new Triangle(0, 1, 2));
+
+        float scale = MeshModelingEngine.FitSceneToGrid(new[] { m1 }, targetGridExtent: 7000.0f, centerAtOrigin: true, alignBaseToZero: true, autoFitUvs: true);
+        Assert.True(scale > 0f);
+
+        float minX = m1.Vertices.Min(v => v.Position.X);
+        float maxX = m1.Vertices.Max(v => v.Position.X);
+        float minZ = m1.Vertices.Min(v => v.Position.Z);
+
+        float spanX = maxX - minX;
+        Assert.True(MathF.Abs(spanX - 7000.0f) < 1.0f);
+        Assert.True(MathF.Abs(minZ) < 1.0f);
+        Assert.True(MathF.Abs((minX + maxX) * 0.5f) < 1.0f);
+    }
 }
 
 

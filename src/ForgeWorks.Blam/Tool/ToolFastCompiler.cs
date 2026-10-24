@@ -196,7 +196,10 @@ public sealed class ToolFastCompiler
             fullLog.Add($"Exit Code: {code1}\n");
             WriteLastToolOutputLog(ekPath, string.Join("\n", fullLog));
 
-            if (code1 != 0 || log1.Contains("-FATAL-") || log1.Contains("### ERROR"))
+            string bspTagPath = Path.Combine(fullTagsDir, $"{levelName}.scenario_structure_bsp");
+            bool bspSuccess = File.Exists(bspTagPath) && code1 == 0 && !log1.Contains("-FATAL-");
+
+            if (!bspSuccess && (code1 != 0 || log1.Contains("-FATAL-") || log1.Contains("### ERROR")))
             {
                 sw.Stop();
                 fullLog.Add($"\n[ERROR] Structure compilation failed with exit code {code1}. Check log details above.");

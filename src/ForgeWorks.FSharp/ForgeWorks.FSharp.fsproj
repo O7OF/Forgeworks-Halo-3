@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Math3D.fs" />
+    <Compile Include="Noise.fs" />
+    <Compile Include="Cellular.fs" />
+    <Compile Include="Erosion.fs" />
+    <Compile Include="Laplacian.fs" />
+    <Compile Include="Topology.fs" />
+  </ItemGroup>
+
+
+
+</Project>

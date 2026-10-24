@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/ForgeWorks.Blam/ForgeWorks.Blam.csproj" />
     <Project Path="src/ForgeWorks.Core/ForgeWorks.Core.csproj" />
+    <Project Path="src/ForgeWorks.FSharp/ForgeWorks.FSharp.fsproj" />
     <Project Path="src/ForgeWorks.UI/ForgeWorks.UI.csproj" />
   </Folder>
   <Folder Name="/tests/">

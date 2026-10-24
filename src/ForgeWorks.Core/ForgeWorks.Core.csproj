@@ -13,4 +13,8 @@
     <PackageReference Include="AssimpNetter" Version="6.0.5" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\ForgeWorks.FSharp\ForgeWorks.FSharp.fsproj" />
+  </ItemGroup>
+
 </Project>

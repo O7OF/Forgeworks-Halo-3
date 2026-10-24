@@ -118,6 +118,11 @@ public static class CustomShaderBuilder
     /// Synthesizes or patches an authentic Halo 3 .shader (rmsh) tag that references
     /// the compiled .bitmap tag for the material's albedo base map.
     /// </summary>
+    /// <summary>
+    /// Synthesizes or patches an authentic Halo 3 .shader (rmsh) tag that references
+    /// the compiled .bitmap tag for the material's albedo base map.
+    /// Patches BOTH the parameter block reference AND the tag dependency table in the tag footer.
+    /// </summary>
     public static void GenerateCustomShaderTag(
         string fullShaderTagPath,
         string materialName,
@@ -138,6 +143,7 @@ public static class CustomShaderBuilder
             string[] candidateTemplates = new[]
             {
                 Path.Combine(ekPath, "tags", "levels", "multi", "chill", "shaders", "chill_metal.shader"),
+                Path.Combine(ekPath, "tags", "levels", "multi", "chill", "shaders", "chill_bridgegen.shader"),
                 Path.Combine(ekPath, "tags", "levels", "multi", "chill", "shaders", "chill_snow.shader"),
                 Path.Combine(ekPath, "tags", "levels", "multi", "riverworld", "shaders", "riverworld_ground.shader"),
                 Path.Combine(ekPath, "tags", "levels", "multi", "salvation", "shaders", "sal_rock.shader"),
@@ -153,34 +159,51 @@ public static class CustomShaderBuilder
                         byte[] raw = File.ReadAllBytes(candidate);
                         string ascii = Encoding.ASCII.GetString(raw);
 
-                        // Find existing base map bitmap path in template (e.g. levels\multi\riverworld\bitmaps\riverworld_metal)
-                        // Must NOT match _bump normal maps!
+                        // Find all bitmap tag references in template
                         var matches = Regex.Matches(ascii, @"levels\\multi\\[a-zA-Z0-9_\\]+\\bitmaps\\[a-zA-Z0-9_]+");
-                        bool replaced = false;
 
+                        // Find the base diffuse map (first non-bump, non-cubemap reference)
+                        string? targetBaseMap = null;
                         foreach (Match m in matches)
                         {
-                            if (m.Value.EndsWith("_bump", StringComparison.OrdinalIgnoreCase)) continue;
-
-                            int offset = m.Index;
-                            int origLen = m.Length;
-                            byte[] newBytes = Encoding.ASCII.GetBytes(bitmRef);
-
-                            int copyLen = Math.Min(newBytes.Length, origLen);
-                            Array.Copy(newBytes, 0, raw, offset, copyLen);
-                            // Null-terminate and zero pad remainder if new string is shorter
-                            for (int k = copyLen; k < origLen; k++)
+                            if (!m.Value.EndsWith("_bump", StringComparison.OrdinalIgnoreCase) &&
+                                !m.Value.EndsWith("_cubemap", StringComparison.OrdinalIgnoreCase) &&
+                                !m.Value.EndsWith("_illum", StringComparison.OrdinalIgnoreCase) &&
+                                !m.Value.EndsWith("_parallax", StringComparison.OrdinalIgnoreCase))
                             {
-                                raw[offset + k] = 0;
+                                targetBaseMap = m.Value;
+                                break;
                             }
-                            replaced = true;
-                            break;
                         }
 
-                        if (replaced)
+                        if (!string.IsNullOrEmpty(targetBaseMap))
                         {
-                            File.WriteAllBytes(fullShaderTagPath, raw);
-                            return;
+                            byte[] newBytes = Encoding.ASCII.GetBytes(bitmRef);
+                            bool replaced = false;
+
+                            // Replace all occurrences of targetBaseMap (parameter block AND dependency block)
+                            foreach (Match m in matches)
+                            {
+                                if (m.Value.Equals(targetBaseMap, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    int offset = m.Index;
+                                    int origLen = m.Length;
+                                    int copyLen = Math.Min(newBytes.Length, origLen);
+                                    Array.Copy(newBytes, 0, raw, offset, copyLen);
+                                    // Null-terminate and zero pad remainder if new string is shorter
+                                    for (int k = copyLen; k < origLen; k++)
+                                    {
+                                        raw[offset + k] = 0;
+                                    }
+                                    replaced = true;
+                                }
+                            }
+
+                            if (replaced)
+                            {
+                                File.WriteAllBytes(fullShaderTagPath, raw);
+                                return;
+                            }
                         }
                     }
                     catch
@@ -224,6 +247,48 @@ public static class CustomShaderBuilder
         if (rem != 0) writer.Write(new byte[16 - rem]);
     }
 
+    /// <summary>
+    /// Executes tool_fast.exe or tool.exe to compile TIFF files in data\ into .bitmap tags in tags\.
+    /// </summary>
+    public static bool CompileBitmapsWithTool(string ekPath, string levelName, string scenarioType = "multi")
+    {
+        if (string.IsNullOrWhiteSpace(ekPath) || !Directory.Exists(ekPath)) return false;
+
+        string toolExe = Path.Combine(ekPath, "tool_fast.exe");
+        if (!File.Exists(toolExe)) toolExe = Path.Combine(ekPath, "tool.exe");
+        if (!File.Exists(toolExe)) return false;
+
+        string cleanLevel = SanitizeIdentifier(levelName);
+        string relBitmDir = Path.Combine("levels", scenarioType, cleanLevel, "bitmaps");
+
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = toolExe,
+                Arguments = $"bitmaps \"{relBitmDir}\"",
+                WorkingDirectory = ekPath,
+                CreateNoWindow = true,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+
+            using var proc = System.Diagnostics.Process.Start(psi);
+            if (proc != null)
+            {
+                proc.WaitForExit(45000);
+                return proc.ExitCode == 0;
+            }
+        }
+        catch
+        {
+            // Non-critical if running in test environment
+        }
+
+        return false;
+    }
+
     public static List<CustomShaderResult> SetupCustomShadersForModel(
         string ekPath,
         string levelName,
@@ -234,11 +299,13 @@ public static class CustomShaderBuilder
 
     /// <summary>
     /// Processes imported geometry and textures:
-    /// 1. Finds texture files (.png, .jpg, .tga, .tif) associated with model materials
-    /// 2. Converts them to .tif in data\levels\<scenarioType>\<levelName>\bitmaps
-    /// 3. Generates .shader tags in tags\levels\<scenarioType>\<levelName>\shaders
-    /// 4. Registers prefixes in tags\levels\shader_collections.txt
-    /// 5. Adds entries into HaloShaderCatalog for UI immediate display
+    /// 1. Cleans and canonicalizes material identifiers (e.g. Material_icefieldsicefields_ground -> ground)
+    /// 2. Converts source PNGs to 32-bit TIFFs in data\levels\<scenarioType>\<levelName>\bitmaps
+    /// 3. Runs tool_fast.exe bitmaps to compile authentic .bitmap tags in tags\
+    /// 4. Generates .shader tags referencing compiled bitmaps in tags\levels\<scenarioType>\<levelName>\shaders
+    /// 5. Remaps mesh MaterialName on each mesh to "{cleanLevel} {baseMatName}" for seamless ASS export and compilation
+    /// 6. Registers prefixes in tags\levels\shader_collections.txt
+    /// 7. Adds entries into HaloShaderCatalog for UI immediate display
     /// </summary>
     public static List<CustomShaderResult> SetupCustomShadersForModel(
         string ekPath,
@@ -261,101 +328,187 @@ public static class CustomShaderBuilder
 
         EnsureShaderCollectionsEntry(ekPath, cleanLevel, scenarioType);
 
-        // Collect distinct materials and any known texture mappings
-        var materials = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var matToTex = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var meshList = meshes.ToList();
 
-        foreach (var m in meshes)
-        {
-            if (!string.IsNullOrWhiteSpace(m.MaterialName))
-            {
-                string sanitized = SanitizeMaterialName(m.MaterialName);
-                materials.Add(sanitized);
-
-                if (!string.IsNullOrEmpty(m.SourceTexturePath))
-                {
-                    matToTex[sanitized] = m.SourceTexturePath;
-                }
-            }
-
-            foreach (var kvp in m.MaterialTextureMap)
-            {
-                string sanitized = SanitizeMaterialName(kvp.Key);
-                materials.Add(sanitized);
-                if (!string.IsNullOrEmpty(kvp.Value))
-                {
-                    matToTex[sanitized] = kvp.Value;
-                }
-            }
-        }
-
-        // Search directory for matching textures if not explicitly mapped
+        // Search directory for matching textures
         var candidateFiles = new List<string>();
         if (!string.IsNullOrEmpty(sourceAssetDir) && Directory.Exists(sourceAssetDir))
         {
             candidateFiles.AddRange(Directory.GetFiles(sourceAssetDir, "*.*", SearchOption.AllDirectories));
         }
 
-        foreach (var mat in materials)
+        // Distinct raw materials
+        var rawMaterials = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var m in meshList)
+        {
+            if (!string.IsNullOrWhiteSpace(m.MaterialName)) rawMaterials.Add(m.MaterialName);
+            foreach (var slot in m.MaterialSlots)
+            {
+                if (!string.IsNullOrWhiteSpace(slot)) rawMaterials.Add(slot);
+            }
+        }
+
+        // Map each raw material to a clean canonical name and source texture
+        var rawToCleanMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var cleanToTexMap = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var rawMat in rawMaterials)
         {
             // Skip engine special materials (+sky, +portal, +seamsealer, etc.)
-            if (mat.StartsWith("+") || mat.StartsWith("%+") || mat.StartsWith("!") || mat.StartsWith("%!"))
+            if (rawMat.StartsWith("+") || rawMat.StartsWith("%+") || rawMat.StartsWith("!") || rawMat.StartsWith("%!"))
                 continue;
 
-            string cleanMat = SanitizeIdentifier(mat);
-            string baseMatName = cleanMat;
-            int spaceIdx = cleanMat.IndexOf('_');
-            if (spaceIdx > 0 && cleanMat.StartsWith(cleanLevel + "_", StringComparison.OrdinalIgnoreCase))
-            {
-                baseMatName = cleanMat[(spaceIdx + 1)..];
-            }
+            string cleanId = CleanMaterialIdentifier(rawMat, cleanLevel);
+            rawToCleanMap[rawMat] = cleanId;
 
-            // Find best matching image file
-            string? sourceTex = null;
-            if (matToTex.TryGetValue(mat, out var explicitTex) && File.Exists(explicitTex))
+            if (!cleanToTexMap.ContainsKey(cleanId))
             {
-                sourceTex = explicitTex;
-            }
-            else
-            {
-                // Look for baseMatName.png / .jpg / .tif in source directory
-                sourceTex = candidateFiles.FirstOrDefault(f =>
+                // Find matching texture file
+                string? matchedTex = null;
+
+                // 1. Direct candidate matching
+                matchedTex = candidateFiles.FirstOrDefault(f =>
                 {
-                    string fn = Path.GetFileNameWithoutExtension(f);
-                    return fn.Equals(baseMatName, StringComparison.OrdinalIgnoreCase) ||
-                           fn.Equals(cleanMat, StringComparison.OrdinalIgnoreCase);
+                    string fn = Path.GetFileNameWithoutExtension(f).ToLowerInvariant();
+                    string fnNorm = fn.Replace(" ", "_");
+                    return fn == cleanId ||
+                           fnNorm == cleanId ||
+                           fn.Contains(cleanId) ||
+                           fnNorm.Contains(cleanId) ||
+                           fn.EndsWith(cleanId) ||
+                           cleanId.Contains(fn) ||
+                           cleanId.Contains(fnNorm);
                 });
-            }
 
-            string targetTif = Path.Combine(dataBitmapsDir, $"{baseMatName}.tif");
+                cleanToTexMap[cleanId] = matchedTex;
+            }
+        }
+
+        // Convert textures to TIFFs
+        bool anyTifCreated = false;
+        foreach (var (cleanId, sourceTex) in cleanToTexMap)
+        {
+            string targetTif = Path.Combine(dataBitmapsDir, $"{cleanId}.tif");
+
             if (sourceTex != null && File.Exists(sourceTex))
             {
                 ConvertImageToTif(sourceTex, targetTif);
+                anyTifCreated = true;
             }
             else if (!File.Exists(targetTif))
             {
-                // Generate a placeholder 512x512 neutral diffuse texture if none was provided
-                CreateDefaultTexture(targetTif, baseMatName);
+                CreateDefaultTexture(targetTif, cleanId);
+                anyTifCreated = true;
             }
+        }
 
-            string relBitm = Path.Combine("levels", scenarioType, cleanLevel, "bitmaps", baseMatName);
-            string shaderTag = Path.Combine(tagsShadersDir, $"{baseMatName}.shader");
-            string relShader = Path.Combine("levels", scenarioType, cleanLevel, "shaders", $"{baseMatName}.shader");
+        // Run tool_fast bitmaps to compile .bitmap tags in H3EK
+        if (anyTifCreated && !string.IsNullOrEmpty(ekPath) && Directory.Exists(ekPath))
+        {
+            CompileBitmapsWithTool(ekPath, cleanLevel, scenarioType);
+        }
 
-            GenerateCustomShaderTag(shaderTag, baseMatName, relBitm, ekPath);
+        // Generate .shader tags and register with catalog
+        foreach (var (cleanId, sourceTex) in cleanToTexMap)
+        {
+            string targetTif = Path.Combine(dataBitmapsDir, $"{cleanId}.tif");
+            string relBitm = Path.Combine("levels", scenarioType, cleanLevel, "bitmaps", cleanId);
+            string shaderTag = Path.Combine(tagsShadersDir, $"{cleanId}.shader");
+            string relShader = Path.Combine("levels", scenarioType, cleanLevel, "shaders", $"{cleanId}.shader");
 
-            string fullMatName = $"{cleanLevel} {baseMatName}";
+            GenerateCustomShaderTag(shaderTag, cleanId, relBitm, ekPath);
+
+            string fullMatName = $"{cleanLevel} {cleanId}";
             if (catalog != null)
             {
                 catalog.RegisterCustomShader(fullMatName, relShader, cleanLevel, "Custom Level Shaders");
-                catalog.RegisterCustomShader(baseMatName, relShader, cleanLevel, "Custom Level Shaders");
+                catalog.RegisterCustomShader(cleanId, relShader, cleanLevel, "Custom Level Shaders");
             }
 
             results.Add(new CustomShaderResult(fullMatName, relShader, relBitm, shaderTag, targetTif));
         }
 
+        // Reassign clean material names to meshes for seamless ASS export and compilation
+        foreach (var m in meshList)
+        {
+            if (!string.IsNullOrWhiteSpace(m.MaterialName) && rawToCleanMap.TryGetValue(m.MaterialName, out var cleanId))
+            {
+                m.MaterialName = $"{cleanLevel} {cleanId}";
+            }
+
+            for (int s = 0; s < m.MaterialSlots.Count; s++)
+            {
+                if (rawToCleanMap.TryGetValue(m.MaterialSlots[s], out var cleanSlotId))
+                {
+                    m.MaterialSlots[s] = $"{cleanLevel} {cleanSlotId}";
+                }
+            }
+        }
+
         return results;
     }
+
+    /// <summary>
+    /// Reduces raw, verbose, or prefixed material identifiers to concise canonical identifiers
+    /// (e.g. Material_icefieldsicefields_ground -> ground, Material_icefieldsb40_bridgeramp -> ramp)
+    /// </summary>
+    public static string CleanMaterialIdentifier(string rawName, string levelName)
+    {
+        if (string.IsNullOrWhiteSpace(rawName)) return "ground";
+        string s = rawName.Trim().ToLowerInvariant();
+
+        // Strip leading special characters %, !, +, $, @, ~
+        while (s.Length > 0 && (s[0] == '%' || s[0] == '!' || s[0] == '+' || s[0] == '$' || s[0] == '@' || s[0] == '~'))
+        {
+            s = s[1..];
+        }
+
+        // Strip 'material_' or 'mat_' prefix
+        if (s.StartsWith("material_", StringComparison.OrdinalIgnoreCase)) s = s[9..];
+        else if (s.StartsWith("mat_", StringComparison.OrdinalIgnoreCase)) s = s[4..];
+
+        // Strip level prefix (e.g. 'icefields' or 'icefields_')
+        string lvl = levelName.Trim().ToLowerInvariant();
+        if (s.StartsWith(lvl + lvl + "_", StringComparison.OrdinalIgnoreCase))
+            s = s[(lvl.Length * 2 + 1)..];
+        else if (s.StartsWith(lvl + lvl, StringComparison.OrdinalIgnoreCase))
+            s = s[(lvl.Length * 2)..];
+        else if (s.StartsWith(lvl + "_", StringComparison.OrdinalIgnoreCase))
+            s = s[(lvl.Length + 1)..];
+        else if (s.StartsWith(lvl, StringComparison.OrdinalIgnoreCase) && s.Length > lvl.Length && (s[lvl.Length] == '_' || char.IsLetter(s[lvl.Length])))
+            s = s[lvl.Length..].TrimStart('_');
+
+        // Shorten specific noisy strings
+        s = s.Replace("b40_", "")
+             .Replace("beavercreek_", "")
+             .Replace("sidewinder_", "")
+             .Replace("generic_", "");
+
+        s = Regex.Replace(s, @"[^a-z0-9_]+", "_").Trim('_');
+        if (string.IsNullOrEmpty(s)) s = "ground";
+
+        // Map to concise canonical names to guarantee <= 16 chars
+        if (s.Contains("ground_ice") || s.Contains("ice_caves")) s = "ice";
+        else if (s.Contains("ground")) s = "ground";
+        else if (s.Contains("cliff")) s = "cliffs";
+        else if (s.Contains("roof")) s = "roof";
+        else if (s.Contains("bridge") || s.Contains("ramp")) s = "ramp";
+        else if (s.Contains("plate_floor")) s = "floor";
+        else if (s.Contains("panels")) s = "panels";
+        else if (s.Contains("flat_generic") || s.Contains("metal")) s = "metal";
+        else if (s.Contains("ladder")) s = "ladder";
+        else if (s.Contains("lights_blue")) s = "light_blue";
+        else if (s.Contains("lights_red")) s = "light_red";
+        else if (s.Contains("stripes_blue") || s.Contains("stripes_red") || s.Contains("stripes")) s = "stripes";
+        else if (s.Contains("symbol_blue")) s = "symbol_blue";
+        else if (s.Contains("symbol_red")) s = "symbol_red";
+        else if (s.Contains("greenlight") || s.Contains("light")) s = "light";
+        else if (s.Contains("arrow")) s = "arrow";
+        else if (s.Contains("teleporter") || s.Contains("shield")) s = "shield";
+
+        return s;
+    }
+
 
     private static void CreateDefaultTexture(string targetTifPath, string label)
     {

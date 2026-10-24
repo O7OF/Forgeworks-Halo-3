@@ -1,3 +1,499 @@
-[2026-10-23T16:00:00] tool_fast.exe structure levels\multi\test\test
-chopping triangles... 100%
-=== imported structure successfully
+=== FORGEWORKS 1-CLICK COMPILER ===
+Target Game: Halo 3 (H3EK)
+EK Path: c:/program files (x86)/steam\steamapps\common\H3EK
+
+[ForgeWorks] Exported Structure .ass to: c:/program files (x86)/steam\steamapps\common\H3EK\data\levels\multi\custom_canvas\structure\custom_canvas.ass (3 meshes, 3 materials)
+[ForgeWorks] Compiling custom bitmaps: levels\multi\custom_canvas\bitmaps...
+### arrow.tif
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\arrow.tif: unknown field with tag 20752 (0x5110) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\arrow.tif: unknown field with tag 20753 (0x5111) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\arrow.tif: unknown field with tag 20754 (0x5112) encountered.
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 43704 bytes)
+### boulder_snow_large.tif
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\boulder_snow_large.tif: unknown field with tag 20752 (0x5110) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\boulder_snow_large.tif: unknown field with tag 20753 (0x5111) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\boulder_snow_large.tif: unknown field with tag 20754 (0x5112) encountered.
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 174776 bytes)
+### boxcanvas_chill_glacier_blend.tif
+  1 bitmaps imported as 'Blend Map (linear for terrains)' (in-game size: 174776 bytes)
+### boxcanvas_chill_glacier_blend3.tif
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 174776 bytes)
+### chill_chill_snow.tif
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 174776 bytes)
+### cliffs.tif
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 174776 bytes)
+### custom_canvas_floor.tif
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 174776 bytes)
+### custom_canvas_ice.tif
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 174776 bytes)
+### floor.tif
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\floor.tif: unknown field with tag 20752 (0x5110) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\floor.tif: unknown field with tag 20753 (0x5111) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\floor.tif: unknown field with tag 20754 (0x5112) encountered.
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 43704 bytes)
+### ground.tif
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\ground.tif: unknown field with tag 20752 (0x5110) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\ground.tif: unknown field with tag 20753 (0x5111) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\ground.tif: unknown field with tag 20754 (0x5112) encountered.
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 174776 bytes)
+### ladder.tif
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\ladder.tif: unknown field with tag 20752 (0x5110) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\ladder.tif: unknown field with tag 20753 (0x5111) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\ladder.tif: unknown field with tag 20754 (0x5112) encountered.
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 87408 bytes)
+### light.tif
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\light.tif: unknown field with tag 20752 (0x5110) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\light.tif: unknown field with tag 20753 (0x5111) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\light.tif: unknown field with tag 20754 (0x5112) encountered.
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 174792 bytes)
+### light_blue.tif
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 174776 bytes)
+### light_red.tif
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 174776 bytes)
+### material_icefieldsb40_bridgeramp.tif
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsb40_bridgeramp.tif: unknown field with tag 769 (0x301) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsb40_bridgeramp.tif: unknown field with tag 771 (0x303) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsb40_bridgeramp.tif: unknown field with tag 20752 (0x5110) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsb40_bridgeramp.tif: unknown field with tag 20753 (0x5111) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsb40_bridgeramp.tif: unknown field with tag 20754 (0x5112) encountered.
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 43704 bytes)
+### material_icefieldsb40_metal_plate_floor_ext.tif
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsb40_metal_plate_floor_ext.tif: unknown field with tag 769 (0x301) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsb40_metal_plate_floor_ext.tif: unknown field with tag 771 (0x303) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsb40_metal_plate_floor_ext.tif: unknown field with tag 20752 (0x5110) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsb40_metal_plate_floor_ext.tif: unknown field with tag 20753 (0x5111) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsb40_metal_plate_floor_ext.tif: unknown field with tag 20754 (0x5112) encountered.
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 43704 bytes)
+### material_icefieldsb40_panels_generic_ext.tif
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsb40_panels_generic_ext.tif: unknown field with tag 769 (0x301) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsb40_panels_generic_ext.tif: unknown field with tag 771 (0x303) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsb40_panels_generic_ext.tif: unknown field with tag 20752 (0x5110) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsb40_panels_generic_ext.tif: unknown field with tag 20753 (0x5111) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsb40_panels_generic_ext.tif: unknown field with tag 20754 (0x5112) encountered.
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 174776 bytes)
+### material_icefieldsbeavercreek_ladder.tif
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsbeavercreek_ladder.tif: unknown field with tag 769 (0x301) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsbeavercreek_ladder.tif: unknown field with tag 771 (0x303) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsbeavercreek_ladder.tif: unknown field with tag 20752 (0x5110) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsbeavercreek_ladder.tif: unknown field with tag 20753 (0x5111) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsbeavercreek_ladder.tif: unknown field with tag 20754 (0x5112) encountered.
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 43704 bytes)
+### material_icefieldscap_metal.tif
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldscap_metal.tif: unknown field with tag 20752 (0x5110) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldscap_metal.tif: unknown field with tag 20753 (0x5111) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldscap_metal.tif: unknown field with tag 20754 (0x5112) encountered.
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 87400 bytes)
+### material_icefieldsgreenlight.tif
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 174776 bytes)
+### material_icefieldsicefields_arrow_white.tif
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_arrow_white.tif: unknown field with tag 20752 (0x5110) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_arrow_white.tif: unknown field with tag 20753 (0x5111) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_arrow_white.tif: unknown field with tag 20754 (0x5112) encountered.
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 43704 bytes)
+### material_icefieldsicefields_base_lights_blue.tif
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_base_lights_blue.tif: unknown field with tag 20752 (0x5110) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_base_lights_blue.tif: unknown field with tag 20753 (0x5111) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_base_lights_blue.tif: unknown field with tag 20754 (0x5112) encountered.
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 174792 bytes)
+### material_icefieldsicefields_base_lights_red.tif
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_base_lights_red.tif: unknown field with tag 20752 (0x5110) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_base_lights_red.tif: unknown field with tag 20753 (0x5111) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_base_lights_red.tif: unknown field with tag 20754 (0x5112) encountered.
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 174792 bytes)
+### material_icefieldsicefields_base_roof.tif
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_base_roof.tif: unknown field with tag 20752 (0x5110) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_base_roof.tif: unknown field with tag 20753 (0x5111) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_base_roof.tif: unknown field with tag 20754 (0x5112) encountered.
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 174776 bytes)
+### material_icefieldsicefields_base_stripes_blue.tif
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_base_stripes_blue.tif: unknown field with tag 20752 (0x5110) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_base_stripes_blue.tif: unknown field with tag 20753 (0x5111) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_base_stripes_blue.tif: unknown field with tag 20754 (0x5112) encountered.
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 21864 bytes)
+### material_icefieldsicefields_base_stripes_red.tif
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_base_stripes_red.tif: unknown field with tag 20752 (0x5110) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_base_stripes_red.tif: unknown field with tag 20753 (0x5111) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_base_stripes_red.tif: unknown field with tag 20754 (0x5112) encountered.
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 21864 bytes)
+### material_icefieldsicefields_cliff_walls.tif
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_cliff_walls.tif: unknown field with tag 20752 (0x5110) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_cliff_walls.tif: unknown field with tag 20753 (0x5111) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_cliff_walls.tif: unknown field with tag 20754 (0x5112) encountered.
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 349544 bytes)
+### material_icefieldsicefields_ground.tif
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_ground.tif: unknown field with tag 20752 (0x5110) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_ground.tif: unknown field with tag 20753 (0x5111) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_ground.tif: unknown field with tag 20754 (0x5112) encountered.
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 174776 bytes)
+### material_icefieldsicefields_ground_ice.tif
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_ground_ice.tif: unknown field with tag 20752 (0x5110) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_ground_ice.tif: unknown field with tag 20753 (0x5111) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_ground_ice.tif: unknown field with tag 20754 (0x5112) encountered.
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 174776 bytes)
+### material_icefieldsicefields_ground_ice_patches.tif
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_ground_ice_patches.tif: unknown field with tag 20752 (0x5110) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_ground_ice_patches.tif: unknown field with tag 20753 (0x5111) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_ground_ice_patches.tif: unknown field with tag 20754 (0x5112) encountered.
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 174776 bytes)
+### material_icefieldsicefields_ice_caves.tif
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_ice_caves.tif: unknown field with tag 20752 (0x5110) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_ice_caves.tif: unknown field with tag 20753 (0x5111) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_ice_caves.tif: unknown field with tag 20754 (0x5112) encountered.
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 174776 bytes)
+### material_icefieldsicefields_light.tif
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 174776 bytes)
+### material_icefieldsicefields_symbol_blue.tif
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_symbol_blue.tif: unknown field with tag 20752 (0x5110) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_symbol_blue.tif: unknown field with tag 20753 (0x5111) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_symbol_blue.tif: unknown field with tag 20754 (0x5112) encountered.
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 43704 bytes)
+### material_icefieldsicefields_symbol_red.tif
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_symbol_red.tif: unknown field with tag 20752 (0x5110) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_symbol_red.tif: unknown field with tag 20753 (0x5111) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsicefields_symbol_red.tif: unknown field with tag 20754 (0x5112) encountered.
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 43704 bytes)
+### material_icefieldsmetal_flat_generic.tif
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsmetal_flat_generic.tif: unknown field with tag 769 (0x301) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsmetal_flat_generic.tif: unknown field with tag 771 (0x303) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsmetal_flat_generic.tif: unknown field with tag 20752 (0x5110) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsmetal_flat_generic.tif: unknown field with tag 20753 (0x5111) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsmetal_flat_generic.tif: unknown field with tag 20754 (0x5112) encountered.
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 43704 bytes)
+### material_icefieldssidewinder_generator.tif
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldssidewinder_generator.tif: unknown field with tag 769 (0x301) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldssidewinder_generator.tif: unknown field with tag 771 (0x303) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldssidewinder_generator.tif: unknown field with tag 20752 (0x5110) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldssidewinder_generator.tif: unknown field with tag 20753 (0x5111) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldssidewinder_generator.tif: unknown field with tag 20754 (0x5112) encountered.
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 174776 bytes)
+### material_icefieldsteleporter_shield.tif
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsteleporter_shield.tif: unknown field with tag 20752 (0x5110) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsteleporter_shield.tif: unknown field with tag 20753 (0x5111) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\material_icefieldsteleporter_shield.tif: unknown field with tag 20754 (0x5112) encountered.
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 2744 bytes)
+### metal.tif
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\metal.tif: unknown field with tag 20752 (0x5110) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\metal.tif: unknown field with tag 20753 (0x5111) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\metal.tif: unknown field with tag 20754 (0x5112) encountered.
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 87400 bytes)
+### mpshare_mp_metal_trim.tif
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 174776 bytes)
+### panels.tif
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\panels.tif: unknown field with tag 769 (0x301) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\panels.tif: unknown field with tag 771 (0x303) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\panels.tif: unknown field with tag 20752 (0x5110) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\panels.tif: unknown field with tag 20753 (0x5111) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\panels.tif: unknown field with tag 20754 (0x5112) encountered.
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 175800 bytes)
+### ramp.tif
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\ramp.tif: unknown field with tag 769 (0x301) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\ramp.tif: unknown field with tag 771 (0x303) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\ramp.tif: unknown field with tag 20752 (0x5110) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\ramp.tif: unknown field with tag 20753 (0x5111) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\ramp.tif: unknown field with tag 20754 (0x5112) encountered.
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 43704 bytes)
+### river_riverworld_cliff.tif
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 174776 bytes)
+### roof.tif
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\roof.tif: unknown field with tag 20752 (0x5110) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\roof.tif: unknown field with tag 20753 (0x5111) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\roof.tif: unknown field with tag 20754 (0x5112) encountered.
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 174776 bytes)
+### shield.tif
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\shield.tif: unknown field with tag 20752 (0x5110) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\shield.tif: unknown field with tag 20753 (0x5111) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\shield.tif: unknown field with tag 20754 (0x5112) encountered.
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 2744 bytes)
+### stripes.tif
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\stripes.tif: unknown field with tag 20752 (0x5110) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\stripes.tif: unknown field with tag 20753 (0x5111) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\stripes.tif: unknown field with tag 20754 (0x5112) encountered.
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 21864 bytes)
+### symbol_blue.tif
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\symbol_blue.tif: unknown field with tag 20752 (0x5110) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\symbol_blue.tif: unknown field with tag 20753 (0x5111) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\symbol_blue.tif: unknown field with tag 20754 (0x5112) encountered.
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 43704 bytes)
+### symbol_red.tif
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\symbol_red.tif: unknown field with tag 20752 (0x5110) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\symbol_red.tif: unknown field with tag 20753 (0x5111) encountered.
+TIFFReadDirectory: Warning, data\levels\multi\custom_canvas\bitmaps\symbol_red.tif: unknown field with tag 20754 (0x5112) encountered.
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 43704 bytes)
+### wire_174186203.tif
+  1 bitmaps imported as 'Diffuse Map' (in-game size: 174776 bytes)
+[ForgeWorks] Compiling structure BSP: levels\multi\custom_canvas\structure\custom_canvas.ass...
+WARNING havok memory buffer is 8140272 bytes, should be 3896944 bytes
+
+set category: 'scenario:game_engine_prepper'
+
+=== starting import of structure 'levels\multi\custom_canvas\custom_canvas'parsing scene: data\levels\multi\custom_canvas\structure\custom_canvas...      
+                                                                               
+WARNING couldn't find shader 'dead deadlock_water_awesome_' in collection 'dead' (levels\multi\deadlock)
+
+-ERROR- unable to find shader 'dead deadlock_water_awesome_' anywhere
+
+...                                                                            
+merging planes... 20% /                                                        
+                                                                               
+-ERROR- there are 188 open or degenerate edges
+
+WARNING 	188 edges: river riverworld_rock
+
+...                                                                            
+building bsp3d children...... 100% -                                           
+                                                                               
+-ERROR- bad connections - 0 ambiguous, 60 leaky
+
+
+=== was instances: 0
+=== was definiton: 0
+=== new instances: 0
+WARNING ### ERROR open edge: reported 188 errors
+
+=== new definiton: 0
+=== writing out structure 'levels\multi\custom_canvas\custom_canvas':
+    4 materials and 0 markers,
+    2348 vertices, 2320 points and 4454 triangles.
+    collision bsp3d:
+        1344/32768 planes, 2928/8388608 nodes and 1517/8388608 leaves,
+    collision bsp2d:
+        2564/196608 reference count, 2243/32767 node_count
+        2768/32767 surfaces, 5076/262144 edges and 2312/131072 vertices.
+    structure:
+        0 portals, 1/256 clusters and 2433 subclusters.
+        0 environment objects of 0 distinct types.
+...                                                                            
+building structure mopp...... 37% \                                            
+                                                                               
+
+=== imported structure 'levels\multi\custom_canvas\custom_canvas' in 0m 02.420sec
+WARNING rasterizer:textures: leaking 15 textures on map dispose
+
+[ForgeWorks] Packaging map cache file: levels\multi\custom_canvas\custom_canvas...
+WARNING havok memory buffer is 8140272 bytes, should be 3896944 bytes
+
+starting to build cache file language= english minor version= -1
+verify_cache_file_struct_sizes 0.000000 seconds 16384 bytes
+create_global_tags 0.000000 seconds 16384 bytes
+build_cache_file_initialize_cache_file_gestalt_observer 0.000000 seconds 16384 bytes
+set category: 'scenario:game_engine_prepper'
+-ERROR- (group_postprocessing 'levels\multi\custom_canvas\custom_canvas.scenario') using default zone sets because there weren't any
+
+WARNING (group_postprocessing 'sound\materials\particles\concrete_particles.sound') sound: sound 'sound\materials\particles\concrete_particles' last promotion rule 2 has a maximum play count of 2, resetting to 0
+
+WARNING (group_postprocessing 'sound\materials\particles\concrete_particles_water.sound') sound: sound 'sound\materials\particles\concrete_particles_water' last promotion rule 2 has a maximum play count of 3, resetting to 0
+
+WARNING (group_postprocessing 'sound\materials\particles\snow_particles.sound') sound: sound 'sound\materials\particles\snow_particles' last promotion rule 2 has a maximum play count of 3, resetting to 0
+
+WARNING (group_postprocessing 'sound\materials\particles\snow_particles_small.sound') sound: sound 'sound\materials\particles\snow_particles_small' last promotion rule 2 has a maximum play count of 3, resetting to 0
+
+WARNING (group_postprocessing 'sound\materials\particles\rocks\rocks_small_water.sound') sound: sound 'sound\materials\particles\rocks\rocks_small_water' last promotion rule 2 has a maximum play count of 3, resetting to 0
+
+WARNING (group_postprocessing 'objects\weapons\grenade\claymore_grenade\claymore_grenade.projectile') objects: object 'objects\weapons\grenade\claymore_grenade\claymore_grenade' has a bounding sphere which doesn't contain a significant portion of its computed one (0.180000 vs 75% of 0.173825+0.157222)
+
+WARNING (group_postprocessing 'objects\characters\masterchief\masterchief.model') objects: model 'objects\characters\masterchief\masterchief' variant 'default' cannot find region 'chest'
+
+WARNING (group_postprocessing 'objects\characters\masterchief\masterchief.model') objects: model 'objects\characters\masterchief\masterchief' variant 'cinematic' cannot find region 'chest'
+
+WARNING (group_postprocessing 'objects\characters\elite\elite.physics_model') objects: physics model 'objects\characters\elite\elite' couldn't resolve material 'teeth%' (''), using default material
+
+WARNING (group_postprocessing 'objects\characters\elite\elite_sp.biped') objects: object 'objects\characters\elite\elite_sp' has a bounding sphere which doesn't contain a significant portion of its computed one (0.440000 vs 75% of 0.259848+0.395943)
+
+WARNING (group_postprocessing 'sound\materials\particles\shrapnel.sound') sound: sound 'sound\materials\particles\shrapnel' last promotion rule 2 has a maximum play count of 1, resetting to 0
+
+loading all bsps...                                                            
+loading all bsps...  0% / (levels\multi\custom_canvas\custom_canvas)           
+WARNING environment: lightmaps for bsp 'levels\multi\custom_canvas\custom_canvas' will not be available :(
+
+loading all bsps... 100% - (levels\multi\custom_canvas\custom_canvas)          
+                                                                               
+scenario_load 4.505000 seconds 44261376 bytes
+game_initialize_for_new_map 0.069000 seconds 44261376 bytes
+mark sampled bitmaps...lm    sampled bitmaps 0.00Mb
+other sampled bitmaps 5.38Mb
+non   sampled bitmaps 85.07Mb
+
+total bitmaps 90.45Mb
+build_cache_file_mark_sampled_bitmaps 0.000000 seconds 44261376 bytes
+registering resources with current zone...                                     
+                                                                               
+loading resources (blocking)...                                                
+loading resources (blocking)...  0% \                                          
+loading resources (blocking)... 20% |                                          
+loading resources (blocking)... 40% /                                          
+loading resources (blocking)... 60% -                                          
+loading resources (blocking)... 80% \                                          
+loading resources (blocking)... 100% |                                         
+                                                                               
+registering resources with current zone...                                     
+                                                                               
+scenario_activate_all_designer_zones 0.104000 seconds 44261376 bytes
+game_create_objects 0.000000 seconds 44261376 bytes
+WARNING environment: lightmaps for bsp 'levels\multi\custom_canvas\custom_canvas' will not be available :(
+
+registering resources with current zone...                                     
+                                                                               
+loading resources (blocking)...                                                
+loading resources (blocking)...  2% /                                          
+loading resources (blocking)... 22% -                                          
+loading resources (blocking)... 42% \                                          
+loading resources (blocking)... 63% |                                          
+loading resources (blocking)... 83% /                                          
+                                                                               
+registering resources with current zone...                                     
+                                                                               
+loading resources (blocking)...                                                
+loading resources (blocking)...  1% -                                          
+loading resources (blocking)... 21% \                                          
+loading resources (blocking)... 41% |                                          
+loading resources (blocking)... 62% /                                          
+loading resources (blocking)... 82% -                                          
+                                                                               
+building pvs...                                                                
+building pvs... 100% \                                                         
+                                                                               
+placing objects on bsp...                                                      
+                                                                               
+structure_bsp_light_decorators_from_scenario...                                
+structure_bsp_light_decorators_from_scenario...  0% |                          
+                                                                               
+initializing game portal to portal mappings...                                 
+                                                                               
+building portal connectivity...                                                
+                                                                               
+determining cluster=>door connectivity...                                      
+                                                                               
+encoding cluster distances...                                                  
+                                                                               
+registering resources with current zone...                                     
+                                                                               
+registering resources with current zone...                                     
+                                                                               
+registering resources with current zone...                                     
+                                                                               
+registering resources with current zone...                                     
+                                                                               
+build_cache_file_process_all_zone_sets 0.079000 seconds 44261376 bytes
+loading resources (blocking)...                                                
+loading resources (blocking)... 100% /                                         
+                                                                               
+width 16, height 16. margin pixel 0/256
+16 thrds Illume [] ex 0, l_max     2.60
+
+16 thrds Chroma []
+
+width 16, height 16. margin pixel 0/256
+16 thrds Illume [] ex 0, l_max     0.89
+
+16 thrds Chroma []
+
+width 16, height 16. margin pixel 0/256
+16 thrds Illume [] ex 0, l_max     1.40
+
+16 thrds Chroma []
+
+width 16, height 16. margin pixel 0/256
+16 thrds Illume [] ex 0, l_max     0.69
+
+16 thrds Chroma []
+
+width 16, height 16. margin pixel 0/256
+16 thrds Illume [] ex 0, l_max     4.08
+
+16 thrds Chroma []
+
+adding fake-o lightmap
+
+build_cache_file_process_zone_set_lightmaps 0.015000 seconds 44269568 bytes
+hs_scenario_postprocess 0.000000 seconds 44269568 bytes
+game_dispose_from_old_map 0.000000 seconds 44269568 bytes
+build_cache_file_cull_tags 0.000000 seconds 44269568 bytes
+done culling animations
+*** original animation tag data 8483520 bytes
+*** cached animation tag data 2239084 bytes
+*** model animation graph tags reduced by 6244436 bytes
+*** writing animation compression stats...
+*** finished writing animation compression stats..
+postprocess_animation_data 0.465000 seconds 44269568 bytes
+loading resources (blocking)...                                                
+loading resources (blocking)... 100% -                                         
+                                                                               
+build_cache_file_generate_resource_report 0.001000 seconds 44269568 bytes
+build_cache_file_record_max_shader_gpr_usage 0.000000 seconds 44269568 bytes
+stripping debug geometry...saved 269kb...done
+build_cache_file_strip_debug_geometry 0.000000 seconds 44269568 bytes
+build_cache_file_optimize_tags 0.001000 seconds 44269568 bytes
+game_sound_deterministic_prepare_for_cache_file 0.000000 seconds 44269568 bytes
+adding sounds...done (3894 sound permutations for 61.50M)
+build_cache_file_count_sound_samples 0.014000 seconds 44269568 bytes
+registering resources...build_cache_file_create_and_register_resources 0.022000 seconds 44269568 bytes
+build_cache_file_remove_content_for_dvd_build 0.000000 seconds 44269568 bytes
+build_cache_file_attach_resources_to_zones 0.022000 seconds 44269568 bytes
+WARNING did not find .mapinfo file for scenario levels\multi\custom_canvas\custom_canvas
+
+build_cache_file_add_tag_resources 0.846000 seconds 47337472 bytes
+build_cache_file_get_used_shared_files 0.000000 seconds 47337472 bytes
+build_cache_file_begin_sharing 0.000000 seconds 47337472 bytes
+...packing languages...
+...writing language packs to cache...
+english: #of strings: 2255 string data size: 61664
+japanese: #of strings: 2254 string data size: 85479
+german: #of strings: 2255 string data size: 78435
+french: #of strings: 2255 string data size: 72823
+spanish: #of strings: 2255 string data size: 74032
+mexican: #of strings: 2255 string data size: 74049
+italian: #of strings: 2255 string data size: 74340
+korean: #of strings: 2254 string data size: 76776
+chinese-traditional: #of strings: 2255 string data size: 59538
+chinese-simplified: #of strings: 1873 string data size: 51372
+portuguese: #of strings: 2255 string data size: 70978
+polish: #of strings: 284 string data size: 10284
+language_packing 0.005000 seconds 48381952 bytes
+build_cache_file_sound_gestalt 0.098000 seconds 48381952 bytes
+build_cache_file_create_tag_group_name_string_ids 0.000000 seconds 48381952 bytes
+build_cache_file_add_string_ids 0.001000 seconds 48689152 bytes
+build_cache_file_add_debug_tag_names 0.000000 seconds 48865280 bytes
+build_cache_file_allocate_tag_section 0.000000 seconds 48865280 bytes
+streaming tags...........................................................done
+build_cache_file_add_tags 0.150000 seconds 48865280 bytes
+build_cache_file_commit_header 0.000000 seconds 48865280 bytes
+build_cache_file_stream_tag_section 0.000000 seconds 48865280 bytes
+build_cache_file_align_tag_section 0.000000 seconds 48865280 bytes
+build_cache_file_stream_tag_physical_sections 0.000000 seconds 48865280 bytes
+build_cache_file_allocate_tag_section 0.000000 seconds 48865280 bytes
+streaming tags...........................................................done
+build_cache_file_add_tags 0.149000 seconds 48865280 bytes
+build_cache_file_commit_header 0.000000 seconds 48865280 bytes
+build_cache_file_stream_tag_section 0.001000 seconds 48865280 bytes
+build_cache_file_align_tag_section 0.000000 seconds 48865280 bytes
+build_cache_file_stream_tag_physical_sections 0.000000 seconds 48865280 bytes
+build_cache_file_allocate_tag_section 0.000000 seconds 48865280 bytes
+streaming tags...........................................................done
+build_cache_file_add_tags 0.182000 seconds 48865280 bytes
+build_cache_file_commit_header 0.000000 seconds 48865280 bytes
+build_cache_file_stream_tag_section 0.000000 seconds 48865280 bytes
+build_cache_file_align_tag_section 0.000000 seconds 48865280 bytes
+build_cache_file_stream_tag_physical_sections 0.000000 seconds 48865280 bytes
+language-read-only range: [00000001CEFA0000-00000001CF040000) for 0.63M
+language-read-only checksum: 47508829
+language-read-write range: [00000001CF040000-00000001CF080000) for 0.25M
+language-read-write checksum: 5b9cb2b5
+read-write range: [00000001CF080000-00000001CF0B0000) for 0.19M
+read-write checksum: 405fdbd1
+write-combined range: [00000001CF0B0000-00000001CF0B0000) for 0.00M
+write-combined checksum: ffffffff
+read-only range: [00000001CF0B0000-00000001D0000000) for 15.31M
+read-only checksum: bde62723
+build_cache_file_compute_content_hashes 0.016000 seconds 48865280 bytes
+total shared block size: 5067.80 kB
+
+
+writing tags...total tag size is 62.98M
+build_cache_file_write_tags 0.026000 seconds 66035712 bytes
+build_cache_file_end_sharing 0.000000 seconds 66035712 bytes
+writing 62.98M...realtime data checksum is 0XD1491FC2...build_cache_file_finalize_and_byte_swap_header 0.012000 seconds 66035712 bytes
+build_cache_file_sign_header 0.000000 seconds 66035712 bytes
+done
+build_cache_file_write_header_and_compress 0.005000 seconds 66052096 bytes
+successfully built cache file.
+total time 6.909000

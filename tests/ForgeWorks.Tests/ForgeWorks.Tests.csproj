@@ -22,6 +22,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\ForgeWorks.Core\ForgeWorks.Core.csproj" />
     <ProjectReference Include="..\..\src\ForgeWorks.Blam\ForgeWorks.Blam.csproj" />
+    <ProjectReference Include="..\..\src\ForgeWorks.FSharp\ForgeWorks.FSharp.fsproj" />
     <ProjectReference Include="..\..\src\ForgeWorks.UI\ForgeWorks.UI.csproj" />
   </ItemGroup>
 

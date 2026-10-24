@@ -270,15 +270,26 @@
                         </Button.Flyout>
                     </Button>
 
-                    <Button Command="{Binding SetSapienModeCommand}" Background="#0284c7" Foreground="White" FontWeight="Bold" Padding="12,5" Margin="2,0">
+                    <Button Command="{Binding LaunchExternalSapienCommand}" Background="#0284c7" Foreground="White" FontWeight="Bold" Padding="12,5" Margin="2,0" ToolTip.Tip="Launch sapien.exe from H3EK (Loads scenario or picker menu)">
                         <StackPanel Orientation="Horizontal" Spacing="5">
-                            <TextBlock Text="🎭 Sapien"/>
+                            <TextBlock Text="🎭 Launch Sapien ▾"/>
                         </StackPanel>
+                        <Button.Flyout>
+                            <MenuFlyout Placement="Bottom">
+                                <MenuItem Header="🎭 Launch Sapien (Scenario Picker Menu)" Command="{Binding LaunchExternalSapienPickerCommand}"/>
+                                <MenuItem Header="🚀 Launch Sapien (Active Scenario)" Command="{Binding LaunchExternalSapienCommand}"/>
+                            </MenuFlyout>
+                        </Button.Flyout>
                     </Button>
-                    <Button Command="{Binding SetGuerillaModeCommand}" Background="#059669" Foreground="White" FontWeight="Bold" Padding="12,5" Margin="2,0">
+                    <Button Command="{Binding LaunchExternalGuerillaCommand}" Background="#059669" Foreground="White" FontWeight="Bold" Padding="12,5" Margin="2,0" ToolTip.Tip="Launch guerilla.exe from H3EK tag editor">
                         <StackPanel Orientation="Horizontal" Spacing="5">
-                            <TextBlock Text="🧬 Guerilla"/>
+                            <TextBlock Text="🧬 Launch Guerilla ▾"/>
                         </StackPanel>
+                        <Button.Flyout>
+                            <MenuFlyout Placement="Bottom">
+                                <MenuItem Header="🧬 Open Guerilla Tag Editor" Command="{Binding LaunchExternalGuerillaCommand}"/>
+                            </MenuFlyout>
+                        </Button.Flyout>
                     </Button>
                 </StackPanel>
             </Grid>
@@ -388,6 +399,9 @@
                             </Button>
                             <Button Command="{Binding DissolveCoplanarEdgesCommand}" Background="#312e81" Foreground="#a5b4fc" Padding="4,2" ToolTip.Tip="Dissolve Coplanar Edges: merges flat faces sharing an edge into minimal polygons">
                                 <TextBlock Text="📐 Dissolve Flat" FontSize="10"/>
+                            </Button>
+                            <Button Command="{Binding FitSceneToGridCommand}" Background="#0f766e" Foreground="#5eead4" FontWeight="Bold" Padding="6,2" ToolTip.Tip="Fit Scene to Grid: grabs all scene meshes and shrinks/scales the entire map uniformly to fit the grid corner-to-corner (7000 units), centered at origin with base at Z=0 and triplanar UVs auto-fitted">
+                                <TextBlock Text="📏 Fit to Grid" FontSize="10"/>
                             </Button>
                         </StackPanel>
                     </Border>

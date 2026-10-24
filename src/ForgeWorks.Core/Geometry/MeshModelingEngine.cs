@@ -831,28 +831,8 @@ public static class MeshModelingEngine
 
         for (int i = 0; i < mesh.Vertices.Count; i++)
         {
-            var p = mesh.Vertices[i].Position;
-            var n = mesh.Vertices[i].Normal;
-            float absX = MathF.Abs(n.X);
-            float absY = MathF.Abs(n.Y);
-            float absZ = MathF.Abs(n.Z);
-
-            Vector2 uv;
-            // Horizontal planes (floors, roofs, ground plateaus)
-            if (absZ >= absX && absZ >= absY)
-            {
-                uv = new Vector2(p.X / tileScale, p.Y / tileScale);
-            }
-            // Vertical walls / cliffs aligned to X-axis
-            else if (absX >= absY)
-            {
-                uv = new Vector2(p.Y / tileScale, p.Z / tileScale);
-            }
-            // Vertical walls / cliffs aligned to Y-axis
-            else
-            {
-                uv = new Vector2(p.X / tileScale, p.Z / tileScale);
-            }
+            var v = mesh.Vertices[i];
+            var uv = ForgeWorks.FSharp.Math3D.calculateTriplanarUV(v.Position, v.Normal, tileScale);
 
             if (mesh.Vertices[i].UVs.Count == 0)
             {
@@ -863,5 +843,56 @@ public static class MeshModelingEngine
                 mesh.Vertices[i].UVs[0] = uv;
             }
         }
+    }
+
+    /// <summary>
+    /// Computes the collective bounding box of all meshes in the scene and scales them uniformly
+    /// so the map fits within the target grid extent (corner to corner), centering the map at (0, 0)
+    /// and placing its ground base at Z = 0. Uses high-performance F# Math3D for vector computation.
+    /// </summary>
+    public static float FitSceneToGrid(
+        IEnumerable<MeshObject> meshes,
+        float targetGridExtent = 7000.0f,
+        bool centerAtOrigin = true,
+        bool alignBaseToZero = true,
+        bool autoFitUvs = true)
+    {
+        var meshList = meshes.ToList();
+        if (meshList.Count == 0) return 1.0f;
+
+        var points = meshList.SelectMany(m => m.Vertices.Select(v => v.Position));
+        var bounds = ForgeWorks.FSharp.Math3D.BoundingBox3D.FromPoints(points);
+
+        if (bounds.IsEmpty || bounds.MaxHorizontalSpan <= 1e-4f) return 1.0f;
+
+        var fit = ForgeWorks.FSharp.Math3D.calculateGridFit(bounds, targetGridExtent, centerAtOrigin, alignBaseToZero);
+
+        foreach (var m in meshList)
+        {
+            for (int i = 0; i < m.Vertices.Count; i++)
+            {
+                var v = m.Vertices[i];
+                var newPos = fit.TransformPoint(v.Position);
+
+                m.Vertices[i] = new Vertex(newPos, v.Normal, v.UVs.Count > 0 ? v.UVs[0] : null)
+                {
+                    Color = v.Color
+                };
+
+                for (int u = 1; u < v.UVs.Count; u++)
+                {
+                    m.Vertices[i].UVs.Add(v.UVs[u]);
+                }
+            }
+
+            m.RecalculateNormals();
+
+            if (autoFitUvs)
+            {
+                AutoFitTriplanarUVs(m, 300.0f);
+            }
+        }
+
+        return fit.Scale;
     }
 }

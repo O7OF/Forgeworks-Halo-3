@@ -1791,6 +1791,25 @@ public partial class MainViewModel : ViewModelBase
     }
 
     [RelayCommand]
+    public void FitSceneToGrid()
+    {
+        PushHistoryState("Fit Scene to Grid");
+        var meshes = SceneGraph.GetLevelMeshes();
+        if (meshes.Count == 0 && ActiveMesh != null) meshes.Add(ActiveMesh);
+
+        if (meshes.Count == 0)
+        {
+            StatusMessage = "No geometry in scene to fit to grid.";
+            return;
+        }
+
+        float scale = MeshModelingEngine.FitSceneToGrid(meshes, targetGridExtent: 7000.0f, centerAtOrigin: true, alignBaseToZero: true, autoFitUvs: true);
+        MeshVersion++;
+        RunLinter();
+        StatusMessage = $"Fitted {meshes.Count} scene meshes to grid (Scale: {scale:F5}, 7000-unit span, base at Z=0, centered at origin).";
+    }
+
+    [RelayCommand]
     public void SealActiveMeshAcrossTop()
     {
         if (ActiveMesh == null) return;
@@ -2767,29 +2786,78 @@ public partial class MainViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    public void LaunchExternalSapien()
+    public void LaunchExternalSapienPicker() => LaunchSapienInternal(forcePicker: true);
+
+    [RelayCommand]
+    public void LaunchExternalSapien() => LaunchSapienInternal(forcePicker: false);
+
+    private void LaunchSapienInternal(bool forcePicker)
     {
-        string sapienExe = Path.Combine(EkPath, "sapien.exe");
+        string ek = !string.IsNullOrEmpty(EkPath) && Directory.Exists(EkPath)
+            ? EkPath
+            : ToolFastCompiler.AutoDetectEkPath("H3EK") ?? @"C:\Program Files (x86)\Steam\steamapps\common\H3EK";
+
+        string sapienExe = Path.Combine(ek, "sapien.exe");
         if (!File.Exists(sapienExe))
         {
-            StatusMessage = $"sapien.exe not found at '{sapienExe}'.";
+            StatusMessage = $"Error: sapien.exe not found at '{sapienExe}'. Please check your H3EK installation path.";
             return;
         }
 
         try
         {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            string scnrRel = $@"levels\multi\{ActiveLevelName}\{ActiveLevelName}";
+            string scnrTagPath = Path.Combine(ek, "tags", $"{scnrRel}.scenario");
+            string args = (!forcePicker && File.Exists(scnrTagPath)) ? $"\"{scnrRel}\"" : "";
+
+            var psi = new System.Diagnostics.ProcessStartInfo
             {
                 FileName = sapienExe,
-                Arguments = "",
-                WorkingDirectory = EkPath,
-                UseShellExecute = true
-            });
-            StatusMessage = "Launched Sapien.exe into the scenario picker menu.";
+                Arguments = args,
+                WorkingDirectory = ek,
+                UseShellExecute = false
+            };
+            System.Diagnostics.Process.Start(psi);
+
+            StatusMessage = string.IsNullOrEmpty(args)
+                ? "Launched Sapien.exe (Scenario Picker Menu) from H3EK."
+                : $"Launched Sapien.exe into '{scnrRel}.scenario'!";
         }
         catch (Exception ex)
         {
             StatusMessage = $"Error launching sapien.exe: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    public void LaunchExternalGuerilla()
+    {
+        string ek = !string.IsNullOrEmpty(EkPath) && Directory.Exists(EkPath)
+            ? EkPath
+            : ToolFastCompiler.AutoDetectEkPath("H3EK") ?? @"C:\Program Files (x86)\Steam\steamapps\common\H3EK";
+
+        string guerillaExe = Path.Combine(ek, "guerilla.exe");
+        if (!File.Exists(guerillaExe))
+        {
+            StatusMessage = $"Error: guerilla.exe not found at '{guerillaExe}'. Please check your H3EK installation path.";
+            return;
+        }
+
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = guerillaExe,
+                WorkingDirectory = ek,
+                UseShellExecute = false
+            };
+            System.Diagnostics.Process.Start(psi);
+
+            StatusMessage = "Launched Guerilla.exe tag editor from H3EK.";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Error launching guerilla.exe: {ex.Message}";
         }
     }
 
