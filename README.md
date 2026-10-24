@@ -1,4 +1,4 @@
-# ForgeWorks Studio - Blam Editing Suite For Halo 3 (v2.3.2)
+# ForgeWorks Studio - Blam Editing Suite For Halo 3 (v2.3.3)
 
 [![.NET 10.0](https://img.shields.io/badge/.NET-10.0-blue.svg)](https://dotnet.microsoft.com/)
 [![Halo 3 MCC](https://img.shields.io/badge/Halo%203-H3EK%20MCC-green.svg)](https://store.steampowered.com/app/976730/Halo_The_Master_Chief_Collection/)
@@ -14,6 +14,34 @@
 4. **Integrated Sapien Viewport**: 60+ FPS hardware-accelerated OpenGL 3.3 renderer with interactive 3D transform gizmos (Translate, Rotate, Scale), outliner hierarchy, scenario palette, and live entity editing.
 5. **Integrated Guerilla Tag Reflection**: In-memory inspection and mutation of `.scenario`, `.shader`, and `.bitmap` reflexives with automated retail template synthesis.
 6. **One-Click MCC Compilation**: Direct export to `.ass` (Amalgam Scene Specification v3) and automated streaming compilation via `tool_fast.exe` with instant launching into Sapien and MCC.
+
+---
+
+## What's New in v2.3.3 (ASS v3 Structure Compiler Fatal Error Hotfix)
+
+### 1. Fix ASS v3 Vertex Node Influences & Texcoords Negative Count Crash
+- **Root Cause Identified**:
+  In ASS (Amalgam Scene Specification) version 3, the vertex data format consumed by Halo 3's `tool_fast.exe structure` parser expects:
+  1. Position: `X Y Z` (3 floats)
+  2. Normal: `I J K` (3 floats)
+  3. Node influences count: `0` (1 integer)
+  4. Texcoords count: `N` (1 integer)
+  5. Texcoords: `U V` (2 floats per UV; **not** 3-tuple `U V 0.0`)
+  Vertex color (`R G B`) lines were only introduced in ASS version 6+ (v6, v7). Because `AssExporter.cs` was unconditionally serializing vertex colors and 3-tuple UV coordinates even when exporting header version 3, Tool's token parser read the vertex color floats as integer counts for node influences and UV counts. This desynchronized token consumption across vertex boundaries, causing Tool to read the negative coordinates of subsequent vertices (`-4069.1489` and `-6750.0000`) as counts and fail fatally:
+  ```
+  -FATAL- mesh definition vertex node influences count invalid: #-4069 negative
+  -FATAL- mesh definition vertex texcoords count invalid: #-6750 negative
+  -FATAL- couldn't parse definition #0
+  -FATAL- couldn't parse file 'data\levels\multi\custom_canvas\structure\custom_canvas.ass'
+  -ERROR- structure import pipeline failed for levels\multi\custom_canvas\custom_canvas
+  ```
+- **The Fix**:
+  - In `AssExporter.cs`, guarded vertex color serialization with `if (version >= 6)` so that ASS v3 geometry complies strictly with the v3 token format.
+  - Guarded 3-tuple UV serialization with `if (version >= 5)`; ASS v3 exports clean 2-tuple `u v` coordinates.
+  - Updated mesh object header to write the object name `"{obj.Name}"` instead of an anonymous empty string.
+  - In `AssImporter.cs`, updated the vertex parser to only consume vertex color lines when `headerVersion >= 6`.
+  - In `MainViewModel.cs`, passed `levelName: ActiveLevelName` during 1-Click Compiler export to guarantee collection prefixes are resolved.
+  - Added unit regression test `AssExporter_AssV3_DoesNotWriteVertexColorsOr3dUVs_FixingToolNodeInfluencesFatalError` and updated `AssExporter_ExportsVertexColorsInVersion7`.
 
 ---
 

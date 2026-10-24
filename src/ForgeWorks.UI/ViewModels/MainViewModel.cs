@@ -4009,7 +4009,7 @@ public partial class MainViewModel : ViewModelBase
             var materials = CollectMaterials(exportMeshes);
 
             // Export ASS geometry directly to data/levels/multi/<level>/structure/<level>.ass
-            AssExporter.ExportToFile(assPath, materials, exportMeshes, version: 3);
+            AssExporter.ExportToFile(assPath, materials, exportMeshes, version: 3, levelName: ActiveLevelName);
             CompileLog += $"[ForgeWorks] Exported Structure .ass to: {assPath} ({exportMeshes.Count} meshes, {materials.Count} materials)\n";
 
             // Ensure scenario tag is always saved with all spawns, weapons, and volumes

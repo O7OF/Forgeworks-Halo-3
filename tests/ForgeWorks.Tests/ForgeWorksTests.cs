@@ -520,7 +520,7 @@ public class ForgeWorksTests
     }
 
     [Fact]
-    public void AssExporter_ExportsVertexColorsInVersion3()
+    public void AssExporter_ExportsVertexColorsInVersion7()
     {
         var mesh = new MeshObject("vertex_color_test");
         mesh.Vertices.Add(new Vertex(new Vector3(0, 0, 0), Vector3.UnitZ, Vector2.Zero) { Color = new Vector4(1, 0, 0, 1) });
@@ -529,15 +529,36 @@ public class ForgeWorksTests
         mesh.Triangles.Add(new Triangle(0, 1, 2, materialIndex: 0));
 
         using var ms = new MemoryStream();
-        AssExporter.ExportToStream(ms, new List<string> { "Terrain_Layers" }, new List<MeshObject> { mesh }, version: 3);
+        AssExporter.ExportToStream(ms, new List<string> { "Terrain_Layers" }, new List<MeshObject> { mesh }, version: 7);
 
         ms.Seek(0, SeekOrigin.Begin);
         using var reader = new StreamReader(ms);
         string assContent = reader.ReadToEnd();
 
-        // Must contain vertex color definitions
+        // Must contain vertex color definitions in version 7
         Assert.Contains("\"Terrain_Layers\"", assContent);
         Assert.Contains("1.0000000000\t0.0000000000\t0.0000000000", assContent);
+    }
+
+    [Fact]
+    public void AssExporter_AssV3_DoesNotWriteVertexColorsOr3dUVs_FixingToolNodeInfluencesFatalError()
+    {
+        var mesh = new MeshObject("v3_vertex_test");
+        mesh.Vertices.Add(new Vertex(new Vector3(10, 20, 30), Vector3.UnitZ, new Vector2(0.25f, 0.75f)) { Color = new Vector4(1, 0, 0, 1) });
+        mesh.Triangles.Add(new Triangle(0, 0, 0, materialIndex: 0));
+
+        using var ms = new MemoryStream();
+        AssExporter.ExportToStream(ms, new List<string> { "ground" }, new List<MeshObject> { mesh }, version: 3);
+
+        ms.Seek(0, SeekOrigin.Begin);
+        using var reader = new StreamReader(ms);
+        string assContent = reader.ReadToEnd();
+
+        // In ASS v3, vertex color must NOT be written (would be parsed as node influences by Tool),
+        // and UVs must be 2-tuple (u v) rather than 3-tuple (u v 0.0)
+        Assert.DoesNotContain("1.0000000000\t0.0000000000\t0.0000000000", assContent);
+        Assert.Contains("0.2500000000\t0.2500000000", assContent); // 1.0 - 0.75 = 0.25
+        Assert.DoesNotContain("0.2500000000\t0.2500000000\t0.0000000000", assContent);
     }
 
     [Fact]

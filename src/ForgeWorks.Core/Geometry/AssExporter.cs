@@ -84,7 +84,7 @@ public sealed class AssExporter
         {
             var obj = objects[i];
             writer.WriteLine($";OBJECT {i}");
-            writer.WriteLine("\"MESH\"\n\"\"\n\"\"");
+            writer.WriteLine($"\"MESH\"\n\"\"\n\"{obj.Name}\"");
             writer.WriteLine(obj.Vertices.Count.ToString());
 
             foreach (var v in obj.Vertices)
@@ -101,25 +101,38 @@ public sealed class AssExporter
                     CleanFloat(v.Normal.Y),
                     CleanFloat(v.Normal.Z)));
 
-                // Vertex Color (R G B)
-                writer.WriteLine(string.Format(inv, "{0:F10}\t{1:F10}\t{2:F10}",
-                    CleanFloat(v.Color.X),
-                    CleanFloat(v.Color.Y),
-                    CleanFloat(v.Color.Z)));
+                // Vertex Color (R G B) - only ASS version >= 6
+                if (version >= 6)
+                {
+                    writer.WriteLine(string.Format(inv, "{0:F10}\t{1:F10}\t{2:F10}",
+                        CleanFloat(v.Color.X),
+                        CleanFloat(v.Color.Y),
+                        CleanFloat(v.Color.Z)));
+                }
 
                 // Node influences (0 for static structure)
                 writer.WriteLine("0");
 
-                // UVs (Always 3-tuple U V 0.0 with blank line following vertex)
+                // UVs (2-tuple for ASS < 5, 3-tuple for ASS >= 5)
                 var uvs = v.UVs.Count > 0 ? v.UVs : new List<Vector2> { Vector2.Zero };
                 writer.WriteLine(uvs.Count.ToString());
                 foreach (var uv in uvs)
                 {
                     float u = CleanFloat(uv.X);
                     float v_flipped = CleanFloat(1.0f - uv.Y); // Flip V for Blam convention
-                    writer.WriteLine(string.Format(inv, "{0:F10}\t{1:F10}\t0.0000000000", u, v_flipped));
+                    if (version >= 5)
+                    {
+                        writer.WriteLine(string.Format(inv, "{0:F10}\t{1:F10}\t0.0000000000", u, v_flipped));
+                    }
+                    else
+                    {
+                        writer.WriteLine(string.Format(inv, "{0:F10}\t{1:F10}", u, v_flipped));
+                    }
                 }
-                writer.WriteLine();
+                if (version >= 5)
+                {
+                    writer.WriteLine();
+                }
             }
 
             // Triangles

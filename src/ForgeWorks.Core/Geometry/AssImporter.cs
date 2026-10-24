@@ -113,8 +113,11 @@ public sealed class AssImporter
                                 norm = new Vector3(nx, ny, nz);
                             }
 
-                            // Color (version >= 3)
-                            NextNonCommentLine(); // color
+                            // Color (version >= 6)
+                            if (headerVersion >= 6)
+                            {
+                                NextNonCommentLine(); // color
+                            }
                             NextNonCommentLine(); // node influences count
 
                             // UV count & UVs
