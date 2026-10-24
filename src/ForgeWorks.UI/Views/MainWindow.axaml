@@ -52,6 +52,9 @@
     </Window.Styles>
 
     <Window.KeyBindings>
+        <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveProjectCommand}"/>
+        <KeyBinding Gesture="Ctrl+Shift+S" Command="{Binding SaveProjectAsCommand}"/>
+        <KeyBinding Gesture="Ctrl+O" Command="{Binding OpenProjectCommand}"/>
         <KeyBinding Gesture="Ctrl+Z" Command="{Binding UndoCommand}"/>
         <KeyBinding Gesture="Ctrl+Y" Command="{Binding RedoCommand}"/>
         <KeyBinding Gesture="Ctrl+D" Command="{Binding DuplicateSelectedObjectCommand}"/>
@@ -71,6 +74,11 @@
                         <MenuItem Header="File" Foreground="#d1d5db" FontSize="11">
                             <MenuItem Header="New Level Canvas" Command="{Binding GenerateTerrainCommand}"/>
                             <MenuItem Header="🧹 Clear Scene (Empty Canvas)" Command="{Binding ClearSceneCommand}"/>
+                            <Separator/>
+                            <MenuItem Header="💾 Save Project (.blam)" Command="{Binding SaveProjectCommand}" InputGesture="Ctrl+S"/>
+                            <MenuItem Header="Save Project As..." Command="{Binding SaveProjectAsCommand}" InputGesture="Ctrl+Shift+S"/>
+                            <MenuItem Header="📂 Open Project (.blam)..." Command="{Binding OpenProjectCommand}" InputGesture="Ctrl+O"/>
+                            <MenuItem Header="📁 Open 'My Projects' Folder" Command="{Binding OpenProjectsFolderCommand}"/>
                             <Separator/>
                             <MenuItem Header="Import 3D Geometry">
                                 <MenuItem Header="Open File (Auto-Detect: .obj, .fbx, .gltf, .glb, .ass, .rmf, .map)..." Command="{Binding ImportGeometryFileCommand}"/>
@@ -127,10 +135,31 @@
                             <MenuItem Header="🧹 Clean Merge Selected Meshes" Command="{Binding CleanMergeSelectedMeshesCommand}"/>
                             <MenuItem Header="📐 Dissolve Coplanar Edges &amp; Cuts" Command="{Binding DissolveCoplanarEdgesCommand}"/>
                             <Separator/>
+                            <MenuItem Header="📐 Seamless UV Mapping &amp; Remapping">
+                                <MenuItem Header="Apply Seamless Triplanar UVs (1:1 World-Space)" Command="{Binding ApplySeamlessTriplanarUvsCommand}"/>
+                                <MenuItem Header="Apply Seam-Split Triplanar UVs (Zero-Distortion)" Command="{Binding ApplySeamSplitTriplanarUvsCommand}"/>
+                                <MenuItem Header="Remap Selected Faces UVs" Command="{Binding RemapSelectedFacesUvsCommand}"/>
+                                <Separator/>
+                                <MenuItem Header="Planar UV: Ground (XY)" Command="{Binding ApplyPlanarUvsXyCommand}"/>
+                                <MenuItem Header="Planar UV: Cliff Wall (XZ)" Command="{Binding ApplyPlanarUvsXzCommand}"/>
+                                <MenuItem Header="Planar UV: Side Wall (YZ)" Command="{Binding ApplyPlanarUvsYzCommand}"/>
+                            </MenuItem>
+                            <MenuItem Header="📉 Low-Poly Decimation (Halo 3 Budget)">
+                                <MenuItem Header="Decimate 25% (Mild Optimization)" Command="{Binding DecimateActiveMesh25Command}"/>
+                                <MenuItem Header="Decimate 50% (Standard Low-Poly)" Command="{Binding DecimateActiveMesh50Command}"/>
+                                <MenuItem Header="Decimate 75% (Aggressive Low-Poly)" Command="{Binding DecimateActiveMesh75Command}"/>
+                                <MenuItem Header="Target 10,000 Triangles (Halo 3 Cluster Limit)" Command="{Binding DecimateActiveMeshToBudgetCommand}"/>
+                            </MenuItem>
+                            <MenuItem Header="🛡️ Halo 3 Mesh Fixing Suite">
+                                <MenuItem Header="Sanitize Mesh for Halo 3 (Fix Overlaps, Open Edges &amp; Welds)" Command="{Binding SanitizeActiveMeshForHalo3Command}"/>
+                                <MenuItem Header="Deduplicate Overlapping Surfaces (Fix Red Overlaps)" Command="{Binding DeduplicateOverlappingSurfacesCommand}"/>
+                                <MenuItem Header="Seal Boundary Open Edges Down to Floor" Command="{Binding SealBoundaryOpenEdgesCommand}"/>
+                                <MenuItem Header="Seal Entire Map Watertight (+sky Dome Ceiling)" Command="{Binding SealMapWatertightCommand}"/>
+                            </MenuItem>
+                            <Separator/>
                             <MenuItem Header="🌾 Swampthing Fix Open Edges &amp; Welds" Command="{Binding SwampthingFixAllCommand}"/>
                             <MenuItem Header="1-Click Fix All Errors (Weld + Dissolve + Cap)" Command="{Binding AutoRepairAllCommand}"/>
                             <MenuItem Header="Auto-Repair Active Mesh" Command="{Binding AutoRepairCommand}"/>
-                            <MenuItem Header="🛡️ Seal Entire Map Watertight (+sky)" Command="{Binding SealMapWatertightCommand}"/>
                             <MenuItem Header="Run Geometry Linter" Command="{Binding RunLinterCommand}"/>
                         </MenuItem>
                         <MenuItem Header="Procedural Generation" Foreground="#d1d5db" FontSize="11">
@@ -603,21 +632,24 @@
                             <!-- 2. Active Brush Shader & Quick Palette Chips -->
                             <Border Grid.Row="1" Background="#111318" BorderBrush="#1e293b" BorderThickness="1" CornerRadius="6" Padding="8" Margin="0,0,0,6">
                                 <StackPanel Spacing="6">
-                                    <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto">
+                                    <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto">
                                         <StackPanel Grid.Column="0" Spacing="1">
                                             <TextBlock Text="Active Paint Brush Shader:" FontSize="9" Foreground="#94a3b8"/>
                                             <TextBlock Text="{Binding PaintMaterialName}" FontSize="11" FontWeight="Bold" Foreground="#4ade80" TextTrimming="CharacterEllipsis"/>
                                         </StackPanel>
-                                        <Button Grid.Column="1" Command="{Binding SetPaintModeCommand}" Background="#7c3aed" Foreground="White" FontWeight="Bold" Padding="5,3" Margin="2,0" ToolTip.Tip="Activate 3D mesh paint mode">
+                                        <Button Grid.Column="1" Command="{Binding ApplySelectedShaderToActiveMeshCommand}" Background="#16a34a" Foreground="White" FontWeight="Bold" Padding="5,3" Margin="2,0" ToolTip.Tip="Apply selected shader to the entire active mesh and update 1:1 Blam name">
+                                            <TextBlock Text="🏷️ Apply to Mesh" FontSize="9"/>
+                                        </Button>
+                                        <Button Grid.Column="2" Command="{Binding SetPaintModeCommand}" Background="#7c3aed" Foreground="White" FontWeight="Bold" Padding="5,3" Margin="2,0" ToolTip.Tip="Activate 3D mesh paint mode">
                                             <TextBlock Text="🎨 Paint" FontSize="9"/>
                                         </Button>
-                                        <Button Grid.Column="2" Command="{Binding FillMeshWithSelectedMaterialCommand}" Background="#0284c7" Foreground="White" FontWeight="Bold" Padding="5,3" Margin="2,0" ToolTip.Tip="Fill entire active mesh with this shader and auto-fit UVs (triplanar distortion-free)">
+                                        <Button Grid.Column="3" Command="{Binding FillMeshWithSelectedMaterialCommand}" Background="#0284c7" Foreground="White" FontWeight="Bold" Padding="5,3" Margin="2,0" ToolTip.Tip="Fill entire active mesh with this shader and auto-fit UVs (triplanar distortion-free)">
                                             <TextBlock Text="Fill All" FontSize="9"/>
                                         </Button>
-                                        <Button Grid.Column="3" Command="{Binding AutoFitActiveMeshUvsCommand}" Background="#0f766e" Foreground="White" FontWeight="Bold" Padding="5,3" Margin="2,0" ToolTip.Tip="Auto-fit triplanar UVs (eliminates cliff wall vertical texture stretching)">
+                                        <Button Grid.Column="4" Command="{Binding AutoFitActiveMeshUvsCommand}" Background="#0f766e" Foreground="White" FontWeight="Bold" Padding="5,3" Margin="2,0" ToolTip.Tip="Auto-fit triplanar UVs (eliminates cliff wall vertical texture stretching)">
                                             <TextBlock Text="📐 UVs" FontSize="9"/>
                                         </Button>
-                                        <Button Grid.Column="4" Command="{Binding SealActiveMeshAcrossTopCommand}" Background="#b45309" Foreground="White" FontWeight="Bold" Padding="5,3" Margin="2,0" ToolTip.Tip="Seal top open edges across cliff rim with +sky ceiling dome (fixes red open edge errors)">
+                                        <Button Grid.Column="5" Command="{Binding SealActiveMeshAcrossTopCommand}" Background="#b45309" Foreground="White" FontWeight="Bold" Padding="5,3" Margin="2,0" ToolTip.Tip="Seal top open edges across cliff rim with +sky ceiling dome (fixes red open edge errors)">
                                             <TextBlock Text="🛡️ +Sky" FontSize="9"/>
                                         </Button>
                                     </Grid>
@@ -727,17 +759,19 @@
                                                         <TextBlock Text="{Binding ShaderType}" FontSize="8" Foreground="#38bdf8"/>
                                                     </StackPanel>
 
-                                                    <!-- Verified Badge Indicator -->
-                                                    <Border Grid.Column="2" VerticalAlignment="Center" Margin="4,0,0,0">
-                                                        <StackPanel Orientation="Horizontal" Spacing="2">
-                                                            <Border Background="#064e3b" CornerRadius="3" Padding="4,1" IsVisible="{Binding IsVerified}">
-                                                                <TextBlock Text="✓ VERIFIED" FontSize="8" FontWeight="Bold" Foreground="#34d399"/>
-                                                            </Border>
-                                                            <Border Background="#1f242d" CornerRadius="3" Padding="4,1" IsVisible="{Binding !IsVerified}">
-                                                                <TextBlock Text="TAG" FontSize="8" Foreground="#64748b"/>
-                                                            </Border>
-                                                        </StackPanel>
-                                                    </Border>
+                                                    <!-- Verified Badge Indicator & Apply Button -->
+                                                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="4,0,0,0" Spacing="2">
+                                                        <Button Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).ApplySelectedShaderToActiveMeshCommand}"
+                                                                CommandParameter="{Binding}"
+                                                                Background="#16a34a" Foreground="White" FontWeight="Bold" FontSize="8" Padding="4,2"
+                                                                Content="Apply" ToolTip.Tip="Apply this shader to the active mesh (updates 1:1 Blam name)"/>
+                                                        <Border Background="#064e3b" CornerRadius="3" Padding="4,1" IsVisible="{Binding IsVerified}">
+                                                            <TextBlock Text="✓ VERIFIED" FontSize="8" FontWeight="Bold" Foreground="#34d399"/>
+                                                        </Border>
+                                                        <Border Background="#1f242d" CornerRadius="3" Padding="4,1" IsVisible="{Binding !IsVerified}">
+                                                            <TextBlock Text="TAG" FontSize="8" Foreground="#64748b"/>
+                                                        </Border>
+                                                    </StackPanel>
                                                 </Grid>
                                             </Border>
                                         </DataTemplate>
@@ -1432,20 +1466,36 @@
                                         </ListBox.ItemTemplate>
                                     </ListBox>
 
-                                    <!-- 1-Click Repair and Swampthing Fix in Fixer tab -->
-                                    <Grid Grid.Row="3" RowDefinitions="Auto,Auto" Margin="0,6,0,0">
-                                        <Grid Grid.Row="0" ColumnDefinitions="*,*" Margin="0,0,0,4">
-                                            <Button Grid.Column="0" Command="{Binding SwampthingFixAllCommand}" Background="#0284c7" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="0,0,2,0" ToolTip.Tip="Use Swampthing algorithm to seal water open edges and weld boundaries">
-                                                <TextBlock Text="🌾 Swampthing Fix"/>
+                                    <!-- 1-Click Repair, Halo 3 Mesh Fixers, and Decimator in Fixer tab -->
+                                    <StackPanel Grid.Row="3" Spacing="4" Margin="0,6,0,0">
+                                        <Grid ColumnDefinitions="*,*">
+                                            <Button Grid.Column="0" Command="{Binding DeduplicateOverlappingSurfacesCommand}" Background="#b91c1c" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="0,0,2,0" ToolTip.Tip="Remove duplicate/coplanar faces (fixes red 'overlapping surfaces' in Sapien)">
+                                                <TextBlock Text="✂️ Fix Overlapping" FontSize="10"/>
                                             </Button>
-                                            <Button Grid.Column="1" Command="{Binding AutoRepairAllCommand}" Background="#059669" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="2,0,0,0" ToolTip.Tip="Auto-weld vertices, dissolve degenerates and cap boundary holes">
-                                                <TextBlock Text="🛠️ Fix All Geo"/>
+                                            <Button Grid.Column="1" Command="{Binding SealBoundaryOpenEdgesCommand}" Background="#0369a1" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="2,0,0,0" ToolTip.Tip="Generate vertical skirt and floor to seal open perimeter edges (fixes red 'open edge' in Sapien)">
+                                                <TextBlock Text="🛡️ Seal Open Edges" FontSize="10"/>
                                             </Button>
                                         </Grid>
-                                        <Button Grid.Row="1" Command="{Binding SealMapWatertightCommand}" Background="#10b981" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" ToolTip.Tip="Generate watertight sky dome (+sky) enclosing all imported meshes and auto-repair scene">
-                                            <TextBlock Text="🌐 Auto-Seal Entire Map (+sky)"/>
+                                        <Grid ColumnDefinitions="*,*">
+                                            <Button Grid.Column="0" Command="{Binding SanitizeActiveMeshForHalo3Command}" Background="#4338ca" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="0,0,2,0" ToolTip.Tip="Run complete 6-stage sanitization (welds, de-overlaps, seals leaky connections)">
+                                                <TextBlock Text="✨ Sanitize Halo 3" FontSize="10"/>
+                                            </Button>
+                                            <Button Grid.Column="1" Command="{Binding DecimateActiveMesh50Command}" Background="#7c2d12" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="2,0,0,0" ToolTip.Tip="QEM decimation to 50% polygons (reduces high poly models for Halo 3 65k vertex budget)">
+                                                <TextBlock Text="📉 Low-Poly (50%)" FontSize="10"/>
+                                            </Button>
+                                        </Grid>
+                                        <Grid ColumnDefinitions="*,*">
+                                            <Button Grid.Column="0" Command="{Binding SwampthingFixAllCommand}" Background="#0284c7" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="0,0,2,0" ToolTip.Tip="Use Swampthing algorithm to seal water open edges and weld boundaries">
+                                                <TextBlock Text="🌾 Swampthing Fix" FontSize="10"/>
+                                            </Button>
+                                            <Button Grid.Column="1" Command="{Binding AutoRepairAllCommand}" Background="#059669" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="2,0,0,0" ToolTip.Tip="Auto-weld vertices, dissolve degenerates and cap boundary holes">
+                                                <TextBlock Text="🛠️ Fix All Geo" FontSize="10"/>
+                                            </Button>
+                                        </Grid>
+                                        <Button Command="{Binding SealMapWatertightCommand}" Background="#10b981" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" ToolTip.Tip="Generate watertight sky dome (+sky) enclosing all imported meshes and auto-repair scene">
+                                            <TextBlock Text="🌐 Auto-Seal Entire Map (+sky)" FontSize="10"/>
                                         </Button>
-                                    </Grid>
+                                    </StackPanel>
                                 </Grid>
                             </TabItem>
 

@@ -1726,4 +1726,142 @@ public sealed class GeometryAutoRepair
         mesh.RecalculateNormals();
         return totalSealed;
     }
+
+    /// <summary>
+    /// Master sanitizer addressing all errors reported by Halo 3 tool_fast and Sapien:
+    /// - Overlapping Surfaces (removes coplanar duplicate triangles)
+    /// - Open Edges (welds open boundary tears, seals boundary skirts if requested)
+    /// - Leaky Connections (snaps non-manifold boundary gaps)
+    /// - Degenerate Triangles (removes zero-area slivers)
+    /// </summary>
+    public static RepairReport SanitizeMeshForHalo3(
+        MeshObject mesh,
+        bool sealBoundaries = false,
+        float weldDistance = 0.08f,
+        float boundarySkirtDepth = 200.0f)
+    {
+        var report = new RepairReport();
+        if (mesh == null || mesh.Vertices.Count == 0 || mesh.Triangles.Count == 0)
+            return report;
+
+        // 1. Precise vertex welding
+        if (weldDistance > 0.0f)
+        {
+            WeldVertices(mesh, weldDistance, report);
+        }
+
+        // 2. Remove duplicate and overlapping surfaces (addresses red 'overlapping surfaces' in Sapien)
+        FixOverlappingSurfaces(mesh, report);
+        DeduplicateCoplanarTriangles(mesh, report);
+
+        // 3. Remove zero-area degenerate triangles
+        FixDegenerateTriangles(mesh, report);
+
+        // 4. Seal leaky connections (addresses green 'leaky connection' in Sapien)
+        FixLeakyConnections(mesh, MathF.Max(0.5f, weldDistance * 2.0f), report);
+
+        // 5. If requested, seal boundary open edges watertight with downward skirt and floor cap
+        // (addresses red 'open edge' all along perimeter cliff/water boundary in Sapien)
+        if (sealBoundaries)
+        {
+            SealTerrainBoundarySkirt(mesh, boundarySkirtDepth, report);
+        }
+
+        // 6. Clean up zero-area degenerate triangles left by repairs
+        FixDegenerateTriangles(mesh, report);
+        PruneLooseVertices(mesh);
+        mesh.RecalculateNormals();
+        report.NormalsRecalculated = true;
+        report.OpenEdgesRemaining = CountOpenEdges(mesh);
+
+        return report;
+    }
+
+    /// <summary>
+    /// Deduplicates coplanar triangles that share 3 coincident vertices or overlapping centroids,
+    /// directly eliminating the "overlapping surfaces" error markers in Sapien.
+    /// </summary>
+    public static int DeduplicateCoplanarTriangles(MeshObject mesh, RepairReport? report = null)
+    {
+        if (mesh == null || mesh.Triangles.Count == 0) return 0;
+        mesh.RecalculateNormals();
+
+        var seenCentroids = new Dictionary<(int x, int y, int z), List<int>>();
+        var toRemove = new HashSet<int>();
+        float bucketSize = 0.5f;
+
+        for (int i = 0; i < mesh.Triangles.Count; i++)
+        {
+            var t = mesh.Triangles[i];
+            var p0 = mesh.Vertices[t.V0].Position;
+            var p1 = mesh.Vertices[t.V1].Position;
+            var p2 = mesh.Vertices[t.V2].Position;
+            var c = (p0 + p1 + p2) / 3.0f;
+
+            var key = ((int)MathF.Round(c.X / bucketSize),
+                       (int)MathF.Round(c.Y / bucketSize),
+                       (int)MathF.Round(c.Z / bucketSize));
+
+            if (seenCentroids.TryGetValue(key, out var list))
+            {
+                // Check if coplanar with any existing face in this bucket
+                bool duplicate = false;
+                foreach (int otherIdx in list)
+                {
+                    var ot = mesh.Triangles[otherIdx];
+                    if ((t.V0 == ot.V0 && t.V1 == ot.V1 && t.V2 == ot.V2) ||
+                        (t.V0 == ot.V1 && t.V1 == ot.V2 && t.V2 == ot.V0) ||
+                        (t.V0 == ot.V2 && t.V1 == ot.V0 && t.V2 == ot.V1))
+                    {
+                        duplicate = true;
+                        break;
+                    }
+
+                    var tn = t.Normal;
+                    var otn = ot.Normal;
+                    if (tn.LengthSquared() < 0.1f) tn = Vector3.Normalize(Vector3.Cross(p1 - p0, p2 - p0));
+                    if (otn.LengthSquared() < 0.1f)
+                    {
+                        var op0 = mesh.Vertices[ot.V0].Position;
+                        var op1 = mesh.Vertices[ot.V1].Position;
+                        var op2 = mesh.Vertices[ot.V2].Position;
+                        otn = Vector3.Normalize(Vector3.Cross(op1 - op0, op2 - op0));
+                    }
+
+                    if (Vector3.Dot(tn, otn) > 0.90f)
+                    {
+                        duplicate = true;
+                        break;
+                    }
+                }
+                if (duplicate)
+                {
+                    toRemove.Add(i);
+                    continue;
+                }
+                list.Add(i);
+            }
+            else
+            {
+                seenCentroids[key] = new List<int> { i };
+            }
+        }
+
+        if (toRemove.Count > 0)
+        {
+            var surviving = new List<Triangle>(mesh.Triangles.Count - toRemove.Count);
+            for (int i = 0; i < mesh.Triangles.Count; i++)
+            {
+                if (!toRemove.Contains(i)) surviving.Add(mesh.Triangles[i]);
+            }
+            mesh.Triangles = surviving;
+            if (report != null)
+            {
+                report.OverlappingSurfacesRemoved += toRemove.Count;
+            }
+        }
+
+        return toRemove.Count;
+    }
 }
+

@@ -7,6 +7,7 @@ using ForgeWorks.Core.Geometry;
 using ForgeWorks.Core.Procedural;
 using ForgeWorks.Core.Rendering;
 using ForgeWorks.Core.Shaders;
+using ForgeWorks.Core.Project;
 using ForgeWorks.Blam.Scenario;
 using ForgeWorks.Blam.Shaders;
 using ForgeWorks.Blam.Tags;
@@ -3203,6 +3204,166 @@ public class ForgeWorksTests
         Assert.True(MathF.Abs(spanX - 7000.0f) < 1.0f);
         Assert.True(MathF.Abs(minZ) < 1.0f);
         Assert.True(MathF.Abs((minX + maxX) * 0.5f) < 1.0f);
+    }
+
+    [Fact]
+    public void SeamlessUvEngine_ContinuousTriplanar_AssignsZeroDistortionUvs()
+    {
+        var mesh = new MeshObject("triplanar_test");
+        // Ground face (Z dominant)
+        mesh.Vertices.Add(new Vertex(new Vector3(0, 0, 0), Vector3.UnitZ));
+        mesh.Vertices.Add(new Vertex(new Vector3(300, 0, 0), Vector3.UnitZ));
+        mesh.Vertices.Add(new Vertex(new Vector3(300, 300, 0), Vector3.UnitZ));
+        mesh.Triangles.Add(new Triangle(0, 1, 2));
+
+        // Cliff face (X dominant)
+        mesh.Vertices.Add(new Vertex(new Vector3(300, 0, 0), Vector3.UnitX));
+        mesh.Vertices.Add(new Vertex(new Vector3(300, 300, 0), Vector3.UnitX));
+        mesh.Vertices.Add(new Vertex(new Vector3(300, 300, 300), Vector3.UnitX));
+        mesh.Triangles.Add(new Triangle(3, 4, 5));
+
+        SeamlessUvEngine.ApplySeamlessUvs(mesh, tileScale: 300.0f);
+
+        Assert.Equal(6, mesh.Vertices.Count);
+        // Ground face uses X, Y
+        Assert.Equal(new Vector2(0f, 0f), mesh.Vertices[0].UVs[0]);
+        Assert.Equal(new Vector2(1f, 0f), mesh.Vertices[1].UVs[0]);
+        Assert.Equal(new Vector2(1f, 1f), mesh.Vertices[2].UVs[0]);
+
+        // Cliff face uses Y, Z (no stretching along vertical cliff wall)
+        Assert.Equal(new Vector2(0f, 0f), mesh.Vertices[3].UVs[0]);
+        Assert.Equal(new Vector2(1f, 0f), mesh.Vertices[4].UVs[0]);
+        Assert.Equal(new Vector2(1f, 1f), mesh.Vertices[5].UVs[0]);
+    }
+
+    [Fact]
+    public void SeamlessUvEngine_RemapSelectedFaces_AppliesOffsetAndScale()
+    {
+        var mesh = new MeshObject("remap_test");
+        mesh.Vertices.Add(new Vertex(new Vector3(0, 0, 0), Vector3.UnitZ));
+        mesh.Vertices.Add(new Vertex(new Vector3(100, 0, 0), Vector3.UnitZ));
+        mesh.Vertices.Add(new Vertex(new Vector3(100, 100, 0), Vector3.UnitZ));
+        mesh.Triangles.Add(new Triangle(0, 1, 2));
+
+        SeamlessUvEngine.RemapSelectedFacesUvs(mesh, new[] { 0 }, UvProjectionMode.PlanarXy, tileScale: 100.0f, offsetU: 0.5f, offsetV: 0.5f);
+
+        var v0 = mesh.Vertices[mesh.Triangles[0].V0];
+        Assert.Equal(new Vector2(0.5f, 0.5f), v0.UVs[0]);
+    }
+
+    [Fact]
+    public void ForgeWorksProject_SaveAndLoad_RoundTripsAllMeshesMaterialsAndEntities()
+    {
+        string tempProjectFile = Path.Combine(Path.GetTempPath(), $"test_project_{Guid.NewGuid():N}.blam");
+        try
+        {
+            var project = new ForgeWorksProject
+            {
+                ProjectName = "test_map",
+                TargetGame = "Halo 3 (H3EK)"
+            };
+
+            var testMesh = new MeshObject("bunker_alpha")
+            {
+                MaterialName = "river riverworld_ground"
+            };
+            testMesh.MaterialSlots.Add("river riverworld_ground");
+            testMesh.MaterialSlots.Add("mpshare mp_metal_trim");
+            testMesh.Vertices.Add(new Vertex(new Vector3(10, 20, 30), Vector3.UnitZ, new Vector2(0.1f, 0.2f)));
+            testMesh.Vertices.Add(new Vertex(new Vector3(40, 50, 60), Vector3.UnitZ, new Vector2(0.3f, 0.4f)));
+            testMesh.Vertices.Add(new Vertex(new Vector3(70, 80, 90), Vector3.UnitZ, new Vector2(0.5f, 0.6f)));
+            testMesh.Triangles.Add(new Triangle(0, 1, 2, materialIndex: 1));
+
+            project.Meshes.Add(ProjectMeshData.FromMesh(testMesh));
+            project.Spawns.Add(new ProjectSpawnData { X = 100, Y = 200, Z = 50, FacingAngle = 90f, TeamDesignator = 0 });
+            project.Equipment.Add(new ProjectEquipmentData { X = 150, Y = 250, Z = 60, ItemTagPath = @"objects\weapons\rifle\battle_rifle\battle_rifle" });
+            project.Volumes.Add(new ProjectVolumeData { Name = "kill_boundary", X = 0, Y = 0, Z = -100, ExtX = 5000, ExtY = 5000, ExtZ = 200, VolumeType = "KILL" });
+            project.Markers.Add(new ProjectMarkerData { Name = "#primary_spawn", X = 10, Y = 20, Z = 30 });
+
+            project.Save(tempProjectFile);
+            Assert.True(File.Exists(tempProjectFile));
+
+            var loaded = ForgeWorksProject.Load(tempProjectFile);
+            Assert.Equal("test_map", loaded.ProjectName);
+            Assert.Equal(ForgeWorksProject.ProjectMagic, loaded.Magic);
+            Assert.Single(loaded.Meshes);
+
+            var loadedMesh = loaded.Meshes[0].ToMesh();
+            Assert.Equal("bunker_alpha", loadedMesh.Name);
+            Assert.Equal("river riverworld_ground", loadedMesh.MaterialName);
+            Assert.Equal(2, loadedMesh.MaterialSlots.Count);
+            Assert.Equal("mpshare mp_metal_trim", loadedMesh.MaterialSlots[1]);
+            Assert.Equal(3, loadedMesh.Vertices.Count);
+            Assert.Single(loadedMesh.Triangles);
+            Assert.Equal(1, loadedMesh.Triangles[0].MaterialIndex);
+
+            Assert.Single(loaded.Spawns);
+            Assert.Equal(100f, loaded.Spawns[0].X);
+            Assert.Single(loaded.Equipment);
+            Assert.Equal(@"objects\weapons\rifle\battle_rifle\battle_rifle", loaded.Equipment[0].ItemTagPath);
+            Assert.Single(loaded.Volumes);
+            Assert.Equal("kill_boundary", loaded.Volumes[0].Name);
+            Assert.Single(loaded.Markers);
+            Assert.Equal("#primary_spawn", loaded.Markers[0].Name);
+        }
+        finally
+        {
+            if (File.Exists(tempProjectFile)) File.Delete(tempProjectFile);
+        }
+    }
+
+    [Fact]
+    public void MeshDecimator_DecimatesHighPolyMeshToTargetBudget()
+    {
+        var mesh = new MeshObject("sphere_high");
+        // Create a dense grid of triangles
+        int res = 10;
+        for (int y = 0; y <= res; y++)
+        {
+            for (int x = 0; x <= res; x++)
+            {
+                mesh.Vertices.Add(new Vertex(new Vector3(x * 10f, y * 10f, MathF.Sin(x) * 10f), Vector3.UnitZ));
+            }
+        }
+        for (int y = 0; y < res; y++)
+        {
+            for (int x = 0; x < res; x++)
+            {
+                int i0 = y * (res + 1) + x;
+                int i1 = i0 + 1;
+                int i2 = (y + 1) * (res + 1) + x;
+                int i3 = i2 + 1;
+                mesh.Triangles.Add(new Triangle(i0, i1, i2));
+                mesh.Triangles.Add(new Triangle(i1, i3, i2));
+            }
+        }
+
+        int origTris = mesh.Triangles.Count;
+        Assert.Equal(200, origTris);
+
+        var report = MeshDecimator.DecimateToRatio(mesh, targetRatio: 0.5f, preserveBoundaries: false);
+        Assert.True(mesh.Triangles.Count < origTris, $"Actual triangles: {mesh.Triangles.Count}");
+        Assert.True(report.ReductionPercentage > 0f);
+    }
+
+    [Fact]
+    public void GeometryAutoRepair_DeduplicateCoplanarTriangles_RemovesOverlappingSurfaces()
+    {
+        var mesh = new MeshObject("overlap_test");
+        mesh.Vertices.Add(new Vertex(new Vector3(0, 0, 0), Vector3.UnitZ));
+        mesh.Vertices.Add(new Vertex(new Vector3(100, 0, 0), Vector3.UnitZ));
+        mesh.Vertices.Add(new Vertex(new Vector3(0, 100, 0), Vector3.UnitZ));
+
+        // Triangle 1
+        mesh.Triangles.Add(new Triangle(0, 1, 2));
+        // Duplicate overlapping Triangle 2 on same vertices
+        mesh.Triangles.Add(new Triangle(0, 1, 2));
+
+        Assert.Equal(2, mesh.Triangles.Count);
+
+        int removed = GeometryAutoRepair.DeduplicateCoplanarTriangles(mesh);
+        Assert.Equal(1, removed);
+        Assert.Single(mesh.Triangles);
     }
 }
 

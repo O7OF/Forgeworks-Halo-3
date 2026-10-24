@@ -16,6 +16,7 @@ using ForgeWorks.Blam.Scenario;
 using ForgeWorks.Blam.Shaders;
 using ForgeWorks.Blam.Tags;
 using ForgeWorks.Blam.Tool;
+using ForgeWorks.Core.Project;
 
 namespace ForgeWorks.UI.ViewModels;
 
@@ -68,6 +69,8 @@ public partial class MainViewModel : ViewModelBase
 
     public event Action? RequestImportFileDialog;
     public event Action? RequestImportTexturesDialog;
+    public event Action<string>? RequestSaveProjectDialog;
+    public event Action? RequestOpenProjectDialog;
 
     partial void OnSelectionModeChanged(SubElementSelectionMode value)
     {
@@ -292,12 +295,26 @@ public partial class MainViewModel : ViewModelBase
 
     public string ActiveMeshMaterialName
     {
-        get => ActiveMesh?.MaterialName ?? (SelectedShader?.MaterialName ?? "river riverworld_ground");
+        get
+        {
+            var mesh = ActiveMesh ?? SelectedSceneNode?.Mesh;
+            return mesh?.MaterialName ?? (!string.IsNullOrWhiteSpace(PaintMaterialName) ? PaintMaterialName : (SelectedShader?.MaterialName ?? "river riverworld_ground"));
+        }
         set
         {
-            if (ActiveMesh != null && !string.IsNullOrWhiteSpace(value) && ActiveMesh.MaterialName != value)
+            var mesh = ActiveMesh ?? SelectedSceneNode?.Mesh;
+            if (mesh != null && !string.IsNullOrWhiteSpace(value) && mesh.MaterialName != value)
             {
-                ActiveMesh.MaterialName = value;
+                PushHistoryState($"Rename Material {value}");
+                mesh.MaterialName = value;
+                if (mesh.MaterialSlots.Count == 0) mesh.MaterialSlots.Add(value);
+                else mesh.MaterialSlots[0] = value;
+                for (int i = 0; i < mesh.Triangles.Count; i++)
+                {
+                    mesh.Triangles[i].MaterialIndex = 0;
+                }
+                PaintMaterialName = value;
+                if (!AvailablePaintMaterials.Contains(value)) AvailablePaintMaterials.Insert(0, value);
                 OnPropertyChanged();
                 MeshVersion++;
             }
@@ -607,6 +624,8 @@ public partial class MainViewModel : ViewModelBase
             var (bMin, bMax) = CsgBooleanEngine.ComputeBounds(mesh);
             ActiveGizmoPosition = (bMin + bMax) * 0.5f;
         }
+        OnPropertyChanged(nameof(ActiveMeshMaterialName));
+        UpdateMeshStats();
         MeshVersion++;
         if (frameCamera) FrameRequestId++;
         StatusMessage = status;
@@ -1223,6 +1242,33 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
+        // 2. Sub-element Face selection translation (Edit Mode face move/drag)
+        if (SelectionMode == SubElementSelectionMode.Face && SelectedFaceIndices.Count > 0 && ActiveMesh != null)
+        {
+            var faceVerts = new HashSet<int>();
+            foreach (int fIdx in SelectedFaceIndices)
+            {
+                if (fIdx >= 0 && fIdx < ActiveMesh.Triangles.Count)
+                {
+                    var t = ActiveMesh.Triangles[fIdx];
+                    faceVerts.Add(t.V0); faceVerts.Add(t.V1); faceVerts.Add(t.V2);
+                }
+            }
+            foreach (int vIdx in faceVerts)
+            {
+                ActiveMesh.Vertices[vIdx].Position += delta;
+            }
+            ActiveMesh.RecalculateNormals();
+            if (ActiveGizmoPosition.HasValue)
+                ActiveGizmoPosition = ActiveGizmoPosition.Value + delta;
+            else
+                UpdateFaceSelectionGizmo();
+
+            MeshVersion++;
+            StatusMessage = $"Moved {SelectedFaceIndices.Count} selected face(s) by ({delta.X:F1}, {delta.Y:F1}, {delta.Z:F1})";
+            return;
+        }
+
         // 3. Single entity selection
         if (SelectedSpawn != null)
         {
@@ -1442,6 +1488,49 @@ public partial class MainViewModel : ViewModelBase
 
     public void RotateSelectedEntity(float angleRad, int axis)
     {
+        if (SelectionMode == SubElementSelectionMode.Face && SelectedFaceIndices.Count > 0 && ActiveMesh != null && ActiveGizmoPosition.HasValue)
+        {
+            Vector3 origin = ActiveGizmoPosition.Value;
+            float cos = MathF.Cos(angleRad);
+            float sin = MathF.Sin(angleRad);
+            var faceVerts = new HashSet<int>();
+            foreach (int fIdx in SelectedFaceIndices)
+            {
+                if (fIdx >= 0 && fIdx < ActiveMesh.Triangles.Count)
+                {
+                    var t = ActiveMesh.Triangles[fIdx];
+                    faceVerts.Add(t.V0); faceVerts.Add(t.V1); faceVerts.Add(t.V2);
+                }
+            }
+            foreach (int vIdx in faceVerts)
+            {
+                var p = ActiveMesh.Vertices[vIdx].Position - origin;
+                if (axis == 1)
+                {
+                    float y = p.Y * cos - p.Z * sin;
+                    float z = p.Y * sin + p.Z * cos;
+                    p = new Vector3(p.X, y, z);
+                }
+                else if (axis == 2)
+                {
+                    float x = p.X * cos + p.Z * sin;
+                    float z = -p.X * sin + p.Z * cos;
+                    p = new Vector3(x, p.Y, z);
+                }
+                else
+                {
+                    float x = p.X * cos - p.Y * sin;
+                    float y = p.X * sin + p.Y * cos;
+                    p = new Vector3(x, y, p.Z);
+                }
+                ActiveMesh.Vertices[vIdx].Position = origin + p;
+            }
+            ActiveMesh.RecalculateNormals();
+            MeshVersion++;
+            StatusMessage = $"Rotated {SelectedFaceIndices.Count} selected face(s) on Axis {axis}";
+            return;
+        }
+
         if (ActiveMesh != null && ActiveGizmoPosition.HasValue)
         {
             Vector3 origin = ActiveGizmoPosition.Value;
@@ -1580,17 +1669,62 @@ public partial class MainViewModel : ViewModelBase
     public void FrameView() => FrameRequestId++;
 
     [RelayCommand]
-    public void ApplySelectedShaderToActiveMesh()
+    public void ApplySelectedShaderToActiveMesh(object? parameter = null)
     {
-        if (ActiveMesh == null || SelectedShader == null) return;
-        ActiveMesh.MaterialName = SelectedShader.MaterialName;
-        if (!ActiveMesh.MaterialSlots.Contains(SelectedShader.MaterialName))
+        var mesh = ActiveMesh ?? SelectedSceneNode?.Mesh;
+        if (mesh == null)
         {
-            ActiveMesh.MaterialSlots.Add(SelectedShader.MaterialName);
+            StatusMessage = "No active mesh selected to apply shader.";
+            return;
+        }
+
+        string? matName = null;
+        if (parameter is HaloShaderEntry entry)
+        {
+            matName = entry.MaterialName;
+            SelectedShader = entry;
+        }
+        else if (parameter is string str && !string.IsNullOrWhiteSpace(str))
+        {
+            matName = str;
+        }
+        else if (SelectedShader != null && !string.IsNullOrWhiteSpace(SelectedShader.MaterialName))
+        {
+            matName = SelectedShader.MaterialName;
+        }
+        else if (!string.IsNullOrWhiteSpace(PaintMaterialName))
+        {
+            matName = PaintMaterialName;
+        }
+
+        if (string.IsNullOrWhiteSpace(matName))
+        {
+            StatusMessage = "No shader selected to apply.";
+            return;
+        }
+
+        PushHistoryState($"Apply Shader {matName}");
+        mesh.MaterialName = matName;
+        mesh.MaterialSlots.Clear();
+        mesh.MaterialSlots.Add(matName);
+        for (int i = 0; i < mesh.Triangles.Count; i++)
+        {
+            mesh.Triangles[i].MaterialIndex = 0;
+        }
+        PaintMaterialName = matName;
+        if (!AvailablePaintMaterials.Contains(matName))
+        {
+            AvailablePaintMaterials.Insert(0, matName);
+        }
+        if (ActiveMesh != mesh)
+        {
+            ActiveMesh = mesh;
         }
         OnPropertyChanged(nameof(ActiveMeshMaterialName));
+        UpdateMeshStats();
         MeshVersion++;
-        StatusMessage = $"Applied shader '{SelectedShader.MaterialName}' to active mesh '{ActiveMesh.Name}'.";
+        RunLinter();
+        StatusMessage = $"Applied shader '{matName}' to entire mesh '{mesh.Name}' (1:1 Blam name updated).";
     }
 
     [RelayCommand]
@@ -1741,20 +1875,17 @@ public partial class MainViewModel : ViewModelBase
         if (ActiveMesh == null || string.IsNullOrWhiteSpace(PaintMaterialName)) return;
         PushHistoryState($"Fill Material {PaintMaterialName}");
         ActiveMesh.MaterialName = PaintMaterialName;
-        int idx = ActiveMesh.MaterialSlots.IndexOf(PaintMaterialName);
-        if (idx == -1)
-        {
-            idx = ActiveMesh.MaterialSlots.Count;
-            ActiveMesh.MaterialSlots.Add(PaintMaterialName);
-        }
+        ActiveMesh.MaterialSlots.Clear();
+        ActiveMesh.MaterialSlots.Add(PaintMaterialName);
         for (int i = 0; i < ActiveMesh.Triangles.Count; i++)
         {
-            ActiveMesh.Triangles[i].MaterialIndex = idx;
+            ActiveMesh.Triangles[i].MaterialIndex = 0;
         }
 
         // Auto-fit UVs using distortion-free 1:1 triplanar mapping to prevent vertical texture stretching along cliffs and walls
-        MeshModelingEngine.AutoFitTriplanarUVs(ActiveMesh, TerrainUvTileScale > 0 ? TerrainUvTileScale : 300.0f);
+        SeamlessUvEngine.ApplySeamlessUvs(ActiveMesh, TerrainUvTileScale > 0 ? TerrainUvTileScale : 300.0f);
 
+        OnPropertyChanged(nameof(ActiveMeshMaterialName));
         MeshVersion++;
         RunLinter();
         StatusMessage = $"Filled '{ActiveMesh.Name}' with '{PaintMaterialName}' & auto-fitted UVs (triplanar distortion-free).";
@@ -3982,5 +4113,423 @@ public partial class MainViewModel : ViewModelBase
             materials.Add(SelectedShader?.MaterialName ?? "river riverworld_ground");
         }
         return materials;
+    }
+
+    // =========================================================================
+    // FORGEWORKS NATIVE .BLAM PROJECT SYSTEM
+    // =========================================================================
+
+    [ObservableProperty] private string? _currentProjectPath;
+
+    [RelayCommand]
+    public void SaveProject()
+    {
+        if (!string.IsNullOrEmpty(CurrentProjectPath))
+        {
+            SaveProjectToFile(CurrentProjectPath);
+        }
+        else
+        {
+            SaveProjectAs();
+        }
+    }
+
+    [RelayCommand]
+    public void SaveProjectAs()
+    {
+        string defaultName = string.IsNullOrWhiteSpace(ActiveLevelName) ? "custom_canvas.blam" : $"{ActiveLevelName}.blam";
+        RequestSaveProjectDialog?.Invoke(defaultName);
+    }
+
+    [RelayCommand]
+    public void OpenProject()
+    {
+        RequestOpenProjectDialog?.Invoke();
+    }
+
+    [RelayCommand]
+    public void OpenProjectsFolder()
+    {
+        string dir = Path.Combine(Directory.GetCurrentDirectory(), "My Projects");
+        if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = dir,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Could not open folder: {ex.Message}";
+        }
+    }
+
+    public void SaveProjectToFile(string filePath)
+    {
+        try
+        {
+            var proj = new ForgeWorksProject
+            {
+                ProjectName = ActiveLevelName,
+                TargetGame = SelectedGame,
+                EkPath = EkPath,
+                CreatedAt = DateTime.UtcNow,
+                LastModifiedAt = DateTime.UtcNow
+            };
+
+            // Capture all geometry meshes
+            var allMeshes = SceneGraph.GetLevelMeshes();
+            if (allMeshes.Count == 0 && ActiveMesh != null) allMeshes.Add(ActiveMesh);
+            foreach (var m in allMeshes)
+            {
+                proj.Meshes.Add(ProjectMeshData.FromMesh(m));
+            }
+
+            // Capture Spawns
+            foreach (var s in Spawns)
+            {
+                proj.Spawns.Add(new ProjectSpawnData
+                {
+                    X = s.Position.X, Y = s.Position.Y, Z = s.Position.Z,
+                    FacingAngle = s.FacingAngle,
+                    TeamDesignator = s.TeamDesignator,
+                    GameTypeFlags = s.GameTypeFlags
+                });
+            }
+
+            // Capture Equipment
+            foreach (var eq in Equipment)
+            {
+                proj.Equipment.Add(new ProjectEquipmentData
+                {
+                    X = eq.Position.X, Y = eq.Position.Y, Z = eq.Position.Z,
+                    Qx = eq.Orientation.X, Qy = eq.Orientation.Y, Qz = eq.Orientation.Z, Qw = eq.Orientation.W,
+                    ItemTagPath = eq.ItemTagPath,
+                    SpawnType = eq.SpawnType,
+                    RespawnTime = eq.RespawnTime
+                });
+            }
+
+            // Capture Volumes
+            foreach (var vol in Volumes)
+            {
+                proj.Volumes.Add(new ProjectVolumeData
+                {
+                    Name = vol.Name,
+                    X = vol.Position.X, Y = vol.Position.Y, Z = vol.Position.Z,
+                    ExtX = vol.Extents.X, ExtY = vol.Extents.Y, ExtZ = vol.Extents.Z,
+                    Qx = vol.Rotation.X, Qy = vol.Rotation.Y, Qz = vol.Rotation.Z, Qw = vol.Rotation.W,
+                    VolumeType = vol.VolumeType
+                });
+            }
+
+            // Capture Markers
+            foreach (var mk in Markers)
+            {
+                proj.Markers.Add(new ProjectMarkerData
+                {
+                    Name = mk.Name,
+                    NodeIndex = mk.NodeIndex,
+                    X = mk.Position.X, Y = mk.Position.Y, Z = mk.Position.Z,
+                    Qx = mk.Rotation.X, Qy = mk.Rotation.Y, Qz = mk.Rotation.Z, Qw = mk.Rotation.W,
+                    Radius = mk.Radius
+                });
+            }
+
+            // Capture Terrain settings
+            proj.TerrainSettings = new ProjectTerrainSettings
+            {
+                ResX = TerrainResX,
+                ResY = TerrainResY,
+                Width = TerrainWidth,
+                Length = TerrainLength,
+                HeightScale = TerrainHeightScale,
+                Octaves = TerrainOctaves,
+                WarpStrength = TerrainWarpStrength,
+                ErosionDrops = ErosionDrops,
+                ThermalErosionIterations = ThermalErosionIterations,
+                AlgorithmIndex = TerrainAlgorithmIndex,
+                CellularStyleIndex = CellularStyleIndex,
+                OuterCliffWalls = OuterCliffWalls,
+                PerimeterCliffHeight = PerimeterCliffHeight,
+                SealAcrossTop = TerrainSealAcrossTop,
+                UvTileScale = TerrainUvTileScale
+            };
+
+            proj.Save(filePath);
+            CurrentProjectPath = filePath;
+            StatusMessage = $"Saved ForgeWorks project '{proj.ProjectName}' to {Path.GetFileName(filePath)}";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Error saving project: {ex.Message}";
+        }
+    }
+
+    public void LoadProjectFromFile(string filePath)
+    {
+        try
+        {
+            var proj = ForgeWorksProject.Load(filePath);
+
+            ClearScene();
+
+            ActiveLevelName = proj.ProjectName;
+            if (!string.IsNullOrEmpty(proj.TargetGame)) SelectedGame = proj.TargetGame;
+            if (!string.IsNullOrEmpty(proj.EkPath) && Directory.Exists(proj.EkPath)) EkPath = proj.EkPath;
+
+            // Restore Meshes
+            MeshObject? firstMesh = null;
+            foreach (var meshData in proj.Meshes)
+            {
+                var mesh = meshData.ToMesh();
+                SceneGraph.AddGeometryMesh(mesh);
+                firstMesh ??= mesh;
+            }
+
+            if (firstMesh != null)
+            {
+                SetActiveMesh(firstMesh, $"Loaded project with {proj.Meshes.Count} mesh(es).", frameCamera: true);
+            }
+
+            // Restore Spawns
+            Spawns.Clear();
+            foreach (var s in proj.Spawns)
+            {
+                var spawn = new PlayerStartingLocation(new Vector3(s.X, s.Y, s.Z), s.FacingAngle, s.TeamDesignator, s.GameTypeFlags);
+                Spawns.Add(spawn);
+                SceneGraph.EntitiesRoot.Children.Add(new SceneNode
+                {
+                    Name = $"Spawn T{spawn.TeamDesignator} #{Spawns.Count}",
+                    Type = SceneNodeType.Spawn,
+                    Position = spawn.Position,
+                    TagPayload = spawn
+                });
+            }
+
+            // Restore Equipment
+            Equipment.Clear();
+            foreach (var eq in proj.Equipment)
+            {
+                var equip = new NetgameEquipment(new Vector3(eq.X, eq.Y, eq.Z), new Quaternion(eq.Qx, eq.Qy, eq.Qz, eq.Qw), eq.ItemTagPath, eq.SpawnType, eq.RespawnTime);
+                Equipment.Add(equip);
+                var eqName = System.IO.Path.GetFileNameWithoutExtension(equip.ItemTagPath);
+                SceneGraph.EntitiesRoot.Children.Add(new SceneNode
+                {
+                    Name = string.IsNullOrWhiteSpace(eqName) ? $"Equipment #{Equipment.Count}" : eqName,
+                    Type = SceneNodeType.Equipment,
+                    Position = equip.Position,
+                    TagPayload = equip
+                });
+            }
+
+            // Restore Volumes
+            Volumes.Clear();
+            foreach (var v in proj.Volumes)
+            {
+                var vol = new TriggerVolume(v.Name, new Vector3(v.X, v.Y, v.Z), new Vector3(v.ExtX, v.ExtY, v.ExtZ), new Quaternion(v.Qx, v.Qy, v.Qz, v.Qw), v.VolumeType);
+                Volumes.Add(vol);
+                SceneGraph.EntitiesRoot.Children.Add(new SceneNode
+                {
+                    Name = vol.Name,
+                    Type = SceneNodeType.Volume,
+                    Position = vol.Position,
+                    TagPayload = vol
+                });
+            }
+
+            // Restore Markers
+            Markers.Clear();
+            foreach (var m in proj.Markers)
+            {
+                var marker = new ModelMarker(m.Name, m.NodeIndex, new Vector3(m.X, m.Y, m.Z), new Quaternion(m.Qx, m.Qy, m.Qz, m.Qw), m.Radius);
+                Markers.Add(marker);
+                SceneGraph.MarkersRoot.Children.Add(new SceneNode
+                {
+                    Name = marker.Name,
+                    Type = SceneNodeType.Marker,
+                    Position = marker.Position,
+                    TagPayload = marker
+                });
+            }
+
+            // Restore Terrain settings if present
+            if (proj.TerrainSettings != null)
+            {
+                TerrainResX = proj.TerrainSettings.ResX;
+                TerrainResY = proj.TerrainSettings.ResY;
+                TerrainWidth = proj.TerrainSettings.Width;
+                TerrainLength = proj.TerrainSettings.Length;
+                TerrainHeightScale = proj.TerrainSettings.HeightScale;
+                TerrainOctaves = proj.TerrainSettings.Octaves;
+                TerrainWarpStrength = proj.TerrainSettings.WarpStrength;
+                ErosionDrops = proj.TerrainSettings.ErosionDrops;
+                ThermalErosionIterations = proj.TerrainSettings.ThermalErosionIterations;
+                TerrainAlgorithmIndex = proj.TerrainSettings.AlgorithmIndex;
+                CellularStyleIndex = proj.TerrainSettings.CellularStyleIndex;
+                OuterCliffWalls = proj.TerrainSettings.OuterCliffWalls;
+                PerimeterCliffHeight = proj.TerrainSettings.PerimeterCliffHeight;
+                TerrainSealAcrossTop = proj.TerrainSettings.SealAcrossTop;
+                TerrainUvTileScale = proj.TerrainSettings.UvTileScale;
+            }
+
+            CurrentProjectPath = filePath;
+            MeshVersion++;
+            OverlayVersion++;
+            RunLinter();
+            StatusMessage = $"Project '{proj.ProjectName}' loaded successfully from {Path.GetFileName(filePath)}!";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Error loading project: {ex.Message}";
+        }
+    }
+
+    // =========================================================================
+    // SEAMLESS TEXTURING & UV MAPPING-REMAPPING
+    // =========================================================================
+
+    [RelayCommand]
+    public void ApplySeamlessTriplanarUvs()
+    {
+        if (ActiveMesh == null) return;
+        PushHistoryState("Apply Seamless Triplanar UVs");
+        float tile = TerrainUvTileScale > 0 ? TerrainUvTileScale : 300.0f;
+        SeamlessUvEngine.ApplyContinuousTriplanarUvs(ActiveMesh, tile);
+        MeshVersion++;
+        StatusMessage = $"Applied seamless continuous triplanar UVs (Tile: {tile:F0}) to '{ActiveMesh.Name}'.";
+    }
+
+    [RelayCommand]
+    public void ApplySeamSplitTriplanarUvs()
+    {
+        if (ActiveMesh == null) return;
+        PushHistoryState("Apply Seam-Split Triplanar UVs");
+        float tile = TerrainUvTileScale > 0 ? TerrainUvTileScale : 300.0f;
+        SeamlessUvEngine.ApplySeamSplitTriplanarUvs(ActiveMesh, tile);
+        MeshVersion++;
+        StatusMessage = $"Applied seam-split triplanar UVs (zero texture stretching) to '{ActiveMesh.Name}'.";
+    }
+
+    [RelayCommand]
+    public void RemapSelectedFacesUvs()
+    {
+        if (ActiveMesh == null || SelectedFaceIndices.Count == 0)
+        {
+            StatusMessage = "No faces selected to remap UVs. Select faces in Face Mode (4) first.";
+            return;
+        }
+        PushHistoryState($"Remap UVs on {SelectedFaceIndices.Count} Faces");
+        float tile = TerrainUvTileScale > 0 ? TerrainUvTileScale : 300.0f;
+        SeamlessUvEngine.RemapSelectedFacesUvs(ActiveMesh, SelectedFaceIndices, UvProjectionMode.TriplanarSeamless, tile);
+        MeshVersion++;
+        StatusMessage = $"Remapped seamless UVs on {SelectedFaceIndices.Count} selected face(s).";
+    }
+
+    [RelayCommand]
+    public void ApplyPlanarUvsXy()
+    {
+        if (ActiveMesh == null) return;
+        PushHistoryState("Apply Planar UVs XY");
+        float tile = TerrainUvTileScale > 0 ? TerrainUvTileScale : 300.0f;
+        SeamlessUvEngine.RemapSelectedFacesUvs(ActiveMesh, SelectedFaceIndices.Count > 0 ? SelectedFaceIndices : Enumerable.Range(0, ActiveMesh.Triangles.Count), UvProjectionMode.PlanarXy, tile);
+        MeshVersion++;
+        StatusMessage = $"Applied Planar Ground (XY) UVs to '{ActiveMesh.Name}'.";
+    }
+
+    [RelayCommand]
+    public void ApplyPlanarUvsXz()
+    {
+        if (ActiveMesh == null) return;
+        PushHistoryState("Apply Planar UVs XZ");
+        float tile = TerrainUvTileScale > 0 ? TerrainUvTileScale : 300.0f;
+        SeamlessUvEngine.RemapSelectedFacesUvs(ActiveMesh, SelectedFaceIndices.Count > 0 ? SelectedFaceIndices : Enumerable.Range(0, ActiveMesh.Triangles.Count), UvProjectionMode.PlanarXz, tile);
+        MeshVersion++;
+        StatusMessage = $"Applied Planar Cliff Wall (XZ) UVs to '{ActiveMesh.Name}'.";
+    }
+
+    [RelayCommand]
+    public void ApplyPlanarUvsYz()
+    {
+        if (ActiveMesh == null) return;
+        PushHistoryState("Apply Planar UVs YZ");
+        float tile = TerrainUvTileScale > 0 ? TerrainUvTileScale : 300.0f;
+        SeamlessUvEngine.RemapSelectedFacesUvs(ActiveMesh, SelectedFaceIndices.Count > 0 ? SelectedFaceIndices : Enumerable.Range(0, ActiveMesh.Triangles.Count), UvProjectionMode.PlanarYz, tile);
+        MeshVersion++;
+        StatusMessage = $"Applied Planar Side Wall (YZ) UVs to '{ActiveMesh.Name}'.";
+    }
+
+    // =========================================================================
+    // MESH FIXING & LOW-POLYING FOR HALO 3
+    // =========================================================================
+
+    [RelayCommand]
+    public void DecimateActiveMesh25() => DecimateActiveMesh(0.75f, "Decimate 25%");
+
+    [RelayCommand]
+    public void DecimateActiveMesh50() => DecimateActiveMesh(0.50f, "Decimate 50%");
+
+    [RelayCommand]
+    public void DecimateActiveMesh75() => DecimateActiveMesh(0.25f, "Decimate 75%");
+
+    [RelayCommand]
+    public void DecimateActiveMeshToBudget()
+    {
+        if (ActiveMesh == null) return;
+        PushHistoryState("Low-Poly to 10k Tris");
+        var report = MeshDecimator.DecimateToTargetTriangles(ActiveMesh, 10000, preserveBoundaries: true);
+        MeshVersion++;
+        RunLinter();
+        StatusMessage = $"Decimated '{ActiveMesh.Name}': {report.OriginalTriangles} -> {report.DecimatedTriangles} tris ({report.ReductionPercentage:F1}% reduction).";
+    }
+
+    private void DecimateActiveMesh(float targetRatio, string actionName)
+    {
+        if (ActiveMesh == null)
+        {
+            StatusMessage = "No active mesh to decimate.";
+            return;
+        }
+        PushHistoryState(actionName);
+        var report = MeshDecimator.DecimateToRatio(ActiveMesh, targetRatio, preserveBoundaries: true);
+        MeshVersion++;
+        RunLinter();
+        StatusMessage = $"{actionName} '{ActiveMesh.Name}': {report.OriginalTriangles} -> {report.DecimatedTriangles} tris ({report.ReductionPercentage:F1}% reduction).";
+    }
+
+    [RelayCommand]
+    public void SanitizeActiveMeshForHalo3()
+    {
+        if (ActiveMesh == null) return;
+        PushHistoryState("Sanitize Mesh for Halo 3");
+        var rep = GeometryAutoRepair.SanitizeMeshForHalo3(ActiveMesh, sealBoundaries: false, weldDistance: 0.08f);
+        MeshVersion++;
+        RunLinter();
+        StatusMessage = $"Sanitized '{ActiveMesh.Name}' for Halo 3: Removed {rep.OverlappingSurfacesRemoved} overlapping, welded {rep.VerticesWelded} verts. Open edges remaining: {rep.OpenEdgesRemaining}.";
+    }
+
+    [RelayCommand]
+    public void DeduplicateOverlappingSurfaces()
+    {
+        if (ActiveMesh == null) return;
+        PushHistoryState("Deduplicate Overlapping Surfaces");
+        int removed = GeometryAutoRepair.DeduplicateCoplanarTriangles(ActiveMesh);
+        MeshVersion++;
+        RunLinter();
+        StatusMessage = $"Deduplicated overlapping surfaces on '{ActiveMesh.Name}': Removed {removed} duplicate coplanar triangles.";
+    }
+
+    [RelayCommand]
+    public void SealBoundaryOpenEdges()
+    {
+        if (ActiveMesh == null) return;
+        PushHistoryState("Seal Boundary Open Edges");
+        var rep = new RepairReport();
+        GeometryAutoRepair.SealTerrainBoundarySkirt(ActiveMesh, 200.0f, rep);
+        MeshVersion++;
+        RunLinter();
+        StatusMessage = $"Sealed boundary open edges on '{ActiveMesh.Name}': Bridged {rep.OpenEdgesBridged} edges, capped {rep.HolesCapped} holes.";
     }
 }

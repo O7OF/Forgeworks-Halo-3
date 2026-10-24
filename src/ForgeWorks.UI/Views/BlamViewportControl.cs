@@ -940,6 +940,31 @@ void main()
         return 0;
     }
 
+    /// <summary>
+    /// Projects a 3D world position to 2D screen pixel coordinates using the camera's view/projection matrices.
+    /// Used for Godot-style screen-space axis projection and intuitive gizmo dragging.
+    /// </summary>
+    public bool WorldToScreen(Vector3 worldPos, out Vector2 screenPos)
+    {
+        screenPos = Vector2.Zero;
+        float w = (float)Bounds.Width;
+        float h = (float)Bounds.Height;
+        if (w <= 1.0f || h <= 1.0f) return false;
+
+        var mvp = _camera.ViewMatrix * _camera.ProjectionMatrix;
+        var clip = Vector4.Transform(new Vector4(worldPos, 1.0f), mvp);
+        if (clip.W <= 0.001f) return false; // Behind camera plane
+
+        float ndcX = clip.X / clip.W;
+        float ndcY = clip.Y / clip.W;
+
+        screenPos = new Vector2(
+            (ndcX + 1.0f) * 0.5f * w,
+            (1.0f - ndcY) * 0.5f * h
+        );
+        return true;
+    }
+
     #endregion
 
     #region Rendering
@@ -1334,7 +1359,41 @@ void main()
             var ray = MeshSculptEngine.ScreenPointToRay(
                 new Vector2((float)_lastPointerPos.X, (float)_lastPointerPos.Y),
                 (float)Bounds.Width, (float)Bounds.Height, _camera);
-            if (vmFace.ActiveMesh != null && MeshSculptEngine.RayIntersectsMesh(ray, vmFace.ActiveMesh, out var hitPt, out _, out int hitTri))
+
+            MeshObject? targetMesh = vmFace.ActiveMesh;
+            int hitTri = -1;
+            Vector3 hitPt = Vector3.Zero;
+
+            // 1. Check currently active mesh first
+            if (targetMesh != null && MeshSculptEngine.RayIntersectsMesh(ray, targetMesh, out hitPt, out _, out hitTri))
+            {
+                // Hit active mesh
+            }
+            else
+            {
+                // 2. Raycast across all level meshes in the scene graph
+                float closestDist = float.MaxValue;
+                foreach (var m in vmFace.SceneGraph.GetLevelMeshes())
+                {
+                    if (MeshSculptEngine.RayIntersectsMesh(ray, m, out var candidatePt, out _, out int tri))
+                    {
+                        float d = Vector3.Distance(ray.Origin, candidatePt);
+                        if (d < closestDist)
+                        {
+                            closestDist = d;
+                            targetMesh = m;
+                            hitPt = candidatePt;
+                            hitTri = tri;
+                        }
+                    }
+                }
+                if (targetMesh != null && targetMesh != vmFace.ActiveMesh)
+                {
+                    vmFace.SetActiveMesh(targetMesh, $"Selected mesh '{targetMesh.Name}' for face edit");
+                }
+            }
+
+            if (targetMesh != null && hitTri != -1)
             {
                 if (shift || ctrl)
                 {
@@ -1394,32 +1453,118 @@ void main()
 
         if (_isDraggingGizmo && Vm is { } vmGizmo && vmGizmo.IsGizmoActive && vmGizmo.ActiveGizmoPosition.HasValue)
         {
+            var p = vmGizmo.ActiveGizmoPosition.Value;
+            Vector3 axisDir = _draggedGizmoAxis switch
+            {
+                1 => Vector3.UnitX,
+                2 => Vector3.UnitY,
+                3 => Vector3.UnitZ,
+                _ => Vector3.Zero
+            };
+
+            float step = Math.Clamp(_camera.Distance * 0.15f, 20.0f, 500.0f);
+            float proj = 0f;
+            if (_draggedGizmoAxis is >= 1 and <= 3 && WorldToScreen(p, out var s0) && WorldToScreen(p + axisDir * step, out var s1))
+            {
+                var screenDir = s1 - s0;
+                float sLen = screenDir.Length();
+                if (sLen > 0.5f)
+                {
+                    var u = screenDir / sLen;
+                    proj = (float)delta.X * u.X + (float)delta.Y * u.Y;
+                }
+            }
+
             if (vmGizmo.GizmoMode == GizmoMode.Scale)
             {
-                float scaleFactor = 1.0f + (float)(delta.X - delta.Y) * 0.015f;
-                scaleFactor = Math.Clamp(scaleFactor, 0.70f, 1.30f);
-                vmGizmo.ScaleSelectedEntity(scaleFactor, _draggedGizmoAxis);
+                if (_draggedGizmoAxis == 4)
+                {
+                    float factor = 1.0f + (float)(delta.X - delta.Y) * 0.015f;
+                    factor = Math.Clamp(factor, 0.70f, 1.30f);
+                    vmGizmo.ScaleSelectedEntity(factor, 4);
+                }
+                else
+                {
+                    float factor = 1.0f + (proj / 80.0f);
+                    factor = Math.Clamp(factor, 0.70f, 1.30f);
+                    vmGizmo.ScaleSelectedEntity(factor, _draggedGizmoAxis);
+                }
                 BuildGizmo(vmGizmo);
                 return;
             }
             else if (vmGizmo.GizmoMode == GizmoMode.Rotate)
             {
-                float rotAngle = (float)(delta.X - delta.Y) * 0.025f;
-                vmGizmo.RotateSelectedEntity(rotAngle, _draggedGizmoAxis);
-                BuildGizmo(vmGizmo);
-                return;
-            }
-            else
-            {
-                float speed = _camera.Distance * 0.002f;
-                Vector3 worldDelta = _draggedGizmoAxis switch
+                if (_draggedGizmoAxis is >= 1 and <= 3 && WorldToScreen(p, out var centerScreen))
                 {
-                    1 => new Vector3((float)delta.X * speed, 0, 0),
-                    2 => new Vector3(0, -(float)delta.Y * speed, 0),
-                    3 => new Vector3(0, 0, -(float)delta.Y * speed),
-                    4 => new Vector3((float)delta.X * speed, -(float)delta.Y * speed, 0),
-                    _ => Vector3.Zero
-                };
+                    var m0 = new Vector2((float)(pos.X - delta.X), (float)(pos.Y - delta.Y));
+                    var m1 = new Vector2((float)pos.X, (float)pos.Y);
+
+                    var v0 = m0 - centerScreen;
+                    var v1 = m1 - centerScreen;
+
+                    if (v0.LengthSquared() > 9.0f && v1.LengthSquared() > 9.0f)
+                    {
+                        float a0 = MathF.Atan2(v0.Y, v0.X);
+                        float a1 = MathF.Atan2(v1.Y, v1.X);
+                        float dAngle = a1 - a0;
+                        while (dAngle > MathF.PI) dAngle -= MathF.PI * 2.0f;
+                        while (dAngle < -MathF.PI) dAngle += MathF.PI * 2.0f;
+
+                        // Align rotation sign with camera facing (Godot standard)
+                        float facing = Vector3.Dot(axisDir, _camera.Forward);
+                        if (facing < 0) dAngle = -dAngle;
+
+                        vmGizmo.RotateSelectedEntity(dAngle, _draggedGizmoAxis);
+                        BuildGizmo(vmGizmo);
+                        return;
+                    }
+                }
+                else
+                {
+                    float rotAngle = (float)(delta.X - delta.Y) * 0.015f;
+                    vmGizmo.RotateSelectedEntity(rotAngle, _draggedGizmoAxis);
+                    BuildGizmo(vmGizmo);
+                    return;
+                }
+            }
+            else // Translate (Godot-style screen axis projection)
+            {
+                Vector3 worldDelta;
+                if (_draggedGizmoAxis == 4)
+                {
+                    // Center handle: Translate on camera view plane
+                    float speed = _camera.Distance * 0.0015f;
+                    worldDelta = (_camera.Right * (float)delta.X * speed) + (_camera.Up * -(float)delta.Y * speed);
+                }
+                else if (_draggedGizmoAxis is >= 1 and <= 3)
+                {
+                    if (WorldToScreen(p, out var tScreen0) && WorldToScreen(p + axisDir * step, out var tScreen1))
+                    {
+                        var screenDir = tScreen1 - tScreen0;
+                        float sLen = screenDir.Length();
+                        if (sLen > 0.5f)
+                        {
+                            var u = screenDir / sLen;
+                            float screenMovement = (float)delta.X * u.X + (float)delta.Y * u.Y;
+                            float worldDist = (screenMovement / sLen) * step;
+                            worldDelta = axisDir * worldDist;
+                        }
+                        else
+                        {
+                            worldDelta = Vector3.Zero;
+                        }
+                    }
+                    else
+                    {
+                        float speed = _camera.Distance * 0.002f;
+                        worldDelta = axisDir * ((float)delta.X * speed);
+                    }
+                }
+                else
+                {
+                    worldDelta = Vector3.Zero;
+                }
+
                 vmGizmo.TranslateSelectedEntity(worldDelta);
                 BuildGizmo(vmGizmo);
                 return;

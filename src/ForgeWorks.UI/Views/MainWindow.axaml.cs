@@ -88,6 +88,67 @@ public partial class MainWindow : Window
                     }
                 }
             };
+
+            vm.RequestSaveProjectDialog += async (defaultName) =>
+            {
+                string projectsDir = GetProjectsDirectory();
+                var startFolder = await StorageProvider.TryGetFolderFromPathAsync(projectsDir);
+
+                var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+                {
+                    Title = "Save ForgeWorks Project (.blam)",
+                    SuggestedFileName = defaultName.EndsWith(".blam", StringComparison.OrdinalIgnoreCase) ? defaultName : $"{defaultName}.blam",
+                    DefaultExtension = "blam",
+                    SuggestedStartLocation = startFolder,
+                    FileTypeChoices = new[]
+                    {
+                        new FilePickerFileType("ForgeWorks Project (*.blam)")
+                        {
+                            Patterns = new[] { "*.blam" }
+                        },
+                        new FilePickerFileType("All Files (*.*)") { Patterns = new[] { "*.*" } }
+                    }
+                });
+
+                if (file != null)
+                {
+                    string? localPath = file.TryGetLocalPath();
+                    if (!string.IsNullOrEmpty(localPath))
+                    {
+                        vm.SaveProjectToFile(localPath);
+                    }
+                }
+            };
+
+            vm.RequestOpenProjectDialog += async () =>
+            {
+                string projectsDir = GetProjectsDirectory();
+                var startFolder = await StorageProvider.TryGetFolderFromPathAsync(projectsDir);
+
+                var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+                {
+                    Title = "Open ForgeWorks Project (.blam)",
+                    AllowMultiple = false,
+                    SuggestedStartLocation = startFolder,
+                    FileTypeFilter = new[]
+                    {
+                        new FilePickerFileType("ForgeWorks Project (*.blam)")
+                        {
+                            Patterns = new[] { "*.blam" }
+                        },
+                        new FilePickerFileType("All Files (*.*)") { Patterns = new[] { "*.*" } }
+                    }
+                });
+
+                if (files != null && files.Count > 0)
+                {
+                    string? localPath = files[0].TryGetLocalPath();
+                    if (!string.IsNullOrEmpty(localPath))
+                    {
+                        vm.LoadProjectFromFile(localPath);
+                    }
+                }
+            };
         }
     }
 
@@ -99,5 +160,29 @@ public partial class MainWindow : Window
             bool ctrl = e.KeyModifiers.HasFlag(KeyModifiers.Control);
             vm.HandleNodeClicked(node, shift, ctrl);
         }
+    }
+
+    private static string GetProjectsDirectory()
+    {
+        string? root = FindWorkspaceRoot(AppContext.BaseDirectory) ?? System.IO.Directory.GetCurrentDirectory();
+        string projectsDir = System.IO.Path.Combine(root, "My Projects");
+        if (!System.IO.Directory.Exists(projectsDir))
+        {
+            System.IO.Directory.CreateDirectory(projectsDir);
+        }
+        return projectsDir;
+    }
+
+    private static string? FindWorkspaceRoot(string startDir)
+    {
+        var dir = new System.IO.DirectoryInfo(startDir);
+        while (dir != null)
+        {
+            if (System.IO.File.Exists(System.IO.Path.Combine(dir.FullName, "halo3_blender_shaders.txt")) ||
+                System.IO.Directory.Exists(System.IO.Path.Combine(dir.FullName, "My Projects")))
+                return dir.FullName;
+            dir = dir.Parent;
+        }
+        return null;
     }
 }
