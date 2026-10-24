@@ -3031,6 +3031,98 @@ public class ForgeWorksTests
             Assert.True(File.Exists(mapFile), $"icefields.map must be generated at {mapFile}. Exit: {cacheExit}");
         }
     }
+
+    [Fact]
+    public void AutoFitTriplanarUVs_SteepCliffWalls_MapsVerticallyWithoutStretching()
+    {
+        var mesh = new MeshObject("cliff_wall");
+        // Vertical wall facing X (+X normal), stretching from Z=0 to Z=1000
+        mesh.Vertices.Add(new Vertex(new System.Numerics.Vector3(100, 0, 0), System.Numerics.Vector3.UnitX));
+        mesh.Vertices.Add(new Vertex(new System.Numerics.Vector3(100, 500, 0), System.Numerics.Vector3.UnitX));
+        mesh.Vertices.Add(new Vertex(new System.Numerics.Vector3(100, 500, 1000), System.Numerics.Vector3.UnitX));
+        mesh.Vertices.Add(new Vertex(new System.Numerics.Vector3(100, 0, 1000), System.Numerics.Vector3.UnitX));
+
+        mesh.Triangles.Add(new Triangle(0, 1, 2));
+        mesh.Triangles.Add(new Triangle(0, 2, 3));
+
+        MeshModelingEngine.AutoFitTriplanarUVs(mesh, tileScale: 300.0f);
+
+        // Verify UVs exist and V coordinate scales with Z elevation (not flattened to 0)
+        Assert.NotEmpty(mesh.Vertices[0].UVs);
+        Assert.NotEmpty(mesh.Vertices[2].UVs);
+
+        float vBottom = mesh.Vertices[0].UVs[0].Y;
+        float vTop = mesh.Vertices[2].UVs[0].Y;
+
+        // V should differ significantly across the 1000 unit height
+        Assert.True(MathF.Abs(vTop - vBottom) >= 3.0f, $"Vertical cliff wall must have varying UVs along Z to prevent stretching. Got delta: {MathF.Abs(vTop - vBottom)}");
+    }
+
+    [Fact]
+    public void HaloShaderCatalog_Categorization_OrganizesFloorsWallsPanelsLightsSnowGrassDesert()
+    {
+        Assert.Equal("Floors", HaloShaderCatalog.DetermineCategory("sal sal_floor_tile", @"levels\multi\salvation\shaders\sal_floor_tile.shader", ".shader"));
+        Assert.Equal("Floors", HaloShaderCatalog.DetermineCategory("sb cov_floor_rubber", @"levels\multi\snowbound\shaders\cov_floor_rubber.shader", ".shader"));
+        Assert.Equal("Walls", HaloShaderCatalog.DetermineCategory("chill chill_wall01", @"levels\multi\chill\shaders\chill_wall01.shader", ".shader"));
+        Assert.Equal("Walls", HaloShaderCatalog.DetermineCategory("shr panel_wallsection", @"levels\multi\shrine\shaders\forerunner\panel_wallsection.shader", ".shader"));
+        Assert.Equal("Panels", HaloShaderCatalog.DetermineCategory("chill panel_elevator", @"levels\multi\chill\shaders\panel_elevator.shader", ".shader"));
+        Assert.Equal("Panels", HaloShaderCatalog.DetermineCategory("mpshare mp_metal_trim", @"levels\shared\shaders\mp_metal_trim.shader", ".shader"));
+        Assert.Equal("Lights", HaloShaderCatalog.DetermineCategory("chill light_circle_lift", @"levels\multi\chill\shaders\light_circle_lift.shader", ".shader"));
+        Assert.Equal("Lights", HaloShaderCatalog.DetermineCategory("sb tech_glow_a", @"levels\multi\snowbound\shaders\tech_glow_a.shader", ".shader"));
+        Assert.Equal("Snow (Snowbound)", HaloShaderCatalog.DetermineCategory("chill chill_snow", @"levels\multi\chill\shaders\chill_snow.shader", ".shader"));
+        Assert.Equal("Snow (Snowbound)", HaloShaderCatalog.DetermineCategory("sb terrain_snow", @"levels\multi\snowbound\shaders\terrain_snow.shader_terrain", ".shader_terrain"));
+        Assert.Equal("Grass (Riverworld)", HaloShaderCatalog.DetermineCategory("river riverworld_ground", @"levels\multi\riverworld\shaders\riverworld_ground.shader_terrain", ".shader_terrain"));
+        Assert.Equal("Desert (Shrine)", HaloShaderCatalog.DetermineCategory("shr shrine_ground", @"levels\multi\shrine\shaders\shrine_ground.shader_terrain", ".shader_terrain"));
+        Assert.Equal("Desert (Shrine)", HaloShaderCatalog.DetermineCategory("shr cust_stone_rubble", @"levels\multi\shrine\shaders\cust_stone_rubble.shader_terrain", ".shader_terrain"));
+        Assert.Equal("Special (+Sky)", HaloShaderCatalog.DetermineCategory("+sky", @"levels\multi\chill\sky\shaders\skydome.shader", ".shader"));
+    }
+
+    [Fact]
+    public void GeometryAutoRepair_SealMeshAcrossTop_EliminatesOpenBoundaryEdges()
+    {
+        var mesh = new MeshObject("open_canyon");
+        // Create an open 3D box missing its ceiling (5 faces: floor and 4 walls)
+        // 8 vertices: 0..3 bottom (Z=0), 4..7 top (Z=500)
+        mesh.Vertices.Add(new Vertex(new System.Numerics.Vector3(0, 0, 0), System.Numerics.Vector3.UnitZ));
+        mesh.Vertices.Add(new Vertex(new System.Numerics.Vector3(1000, 0, 0), System.Numerics.Vector3.UnitZ));
+        mesh.Vertices.Add(new Vertex(new System.Numerics.Vector3(1000, 1000, 0), System.Numerics.Vector3.UnitZ));
+        mesh.Vertices.Add(new Vertex(new System.Numerics.Vector3(0, 1000, 0), System.Numerics.Vector3.UnitZ));
+
+        mesh.Vertices.Add(new Vertex(new System.Numerics.Vector3(0, 0, 500), System.Numerics.Vector3.UnitZ));
+        mesh.Vertices.Add(new Vertex(new System.Numerics.Vector3(1000, 0, 500), System.Numerics.Vector3.UnitZ));
+        mesh.Vertices.Add(new Vertex(new System.Numerics.Vector3(1000, 1000, 500), System.Numerics.Vector3.UnitZ));
+        mesh.Vertices.Add(new Vertex(new System.Numerics.Vector3(0, 1000, 500), System.Numerics.Vector3.UnitZ));
+
+        // Floor (facing down/in)
+        mesh.Triangles.Add(new Triangle(0, 2, 1));
+        mesh.Triangles.Add(new Triangle(0, 3, 2));
+
+        // Wall 1 (-Y)
+        mesh.Triangles.Add(new Triangle(0, 1, 5));
+        mesh.Triangles.Add(new Triangle(0, 5, 4));
+
+        // Wall 2 (+X)
+        mesh.Triangles.Add(new Triangle(1, 2, 6));
+        mesh.Triangles.Add(new Triangle(1, 6, 5));
+
+        // Wall 3 (+Y)
+        mesh.Triangles.Add(new Triangle(2, 3, 7));
+        mesh.Triangles.Add(new Triangle(2, 7, 6));
+
+        // Wall 4 (-X)
+        mesh.Triangles.Add(new Triangle(3, 0, 4));
+        mesh.Triangles.Add(new Triangle(3, 4, 7));
+
+        int openEdgesBefore = GeometryAutoRepair.CountOpenEdges(mesh);
+        Assert.True(openEdgesBefore > 0, "Initial open canyon must have boundary open edges along top rim");
+
+        int sealedCount = GeometryAutoRepair.SealMeshAcrossTop(mesh, ceilingMargin: 300.0f, skyMaterial: "+sky");
+        Assert.True(sealedCount > 0, "SealMeshAcrossTop must cap open rim");
+        Assert.Contains("+sky", mesh.MaterialSlots);
+
+        int openEdgesAfter = GeometryAutoRepair.CountOpenEdges(mesh);
+        Assert.Equal(0, openEdgesAfter);
+    }
 }
 
 

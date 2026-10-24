@@ -1479,7 +1479,7 @@ public sealed class GeometryAutoRepair
             || mesh.Name.Contains("sky", StringComparison.OrdinalIgnoreCase)
             || mesh.MaterialName.StartsWith("+sky", StringComparison.OrdinalIgnoreCase));
 
-    private static void EnforceMaterialConventions(MeshObject mesh, RepairReport report)
+    public static void EnforceMaterialConventions(MeshObject mesh, RepairReport? report = null)
     {
         // Preserve +sky
         if (mesh.MaterialName.StartsWith("+sky", StringComparison.OrdinalIgnoreCase) || mesh.Name.StartsWith("+sky", StringComparison.OrdinalIgnoreCase))
@@ -1510,7 +1510,7 @@ public sealed class GeometryAutoRepair
             if (!mat.EndsWith("!")) mat = mat + "!";
             mesh.MaterialName = mat;
             mesh.IsCollideable = false;
-            report.WaterQuadsFixed++;
+            if (report != null) report.WaterQuadsFixed++;
         }
         else if (IsDecalOrCard(mat) || IsDecalOrCard(mesh.Name))
         {
@@ -1545,7 +1545,7 @@ public sealed class GeometryAutoRepair
             {
                 if (!sMat.StartsWith("!") && !sMat.StartsWith("%")) sMat = "!" + sMat;
                 mesh.MaterialSlots[i] = sMat.TrimEnd('!');
-                report.WaterQuadsFixed++;
+                if (report != null) report.WaterQuadsFixed++;
             }
             else if (IsDecalOrCard(sMat))
             {

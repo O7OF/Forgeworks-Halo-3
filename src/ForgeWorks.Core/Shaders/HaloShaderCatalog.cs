@@ -32,13 +32,20 @@ public sealed class HaloShaderCatalog
     public static readonly string[] Categories = new[]
     {
         "All",
+        "Floors",
+        "Walls",
+        "Panels",
+        "Lights",
+        "Snow (Snowbound)",
+        "Grass (Riverworld)",
+        "Desert (Shrine)",
         "Terrain",
         "Rock & Cliff",
-        "UNSC & Metal",
-        "Covenant",
-        "Foliage & Bark",
-        "Water",
-        "Special"
+        "Metal & Structure",
+        "Covenant & Forerunner",
+        "Foliage & Nature",
+        "Water & Glass",
+        "Special (+Sky)"
     };
 
     public static HaloShaderCatalog LoadFromFiles(string blenderShadersFile, string? rawTagPathsFile = null, string? ekPath = null)
@@ -362,6 +369,9 @@ public sealed class HaloShaderCatalog
         ["shared"] = "mpshare",
         ["boxcanvas"] = "boxcanvas",
         ["chill"] = "chill",
+        ["shrine"] = "shr",
+        ["sandtrap"] = "shr",
+        ["shr"] = "shr",
         ["guardian"] = "guardian",
         ["highground"] = "highground",
         ["bunkerworld"] = "bunkerworld",
@@ -379,27 +389,51 @@ public sealed class HaloShaderCatalog
     public static string DetermineCategory(string matName, string tagPath, string shaderType)
     {
         string lower = (matName + " " + tagPath + " " + shaderType).ToLowerInvariant();
-        if (matName.StartsWith("+") || matName.StartsWith("%") || matName.StartsWith("$") || matName.StartsWith("@") || matName.StartsWith("~"))
-            return "Special";
-        if (lower.Contains("water") || lower.Contains("stream") || lower.Contains("puddle") || lower.Contains("ocean") || lower.Contains("swamp") || lower.Contains("waterfall") || (lower.Contains("river") && !lower.Contains("riverworld") && !lower.Contains("tree") && !lower.Contains("bark") && !lower.Contains("leaf") && !lower.Contains("rock") && !lower.Contains("ground")))
-            return "Water";
-        if (lower.Contains("bark") || lower.Contains("tree") || lower.Contains("leaf") || lower.Contains("leaves") || lower.Contains("pine") || lower.Contains("needle") || lower.Contains("foliage") || lower.Contains("bush") || lower.Contains("wood") || lower.Contains("fern") || lower.Contains("grass"))
-            return "Foliage & Bark";
+        if (matName.StartsWith("+") || matName.StartsWith("%") || matName.StartsWith("$") || matName.StartsWith("@") || matName.StartsWith("~") || lower.Contains("sky") || lower.Contains("portal"))
+            return "Special (+Sky)";
+
+        // 1. Specific architectural elements FIRST (so floors, walls, panels, and lights are cleanly organized)
+        if (lower.Contains("light") || lower.Contains("glow") || lower.Contains("illum") || lower.Contains("lamp") || lower.Contains("beacon") || lower.Contains("emissive") || lower.Contains("neon") || lower.Contains("strip_warm") || lower.Contains("blue_panel_light"))
+            return "Lights";
+        if (lower.Contains("floor") || lower.Contains("rubber") || lower.Contains("walkway") || lower.Contains("pavement") || lower.Contains("deck") || lower.Contains("runway") || lower.Contains("catwalk") || lower.Contains("tile"))
+            return "Floors";
+        if (lower.Contains("wall") || lower.Contains("brick") || lower.Contains("barrier") || lower.Contains("divider") || lower.Contains("pillar") || lower.Contains("column") || lower.Contains("post") || lower.Contains("bulkhead") || lower.Contains("door"))
+            return "Walls";
+        if (lower.Contains("panel") || lower.Contains("trim") || lower.Contains("grate") || lower.Contains("plate") || lower.Contains("scallop") || lower.Contains("laminate") || lower.Contains("hatch") || lower.Contains("vent") || lower.Contains("techstrip"))
+            return "Panels";
+
+        // 2. Dedicated Halo 3 environment archetypes (Snowbound, Riverworld, Shrine)
+        if (lower.Contains("snow") || lower.Contains("glacier") || lower.Contains("chill_snow") || lower.Contains("snowbound") || lower.Contains("ice_crust") || lower.Contains("icefield") || lower.Contains("icecave") || lower.StartsWith("chill ") || lower.StartsWith("sb "))
+            return "Snow (Snowbound)";
+        if (lower.Contains("shrine") || lower.Contains("sandtrap") || lower.Contains("sand") || lower.Contains("dune") || lower.Contains("desert") || lower.Contains("stone_pyramid") || lower.Contains("cust_stone") || lower.Contains("cust_copper") || lower.Contains("copper_plate") || lower.StartsWith("shr "))
+            return "Desert (Shrine)";
+        if (lower.Contains("riverworld_ground") || lower.Contains("riverworld_grass") || lower.Contains("riverworld_dirt") || lower.Contains("grass") || lower.Contains("dirt") || lower.Contains("mud") || lower.StartsWith("river "))
+            return "Grass (Riverworld)";
+
+        // 3. Natural environments
+        if (lower.Contains("water") || lower.Contains("stream") || lower.Contains("puddle") || lower.Contains("ocean") || lower.Contains("swamp") || lower.Contains("waterfall") || lower.Contains("glass") || lower.Contains("window"))
+            return "Water & Glass";
+        if (lower.Contains("bark") || lower.Contains("tree") || lower.Contains("leaf") || lower.Contains("leaves") || lower.Contains("pine") || lower.Contains("needle") || lower.Contains("foliage") || lower.Contains("bush") || lower.Contains("wood") || lower.Contains("fern"))
+            return "Foliage & Nature";
         if (lower.Contains("rock") || lower.Contains("cliff") || lower.Contains("stone") || lower.Contains("boulder") || lower.Contains("basalt") || lower.Contains("crag") || lower.Contains("gravel") || lower.Contains("rubble"))
             return "Rock & Cliff";
-        if (lower.Contains("terrain") || lower.Contains("ground") || lower.Contains("sand") || lower.Contains("dirt") || lower.Contains("mud") || lower.Contains("earth") || lower.Contains("snow") || lower.Contains("ice") || lower.Contains("icefields") || lower.Contains("glacier"))
+        if (lower.Contains("terrain") || lower.Contains("ground") || lower.Contains("earth") || lower.Contains("ice") || shaderType.Contains("terrain", StringComparison.OrdinalIgnoreCase))
             return "Terrain";
-        if (lower.Contains("covenant") || lower.Contains("purple") || lower.Contains("hull") || lower.Contains("brute") || lower.Contains("forerunner") || lower.Contains("sentinel"))
-            return "Covenant";
-        if (lower.Contains("metal") || lower.Contains("concrete") || lower.Contains("steel") || lower.Contains("panel") || lower.Contains("wall") || lower.Contains("floor") || lower.Contains("girder") || lower.Contains("trim") || lower.Contains("base") || lower.Contains("bunker"))
-            return "UNSC & Metal";
-        return "General";
+
+        // 4. Sci-Fi / factions
+        if (lower.Contains("covenant") || lower.Contains("cov_") || lower.Contains("purple") || lower.Contains("hull") || lower.Contains("brute") || lower.Contains("forerunner") || lower.Contains("sentinel") || lower.Contains("plasma"))
+            return "Covenant & Forerunner";
+        if (lower.Contains("metal") || lower.Contains("concrete") || lower.Contains("steel") || lower.Contains("girder") || lower.Contains("base") || lower.Contains("bunker") || lower.Contains("unsc"))
+            return "Metal & Structure";
+
+        return "Terrain";
     }
 
     private static readonly HashSet<string> VerifiedLevelPrefixes = new(StringComparer.OrdinalIgnoreCase)
     {
         "river", "chill", "construct", "con", "guardian", "highground", "bunkerworld",
-        "deadlock", "lockout", "salvation", "snowbound", "sb", "zanzibar", "zan", "cyber", "cyberdyne", "boxcanvas", "icefields"
+        "deadlock", "lockout", "salvation", "snowbound", "sb", "zanzibar", "zan", "cyber", "cyberdyne", "boxcanvas", "icefields",
+        "shrine", "shr"
     };
 
     public static bool CheckIsVerified(string matName, string tagPath, string levelPrefix)
@@ -411,7 +445,8 @@ public sealed class HaloShaderCatalog
         string lower = (matName + " " + tagPath).ToLowerInvariant();
         return lower.Contains("riverworld") || lower.Contains("chill") || lower.Contains("construct") ||
                lower.Contains("guardian") || lower.Contains("highground") || lower.Contains("bunkerworld") ||
-               lower.Contains("snowbound") || lower.Contains("zanzibar") || lower.Contains("icefields");
+               lower.Contains("snowbound") || lower.Contains("zanzibar") || lower.Contains("icefields") ||
+               lower.Contains("shrine") || lower.Contains("sandtrap");
     }
 
     private void AddEntry(HaloShaderEntry rawEntry)

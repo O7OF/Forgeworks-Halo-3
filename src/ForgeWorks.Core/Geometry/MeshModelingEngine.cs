@@ -817,4 +817,51 @@ public static class MeshModelingEngine
             origTris - finalTris
         );
     }
+
+    /// <summary>
+    /// Auto-fits UV coordinates to geometry using distortion-free 1:1 triplanar world mapping.
+    /// Eliminates texture stretching along vertical cliff faces, walls, and horizontal ground planes.
+    /// </summary>
+    public static void AutoFitTriplanarUVs(MeshObject mesh, float tileScale = 300.0f)
+    {
+        if (mesh == null || mesh.Vertices.Count == 0) return;
+        if (tileScale <= 0f) tileScale = 300.0f;
+
+        mesh.RecalculateNormals();
+
+        for (int i = 0; i < mesh.Vertices.Count; i++)
+        {
+            var p = mesh.Vertices[i].Position;
+            var n = mesh.Vertices[i].Normal;
+            float absX = MathF.Abs(n.X);
+            float absY = MathF.Abs(n.Y);
+            float absZ = MathF.Abs(n.Z);
+
+            Vector2 uv;
+            // Horizontal planes (floors, roofs, ground plateaus)
+            if (absZ >= absX && absZ >= absY)
+            {
+                uv = new Vector2(p.X / tileScale, p.Y / tileScale);
+            }
+            // Vertical walls / cliffs aligned to X-axis
+            else if (absX >= absY)
+            {
+                uv = new Vector2(p.Y / tileScale, p.Z / tileScale);
+            }
+            // Vertical walls / cliffs aligned to Y-axis
+            else
+            {
+                uv = new Vector2(p.X / tileScale, p.Z / tileScale);
+            }
+
+            if (mesh.Vertices[i].UVs.Count == 0)
+            {
+                mesh.Vertices[i].UVs.Add(uv);
+            }
+            else
+            {
+                mesh.Vertices[i].UVs[0] = uv;
+            }
+        }
+    }
 }

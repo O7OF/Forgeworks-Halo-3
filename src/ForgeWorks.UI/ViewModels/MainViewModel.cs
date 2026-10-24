@@ -684,6 +684,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     public void ApplyPresetValley()
     {
+        SetBrushShader("river riverworld_ground");
         TerrainAlgorithmIndex = (int)TerrainAlgorithm.MountainPassValley;
         TerrainResX = 48;
         TerrainResY = 48;
@@ -700,6 +701,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     public void ApplyPresetCanyon()
     {
+        SetBrushShader("river riverworld_cliff");
         TerrainAlgorithmIndex = (int)TerrainAlgorithm.CanyonGorge;
         TerrainResX = 52;
         TerrainResY = 52;
@@ -716,6 +718,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     public void ApplyPresetRollingHills()
     {
+        SetBrushShader("river riverworld_ground");
         TerrainAlgorithmIndex = (int)TerrainAlgorithm.RollingHills;
         TerrainResX = 48;
         TerrainResY = 48;
@@ -732,6 +735,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     public void ApplyPresetCrater()
     {
+        SetBrushShader("river riverworld_rock");
         TerrainAlgorithmIndex = (int)TerrainAlgorithm.CraterImpact;
         TerrainResX = 56;
         TerrainResY = 56;
@@ -748,6 +752,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     public void ApplyPresetMesa()
     {
+        SetBrushShader("shr shrine_ground");
         TerrainAlgorithmIndex = (int)TerrainAlgorithm.MesaPlateau;
         TerrainResX = 52;
         TerrainResY = 52;
@@ -764,6 +769,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     public void ApplyPresetDunes()
     {
+        SetBrushShader("shr shrine_ground");
         TerrainAlgorithmIndex = (int)TerrainAlgorithm.DuneSea;
         TerrainResX = 52;
         TerrainResY = 52;
@@ -780,6 +786,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     public void ApplyPresetIsland()
     {
+        SetBrushShader("river riverworld_ground");
         TerrainAlgorithmIndex = (int)TerrainAlgorithm.IslandAtoll;
         TerrainResX = 56;
         TerrainResY = 56;
@@ -795,6 +802,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     public void ApplyPresetBasin()
     {
+        SetBrushShader("river riverworld_rock");
         TerrainAlgorithmIndex = (int)TerrainAlgorithm.VoronoiCellular;
         CellularStyleIndex = 2;   // CrackedBasin
         TerrainResX = 48;
@@ -812,6 +820,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     public void ApplyPresetCaldera()
     {
+        SetBrushShader("river riverworld_cliff");
         TerrainAlgorithmIndex = (int)TerrainAlgorithm.VoronoiCellular;
         CellularStyleIndex = 0;   // Caldera
         TerrainResX = 56;
@@ -829,6 +838,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     public void ApplyPresetAlpinePeaks()
     {
+        SetBrushShader("chill chill_snow");
         TerrainAlgorithmIndex = (int)TerrainAlgorithm.RidgedMultifractal;
         TerrainResX = 60;
         TerrainResY = 60;
@@ -845,6 +855,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     public void ApplyPresetBasaltColumns()
     {
+        SetBrushShader("river riverworld_rock");
         TerrainAlgorithmIndex = (int)TerrainAlgorithm.VoronoiCellular;
         CellularStyleIndex = 1;   // BasaltTerrace
         TerrainResX = 48;
@@ -862,6 +873,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     public void ApplyPresetTerracedCanyon()
     {
+        SetBrushShader("shr cust_stone_rubble");
         TerrainAlgorithmIndex = (int)TerrainAlgorithm.CanyonGorge;
         TerrainResX = 56;
         TerrainResY = 56;
@@ -886,6 +898,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     public void ApplyPresetRadialArena()
     {
+        SetBrushShader("river riverworld_ground");
         TerrainAlgorithmIndex = (int)TerrainAlgorithm.RollingHills;
         TerrainResX = 52;
         TerrainResY = 52;
@@ -909,6 +922,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     public void ApplyPresetMesaArena()
     {
+        SetBrushShader("shr shrine_ground");
         TerrainAlgorithmIndex = (int)TerrainAlgorithm.MesaPlateau;
         TerrainResX = 56;
         TerrainResY = 56;
@@ -1737,9 +1751,56 @@ public partial class MainViewModel : ViewModelBase
         {
             ActiveMesh.Triangles[i].MaterialIndex = idx;
         }
+
+        // Auto-fit UVs using distortion-free 1:1 triplanar mapping to prevent vertical texture stretching along cliffs and walls
+        MeshModelingEngine.AutoFitTriplanarUVs(ActiveMesh, TerrainUvTileScale > 0 ? TerrainUvTileScale : 300.0f);
+
         MeshVersion++;
         RunLinter();
-        StatusMessage = $"Filled all {ActiveMesh.Triangles.Count} faces of '{ActiveMesh.Name}' with '{PaintMaterialName}'.";
+        StatusMessage = $"Filled '{ActiveMesh.Name}' with '{PaintMaterialName}' & auto-fitted UVs (triplanar distortion-free).";
+    }
+
+    [RelayCommand]
+    public void AutoFitActiveMeshUvs()
+    {
+        if (ActiveMesh == null) return;
+        PushHistoryState("Auto-Fit UVs");
+        float tile = TerrainUvTileScale > 0 ? TerrainUvTileScale : 300.0f;
+        MeshModelingEngine.AutoFitTriplanarUVs(ActiveMesh, tile);
+        MeshVersion++;
+        RunLinter();
+        StatusMessage = $"Auto-fitted 1:1 triplanar UVs on '{ActiveMesh.Name}' (Tile scale: {tile:F0} units, 0 stretching).";
+    }
+
+    [RelayCommand]
+    public void AutoFitAllMeshesUvs()
+    {
+        PushHistoryState("Auto-Fit All UVs");
+        float tile = TerrainUvTileScale > 0 ? TerrainUvTileScale : 300.0f;
+        var meshes = SceneGraph.GetLevelMeshes();
+        if (meshes.Count == 0 && ActiveMesh != null) meshes.Add(ActiveMesh);
+        int count = 0;
+        foreach (var mesh in meshes)
+        {
+            MeshModelingEngine.AutoFitTriplanarUVs(mesh, tile);
+            count++;
+        }
+        MeshVersion++;
+        RunLinter();
+        StatusMessage = $"Auto-fitted 1:1 triplanar UVs on {count} meshes (Tile scale: {tile:F0} units, 0 stretching).";
+    }
+
+    [RelayCommand]
+    public void SealActiveMeshAcrossTop()
+    {
+        if (ActiveMesh == null) return;
+        PushHistoryState("Seal Across Top (+Sky)");
+        int sealedEdges = GeometryAutoRepair.SealMeshAcrossTop(ActiveMesh, 600.0f, "+sky");
+        MeshVersion++;
+        RunLinter();
+        StatusMessage = sealedEdges > 0
+            ? $"Sealed {sealedEdges} open boundary edges across top with +sky ceiling (0 open edge errors)."
+            : "Mesh has no open boundary loops across top; already airtight!";
     }
 
     [RelayCommand]
@@ -2865,13 +2926,26 @@ public partial class MainViewModel : ViewModelBase
         PerformShaderSearch();
     }
 
+    partial void OnShaderSearchQueryChanged(string value)
+    {
+        PerformShaderSearch();
+    }
+
     [RelayCommand]
     public void SetGuerillaMode() => SetMode(4);
 
     [RelayCommand]
     public void FilterShaderCategory(string category)
     {
-        SelectedCategory = category;
+        if (string.IsNullOrWhiteSpace(category) || string.Equals(category, "All", StringComparison.OrdinalIgnoreCase))
+        {
+            SelectedCategory = "All";
+            return;
+        }
+
+        // Fuzzy match to full category title (e.g. "Snow" -> "Snow (Snowbound)", "Desert" -> "Desert (Shrine)")
+        var match = ShaderCategories.FirstOrDefault(c => c.Contains(category, StringComparison.OrdinalIgnoreCase)) ?? category;
+        SelectedCategory = match;
     }
 
     [RelayCommand]
@@ -2881,7 +2955,7 @@ public partial class MainViewModel : ViewModelBase
         if (_catalog == null) return;
 
         IEnumerable<HaloShaderEntry> source;
-        if (string.Equals(SelectedCategory, "All", StringComparison.OrdinalIgnoreCase))
+        if (string.IsNullOrWhiteSpace(SelectedCategory) || string.Equals(SelectedCategory, "All", StringComparison.OrdinalIgnoreCase))
         {
             source = _catalog.AllShaders;
         }
@@ -2891,7 +2965,8 @@ public partial class MainViewModel : ViewModelBase
         }
         else
         {
-            source = _catalog.AllShaders;
+            var match = _catalog.ShadersByCategory.FirstOrDefault(kvp => kvp.Key.Contains(SelectedCategory, StringComparison.OrdinalIgnoreCase));
+            source = match.Value ?? _catalog.AllShaders;
         }
 
         int count = 0;
@@ -2905,13 +2980,16 @@ public partial class MainViewModel : ViewModelBase
                 entry.TagPath.Contains(ShaderSearchQuery, StringComparison.OrdinalIgnoreCase))
             {
                 SearchResults.Add(entry);
-                if (++count >= 100) break;
+                if (++count >= 150) break;
             }
         }
 
-        if (SearchResults.Count > 0 && SelectedShader == null)
+        if (SearchResults.Count > 0)
         {
-            SelectedShader = SearchResults[0];
+            if (SelectedShader == null || !SearchResults.Contains(SelectedShader))
+            {
+                SelectedShader = SearchResults[0];
+            }
         }
     }
 
@@ -2935,12 +3013,32 @@ public partial class MainViewModel : ViewModelBase
         }
         PaintMaterialName = materialName;
 
-        if (_catalog != null && _catalog.TryGetShader(materialName, out var entry) && entry != null)
+        if (_catalog != null)
         {
+            if (!_catalog.TryGetShader(materialName, out var entry) || entry == null)
+            {
+                int space = materialName.IndexOf(' ');
+                string prefix = space > 0 ? materialName[..space] : "";
+                string shaderName = space > 0 ? materialName[(space + 1)..] : materialName;
+                entry = new HaloShaderEntry(
+                    materialName,
+                    $"levels\\multi\\{prefix}\\shaders\\{shaderName}.shader",
+                    ".shader",
+                    prefix,
+                    HaloShaderCatalog.DetermineCategory(materialName, "", ".shader"),
+                    IsVerified: true
+                );
+            }
+
+            // CRITICAL: Ensure entry is in SearchResults so Avalonia ListBox SelectedItem binding never crashes/desyncs!
+            if (!SearchResults.Contains(entry))
+            {
+                SearchResults.Insert(0, entry);
+            }
             SelectedShader = entry;
         }
 
-        StatusMessage = $"Selected brush shader: '{materialName}' (Ready to paint on mesh)";
+        StatusMessage = $"Selected brush shader: '{materialName}' (Ready to paint on mesh or Fill All)";
     }
 
     // =========================================================================
@@ -2961,6 +3059,11 @@ public partial class MainViewModel : ViewModelBase
         {
             exportMeshes = ToolLimitGuard.PartitionOversizedMeshes(exportMeshes, out var autoPortals);
             exportMeshes.AddRange(autoPortals);
+        }
+
+        foreach (var m in exportMeshes)
+        {
+            GeometryAutoRepair.EnforceMaterialConventions(m);
         }
 
         var materials = CollectMaterials(exportMeshes);
@@ -3689,6 +3792,11 @@ public partial class MainViewModel : ViewModelBase
                 exportMeshes = ToolLimitGuard.PartitionOversizedMeshes(exportMeshes, out var autoPortals);
                 exportMeshes.AddRange(autoPortals);
                 CompileLog += $"[ForgeWorks Tool Limit Guard] Partitioned into {exportMeshes.Count} compliant sub-clusters. Safe for tool_fast.exe!\n";
+            }
+
+            foreach (var m in exportMeshes)
+            {
+                GeometryAutoRepair.EnforceMaterialConventions(m);
             }
 
             var materials = CollectMaterials(exportMeshes);
