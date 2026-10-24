@@ -91,16 +91,23 @@ public sealed class StructureGenerator
     }
 
     /// <summary>
-    /// Generates a sealed water volume box with the mandatory 4 UV sets.
+    /// Generates a sealed water volume box with the mandatory 4 UV sets for Halo 3 Blam engine.
+    /// UV0: Visual texture UVs (wave repeat).
+    /// UV1: Wave displacement strength (X) & water depth color mask (Y) - (1.0, 1.0) for full fidelity.
+    /// UV2: Auxiliary channel for Blam shader index alignment.
+    /// UV3: Global shape texture mask strictly normalized inside [0.0, 1.0].
     /// </summary>
     public static MeshObject GenerateWaterVolume(
-        string name = "!water_volume'",
+        string name = "water_volume",
         float width = 2000.0f,
         float length = 2000.0f,
         float depth = 80.0f,
-        Vector3 surfaceLocation = default)
+        Vector3 surfaceLocation = default,
+        string materialName = "river riverworld_water_rough'")
     {
         var mesh = new MeshObject(name);
+        mesh.MaterialName = materialName.EndsWith("'") ? materialName : $"{materialName}'";
+        mesh.MaterialSlots.Add(mesh.MaterialName);
         mesh.IsCollideable = false; // Render-only transparent water sheet
 
         float hw = width * 0.5f;
@@ -124,22 +131,34 @@ public sealed class StructureGenerator
         foreach (var p in positions)
         {
             var v = new Vertex(p + surfaceLocation, Vector3.UnitZ);
-            var baseUv = new Vector2((p.X + hw) / width * 4.0f, (p.Y + hl) / length * 4.0f);
+            
+            // Channel 0: Visual texture tiling coordinates
+            var baseUv = new Vector2((p.X + hw) / 500.0f, (p.Y + hl) / 500.0f);
+            
+            // Channel 1: Wave displacement (X) and water tint color (Y) - (1.0, 1.0) full effect
+            var uvDisplacementColor = new Vector2(1.0f, 1.0f);
+            
+            // Channel 2: Auxiliary UV set for shader index alignment
+            var uvAux = baseUv * 0.5f;
+            
+            // Channel 3: Global Shape Texture mask strictly inside [0.0, 1.0] normalized space
+            var uvGlobalShape = new Vector2(
+                Math.Clamp((p.X + hw) / MathF.Max(width, 1.0f), 0.0f, 1.0f),
+                Math.Clamp((p.Y + hl) / MathF.Max(length, 1.0f), 0.0f, 1.0f));
 
-            // Mandatory 4 UV channels for Blam water shaders
             v.UVs.Add(baseUv);
-            v.UVs.Add(baseUv * 2.0f);
-            v.UVs.Add(baseUv * 0.5f);
-            v.UVs.Add(baseUv * 3.5f);
+            v.UVs.Add(uvDisplacementColor);
+            v.UVs.Add(uvAux);
+            v.UVs.Add(uvGlobalShape);
 
             mesh.Vertices.Add(v);
         }
 
-        // Top face
+        // Top face (faces UP +Z)
         mesh.Triangles.Add(new Triangle(0, 1, 2));
         mesh.Triangles.Add(new Triangle(0, 2, 3));
 
-        // Bottom face
+        // Bottom face (faces DOWN -Z)
         mesh.Triangles.Add(new Triangle(4, 6, 5));
         mesh.Triangles.Add(new Triangle(4, 7, 6));
 
@@ -226,10 +245,11 @@ public sealed class StructureGenerator
     /// <summary>
     /// Generates a sealed water volume box fitting 1:1 with the horizontal bounds of the target mesh.
     /// Uses mandatory 4 UV sets for Blam water shaders, and non-collideable render-only convention.
+    /// In Halo 3 Blam, water shaders use the trailing apostrophe (') material symbol (e.g. river riverworld_water_rough').
     /// </summary>
     public static MeshObject GenerateWaterVolumeForMesh(
         MeshObject targetMesh,
-        string materialName = "!river riverworld_water_rough'",
+        string materialName = "river riverworld_water_rough'",
         float? surfaceZ = null,
         float depth = 40.0f)
     {
@@ -242,11 +262,11 @@ public sealed class StructureGenerator
         float sZ = surfaceZ ?? (min.Z + heightRange * 0.22f);
         Vector3 center = new Vector3((min.X + max.X) * 0.5f, (min.Y + max.Y) * 0.5f, sZ);
 
-        string mat = materialName;
-        if (!mat.StartsWith("!") && !mat.StartsWith("%")) mat = $"!{mat}";
+        string mat = materialName.Trim();
         if (!mat.EndsWith("'")) mat = $"{mat}'";
 
-        var water = GenerateWaterVolume(mat, width, length, depth, center);
+        string waterName = $"{targetMesh.Name}_water";
+        var water = GenerateWaterVolume(waterName, width, length, depth, center, mat);
         water.MaterialName = mat;
         water.IsCollideable = false;
         return water;

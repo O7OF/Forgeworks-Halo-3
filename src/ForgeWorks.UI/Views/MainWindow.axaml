@@ -13,7 +13,7 @@
         x:Class="ForgeWorks.UI.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Icon="/Assets/avalonia-logo.ico"
-        Title="ForgeWorks Studio v2.3.3 - Blam Editing Suite For Halo 3"
+        Title="ForgeWorks Studio v2.4.0 - Blam Editing Suite For Halo 3"
         Background="#181a1f">
 
     <Window.Styles>
@@ -72,6 +72,7 @@
                     <TextBlock Text="⚡ FORGEWORKS" FontWeight="Bold" FontSize="13" Foreground="#38bdf8" VerticalAlignment="Center" Margin="0,0,8,0"/>
                     <Menu Background="Transparent">
                         <MenuItem Header="File" Foreground="#d1d5db" FontSize="11">
+                            <MenuItem Header="📄 New Project" Command="{Binding NewProjectCommand}" InputGesture="Ctrl+N"/>
                             <MenuItem Header="New Level Canvas" Command="{Binding GenerateTerrainCommand}"/>
                             <MenuItem Header="🧹 Clear Scene (Empty Canvas)" Command="{Binding ClearSceneCommand}"/>
                             <Separator/>
@@ -1019,12 +1020,28 @@
 
                                         <CheckBox Content="Vertex AO &amp; Curvature Shading" IsChecked="{Binding TerrainVertexAO}" FontSize="10" Foreground="#f8fafc" ToolTip.Tip="Calculates local mesh concavity and valley occlusions directly into vertex color alpha/tint."/>
                                         <CheckBox Content="Slope-Based Shader Layering" IsChecked="{Binding TerrainSlopeLayering}" FontSize="10" Foreground="#f8fafc" ToolTip.Tip="Encodes rock, swale grass, and dirt shader blend weights automatically based on surface incline."/>
+                                        
+                                        <!-- Riverworld Water Sheet Generation -->
+                                        <Border Background="#0f172a" CornerRadius="3" Padding="4" Margin="0,2">
+                                            <StackPanel Spacing="3">
+                                                <CheckBox Content="Generate Water (Riverworld Water)" IsChecked="{Binding TerrainGenerateWater}" FontSize="10" Foreground="#38bdf8" FontWeight="SemiBold" ToolTip.Tip="Generates authentic 4-UV Riverworld water surface fitted to terrain basin."/>
+                                                <Grid ColumnDefinitions="Auto,*" IsVisible="{Binding TerrainGenerateWater}">
+                                                    <TextBlock Grid.Column="0" Text="Water Elevation:" FontSize="9" Foreground="#94a3b8" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                                    <NumericUpDown Grid.Column="1" Value="{Binding TerrainWaterHeight}" Minimum="0.05" Maximum="0.95" Increment="0.05" FormatString="F2" Height="22" FontSize="9"/>
+                                                </Grid>
+                                            </StackPanel>
+                                        </Border>
                                     </StackPanel>
                                 </Border>
 
-                                <Button Command="{Binding GenerateTerrainCommand}" Background="#0284c7" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="0,2,0,0">
-                                    <TextBlock Text="⚡ Generate Procedural Terrain"/>
-                                </Button>
+                                <Grid ColumnDefinitions="*,*">
+                                    <Button Grid.Column="0" Command="{Binding GenerateTerrainCommand}" Background="#0284c7" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="0,2,2,0">
+                                        <TextBlock Text="⚡ Generate Terrain"/>
+                                    </Button>
+                                    <Button Grid.Column="1" Command="{Binding AddWaterToTerrainCommand}" Background="#0369a1" Foreground="#7dd3fc" FontWeight="SemiBold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="2,2,0,0" ToolTip.Tip="Adds an authentic Riverworld water surface fitted to active terrain basin">
+                                        <TextBlock Text="💧 Add Water"/>
+                                    </Button>
+                                </Grid>
 
                                 <Separator Height="1" Background="#2e323b" Margin="0,4"/>
 

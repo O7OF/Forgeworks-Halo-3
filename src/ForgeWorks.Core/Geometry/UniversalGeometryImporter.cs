@@ -79,6 +79,9 @@ public static class UniversalGeometryImporter
     private static List<MeshObject> ImportWithAssimp(string filePath, GeometryImportOptions options)
     {
         using var context = new AssimpContext();
+        // Collapse dummy FBX pivot nodes directly into transform matrices
+        context.SetConfig(new Assimp.Configs.BooleanPropertyConfig("IMPORT_FBX_PRESERVE_PIVOTS", false));
+
         var steps = PostProcessSteps.Triangulate |
                     PostProcessSteps.JoinIdenticalVertices |
                     PostProcessSteps.ImproveCacheLocality;
@@ -95,15 +98,6 @@ public static class UniversalGeometryImporter
         var results = new List<MeshObject>();
         string baseName = Path.GetFileNameWithoutExtension(filePath);
         string modelDir = Path.GetDirectoryName(filePath) ?? string.Empty;
-
-        // Check FBX Metadata for native Z-Up coordinate space
-        bool isNativeZUp = false;
-        if (scene.Metadata != null && scene.Metadata.ContainsKey("UpAxis"))
-        {
-            var entry = scene.Metadata["UpAxis"];
-            if (entry.Data is int upVal && upVal == 2) isNativeZUp = true;
-            else if (entry.Data is long upValLong && upValLong == 2) isNativeZUp = true;
-        }
 
         var resolvedMaterials = new (string name, string? texturePath)[scene.MaterialCount];
         for (int i = 0; i < scene.MaterialCount; i++)
@@ -154,14 +148,22 @@ public static class UniversalGeometryImporter
                 float subDet = SubDeterminant3x3(currentTransform);
                 bool flipWinding = subDet < 0;
 
+                // Strip any remaining FBX internal pivot tags from node name
+                string cleanNodeName = node.Name ?? string.Empty;
+                int fbxMarker = cleanNodeName.IndexOf("_$AssimpFbx$_", StringComparison.OrdinalIgnoreCase);
+                if (fbxMarker >= 0)
+                {
+                    cleanNodeName = cleanNodeName[..fbxMarker];
+                }
+
                 for (int i = 0; i < node.MeshCount; i++)
                 {
                     int mIdx = node.MeshIndices[i];
                     if (mIdx < 0 || mIdx >= scene.MeshCount) continue;
 
                     var aMesh = scene.Meshes[mIdx];
-                    string meshName = !string.IsNullOrWhiteSpace(node.Name)
-                        ? node.Name
+                    string meshName = !string.IsNullOrWhiteSpace(cleanNodeName)
+                        ? cleanNodeName
                         : (!string.IsNullOrWhiteSpace(aMesh.Name) ? aMesh.Name : $"{baseName}_{results.Count}");
 
                     if (node.MeshCount > 1)
@@ -169,7 +171,7 @@ public static class UniversalGeometryImporter
                         meshName = $"{meshName}_{i}";
                     }
 
-                    var meshObj = BuildMeshObject(aMesh, meshName, currentTransform, flipWinding, isNativeZUp, options, resolvedMaterials);
+                    var meshObj = BuildMeshObject(aMesh, meshName, currentTransform, flipWinding, options, resolvedMaterials);
                     results.Add(meshObj);
                 }
             }
@@ -192,7 +194,7 @@ public static class UniversalGeometryImporter
             {
                 var aMesh = scene.Meshes[mIdx];
                 string meshName = string.IsNullOrWhiteSpace(aMesh.Name) ? $"{baseName}_{mIdx}" : aMesh.Name;
-                var meshObj = BuildMeshObject(aMesh, meshName, Matrix4x4.Identity, false, isNativeZUp, options, resolvedMaterials);
+                var meshObj = BuildMeshObject(aMesh, meshName, Matrix4x4.Identity, false, options, resolvedMaterials);
                 results.Add(meshObj);
             }
         }
@@ -215,7 +217,6 @@ public static class UniversalGeometryImporter
         string meshName,
         Matrix4x4 transform,
         bool flipWinding,
-        bool isNativeZUp,
         GeometryImportOptions options,
         (string name, string? texturePath)[] resolvedMaterials)
     {
@@ -238,7 +239,7 @@ public static class UniversalGeometryImporter
             meshObj.MaterialTextureMap[matName] = texPath;
         }
 
-        bool convertYUp = options.ConvertYUpToZUp && !isNativeZUp;
+        bool convertYUp = options.ConvertYUpToZUp;
 
         // Pre-allocate vertices for high-poly performance
         meshObj.Vertices = new List<Vertex>(aMesh.VertexCount);

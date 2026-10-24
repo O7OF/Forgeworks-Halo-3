@@ -3641,6 +3641,91 @@ public class ForgeWorksTests
         Assert.False(ForgeWorks.UI.Views.BlamViewportControl.IsWaterMaterial("terrain", "mpshare mp_sand"));
         Assert.False(ForgeWorks.UI.Views.BlamViewportControl.IsWaterMaterial("cliff", "dead deadlock_cliff_rock"));
     }
+
+    [Fact]
+    public void WaterGeneration_StructureGenerator_EnforcesMandatory4UVSetsAndRiverworldWater()
+    {
+        var terrain = StructureGenerator.GenerateBunker("test_terrain");
+        var water = StructureGenerator.GenerateWaterVolumeForMesh(terrain);
+
+        Assert.Equal("river riverworld_water_rough'", water.MaterialName);
+        Assert.False(water.IsCollideable);
+        Assert.True(water.Vertices.Count >= 8);
+
+        foreach (var v in water.Vertices)
+        {
+            // Mandatory 4 UV channels for Blam water shaders
+            Assert.Equal(4, v.UVs.Count);
+
+            // Channel 1: Wave displacement (X) and water tint color (Y)
+            Assert.Equal(1.0f, v.UVs[1].X);
+            Assert.Equal(1.0f, v.UVs[1].Y);
+
+            // Channel 3: Global Shape Texture mask strictly normalized inside [0.0, 1.0]
+            Assert.InRange(v.UVs[3].X, 0.0f, 1.0f);
+            Assert.InRange(v.UVs[3].Y, 0.0f, 1.0f);
+        }
+    }
+
+    [Fact]
+    public void AssExporter_SanitizeMaterialName_PreservesWaterApostropheAndCleansLeadingBang()
+    {
+        string sanitized1 = AssExporter.SanitizeMaterialName("river riverworld_water_rough'", "test_level");
+        Assert.Equal("river riverworld_water_rough'", sanitized1);
+
+        string sanitized2 = AssExporter.SanitizeMaterialName("!river riverworld_water_rough'", "test_level");
+        Assert.Equal("river riverworld_water_rough'", sanitized2);
+
+        string sanitized3 = AssExporter.SanitizeMaterialName("riverworld_water", "test_level");
+        Assert.Equal("river riverworld_water_rough'", sanitized3);
+    }
+
+    [Fact]
+    public void ScenarioTagBuilder_IsolatesProjects_DoesNotCopyCustomCanvasForOtherLevels()
+    {
+        string tempEk = Path.Combine(Path.GetTempPath(), "ForgeWorks_Ek_Isolation_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            string customCanvasDir = Path.Combine(tempEk, "tags", "levels", "multi", "custom_canvas");
+            string chillDir = Path.Combine(tempEk, "tags", "levels", "multi", "chill");
+            string newMapDir = Path.Combine(tempEk, "tags", "levels", "multi", "desert_valley");
+
+            Directory.CreateDirectory(customCanvasDir);
+            Directory.CreateDirectory(chillDir);
+            Directory.CreateDirectory(newMapDir);
+
+            // Create fake custom_canvas.scenario containing distinct signature bytes
+            byte[] customCanvasBytes = new byte[1024];
+            System.Text.Encoding.ASCII.GetBytes("CUSTOM_CANVAS_ASSET_SIGNATURE").CopyTo(customCanvasBytes, 200);
+            File.WriteAllBytes(Path.Combine(customCanvasDir, "custom_canvas.scenario"), customCanvasBytes);
+
+            // Create fake chill.scenario (pristine stock template)
+            byte[] chillBytes = new byte[1024];
+            System.Text.Encoding.ASCII.GetBytes(@"levels\multi\chill\chill").CopyTo(chillBytes, 100);
+            File.WriteAllBytes(Path.Combine(chillDir, "chill.scenario"), chillBytes);
+
+            string outputPath = Path.Combine(newMapDir, "desert_valley.scenario");
+            ScenarioTagBuilder.GenerateScenarioTag(
+                outputPath,
+                "desert_valley",
+                @"levels\multi\desert_valley\desert_valley",
+                @"levels\multi\chill\sky\chill_sky",
+                new List<ForgeWorks.Blam.Scenario.PlayerStartingLocation> { new(Vector3.Zero, 0, 0) },
+                new List<ForgeWorks.Blam.Scenario.NetgameEquipment>(),
+                new List<ForgeWorks.Blam.Scenario.TriggerVolume>(),
+                tempEk);
+
+            byte[] generated = File.ReadAllBytes(outputPath);
+            string genContent = System.Text.Encoding.ASCII.GetString(generated);
+
+            // Must NOT contain custom_canvas assets or signature
+            Assert.DoesNotContain("CUSTOM_CANVAS_ASSET_SIGNATURE", genContent);
+        }
+        finally
+        {
+            if (Directory.Exists(tempEk)) Directory.Delete(tempEk, true);
+        }
+    }
 }
 
 

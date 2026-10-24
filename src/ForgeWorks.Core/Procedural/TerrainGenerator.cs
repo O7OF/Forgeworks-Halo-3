@@ -93,6 +93,11 @@ public sealed class TerrainConfig
     public float ValleyCarveWidth { get; set; } = 1400.0f;  // Width of carved central canyon
     public bool VertexColorAO { get; set; } = true;         // Curvature & ambient occlusion in vertex colors
     public bool SlopeLayerWeighting { get; set; } = true;   // Automated slope-based multi-layer shader weights
+
+    // Water Surface & Basin Generation
+    public bool GenerateWater { get; set; } = false;        // Generates fitted water volume / plane for terrain basin
+    public float WaterElevation { get; set; } = 0.22f;      // Normalized 0..1 elevation between min and max terrain heights
+    public string WaterMaterial { get; set; } = "river riverworld_water_rough'";
 }
 
 public sealed class TerrainGenerator

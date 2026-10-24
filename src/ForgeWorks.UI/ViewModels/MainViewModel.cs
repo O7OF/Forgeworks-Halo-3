@@ -111,6 +111,8 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private float _terrainValleyCarveWidth = 1400.0f;  // 200..4000
     [ObservableProperty] private bool _terrainVertexAO = true;              // Curvature & ambient occlusion
     [ObservableProperty] private bool _terrainSlopeLayering = true;         // Automated slope-based multi-layer shader weights
+    [ObservableProperty] private bool _terrainGenerateWater = true;         // Generates Riverworld water surface for terrain depression
+    [ObservableProperty] private float _terrainWaterHeight = 0.22f;         // Water elevation ratio (0..1)
 
     public ObservableCollection<string> IslandMaskModes { get; } = new()
     {
@@ -681,8 +683,43 @@ public partial class MainViewModel : ViewModelBase
         SceneGraph.LevelRoot.Children.Clear();
         var node = SceneGraph.AddGeometryMesh(mesh);
         SelectedSceneNode = node;
+
+        if (TerrainGenerateWater)
+        {
+            var (bMin, bMax) = CsgBooleanEngine.ComputeBounds(mesh);
+            float sZ = bMin.Z + (bMax.Z - bMin.Z) * Math.Clamp(TerrainWaterHeight, 0.05f, 0.95f);
+            var water = StructureGenerator.GenerateWaterVolumeForMesh(mesh, materialName: "river riverworld_water_rough'", surfaceZ: sZ);
+            SceneGraph.AddGeometryMesh(water);
+        }
+
         SetActiveMesh(mesh, $"Generated procedural terrain ({config.Algorithm}): {mesh.Vertices.Count} vertices, {mesh.Triangles.Count} triangles (Outer cliffs sealed).", frameCamera: true);
         RunLinter();
+    }
+
+    [RelayCommand]
+    public void AddWaterToTerrain()
+    {
+        var target = ActiveMesh ?? SelectedSceneNode?.Mesh;
+        if (target == null)
+        {
+            var levelMeshes = SceneGraph.GetLevelMeshes();
+            target = levelMeshes.FirstOrDefault();
+        }
+        if (target == null)
+        {
+            StatusMessage = "No active terrain mesh found to generate water for.";
+            return;
+        }
+
+        PushHistoryState("Add Riverworld Water");
+        var (bMin, bMax) = CsgBooleanEngine.ComputeBounds(target);
+        float sZ = bMin.Z + (bMax.Z - bMin.Z) * Math.Clamp(TerrainWaterHeight, 0.05f, 0.95f);
+        var water = StructureGenerator.GenerateWaterVolumeForMesh(target, materialName: "river riverworld_water_rough'", surfaceZ: sZ);
+        SceneGraph.AddGeometryMesh(water);
+        MeshVersion++;
+        OverlayVersion++;
+        RunLinter();
+        StatusMessage = $"Generated authentic Riverworld water surface for '{target.Name}' at Z={sZ:F0}.";
     }
 
     [RelayCommand]
@@ -2468,6 +2505,16 @@ public partial class MainViewModel : ViewModelBase
     }
 
     [RelayCommand]
+    public void NewProject()
+    {
+        PushHistoryState("New Project");
+        ClearScene();
+        CurrentProjectPath = null;
+        ActiveLevelName = "custom_map";
+        StatusMessage = "New project started. Scene, entities, and level assets isolated.";
+    }
+
+    [RelayCommand]
     public void ClearScene()
     {
         PushHistoryState("Clear Scene");
@@ -3603,8 +3650,8 @@ public partial class MainViewModel : ViewModelBase
         foreach (var t in trees) SceneGraph.AddGeometryMesh(t);
 
         // 1:1 Water Volume Box matching terrain bounds
-        var water = StructureGenerator.GenerateWaterVolumeForMesh(terrain, "!river riverworld_water_rough");
-        water.MaterialName = "!river riverworld_water_rough";
+        var water = StructureGenerator.GenerateWaterVolumeForMesh(terrain, "river riverworld_water_rough'");
+        water.MaterialName = "river riverworld_water_rough'";
         water.IsCollideable = false;
         SceneGraph.AddGeometryMesh(water);
 
@@ -3660,8 +3707,8 @@ public partial class MainViewModel : ViewModelBase
         foreach (var t in trees) SceneGraph.AddGeometryMesh(t);
 
         // 1:1 Water Volume Box matching terrain bounds
-        var water = StructureGenerator.GenerateWaterVolumeForMesh(terrain, "!river riverworld_water_rough");
-        water.MaterialName = "!river riverworld_water_rough";
+        var water = StructureGenerator.GenerateWaterVolumeForMesh(terrain, "river riverworld_water_rough'");
+        water.MaterialName = "river riverworld_water_rough'";
         water.IsCollideable = false;
         SceneGraph.AddGeometryMesh(water);
 
@@ -3716,9 +3763,9 @@ public partial class MainViewModel : ViewModelBase
         var trees = HaloFoliageGenerator.ScatterFoliageOnTerrain(terrain, count: 24, seed: 7777, archetype: FoliageArchetype.Broadleaf, barkShader: "river riverworld_tree_bark", foliageShader: "%!river riverworld_tree_leafa", occupiedPositions: obstaclePositions, minSeparation: 220.0f);
         foreach (var t in trees) SceneGraph.AddGeometryMesh(t);
 
-        // 1:1 Water Volume Box fitting terrain bounds exactly with authentic !river riverworld_water_rough
-        var water = StructureGenerator.GenerateWaterVolumeForMesh(terrain, "!river riverworld_water_rough");
-        water.MaterialName = "!river riverworld_water_rough";
+        // 1:1 Water Volume Box fitting terrain bounds exactly with authentic river riverworld_water_rough'
+        var water = StructureGenerator.GenerateWaterVolumeForMesh(terrain, "river riverworld_water_rough'");
+        water.MaterialName = "river riverworld_water_rough'";
         water.IsCollideable = false;
         SceneGraph.AddGeometryMesh(water);
 

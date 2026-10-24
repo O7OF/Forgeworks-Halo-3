@@ -243,6 +243,26 @@ public sealed class AssExporter
             return m;
         }
 
+        // Check if material is water or has water material symbol (')
+        bool isWater = m.EndsWith("'") ||
+                       m.Contains("riverworld_water", StringComparison.OrdinalIgnoreCase) ||
+                       m.Contains("shader_water", StringComparison.OrdinalIgnoreCase) ||
+                       m.Contains("water_rough", StringComparison.OrdinalIgnoreCase);
+
+        if (isWater)
+        {
+            // If it's Riverworld water, normalize to authentic Halo 3 shader convention
+            if (m.Contains("riverworld", StringComparison.OrdinalIgnoreCase))
+            {
+                return "river riverworld_water_rough'";
+            }
+
+            // Clean leading ! or % from water collection prefix
+            m = m.TrimStart('!', '%', '~', '@', '$', '*').Trim();
+            if (!m.EndsWith("'")) m = $"{m}'";
+            return m;
+        }
+
         // Extract leading semantic flags: %, !, %!, +, $, *, @, ~
         string prefix = "";
         while (m.Length > 0 && (m[0] == '%' || m[0] == '!' || m[0] == '+' || m[0] == '$' || m[0] == '*' || m[0] == '@' || m[0] == '~'))

@@ -35,14 +35,51 @@ public sealed class ScenarioTagBuilder
         // If authentic template scenario tag exists in H3EK, clone it and patch BSP reference cleanly
         if (!string.IsNullOrEmpty(ekPath))
         {
-            string template1 = Path.Combine(ekPath, "tags", "levels", "multi", "custom_canvas", "custom_canvas.scenario");
-            string template2 = Path.Combine(ekPath, "tags", "levels", "multi", "chill", "chill.scenario");
-            string? template = File.Exists(template1) ? template1 : (File.Exists(template2) ? template2 : null);
+            // Only use an existing scenario tag if it belongs to THIS exact level (updating itself)
+            // or if the current level is explicitly named "custom_canvas".
+            // NEVER use custom_canvas as a template for other projects to prevent asset bleeding!
+            string thisLevelScenario = Path.Combine(ekPath, "tags", "levels", "multi", scenarioName, $"{scenarioName}.scenario");
+            string chillTemplate = Path.Combine(ekPath, "tags", "levels", "multi", "chill", "chill.scenario");
+            string bunkerTemplate = Path.Combine(ekPath, "tags", "levels", "multi", "bunkerworld", "bunkerworld.scenario");
+            string customCanvasPath = Path.Combine(ekPath, "tags", "levels", "multi", "custom_canvas", "custom_canvas.scenario");
+
+            string? template = null;
+            string searchTarget = @"levels\multi\chill\chill";
+
+            // 1. Update this map's own scenario if it already exists
+            if (File.Exists(thisLevelScenario))
+            {
+                template = thisLevelScenario;
+                searchTarget = bspTagPath;
+            }
+            // 2. For custom_canvas itself, use custom_canvas.scenario if present
+            else if (scenarioName.Equals("custom_canvas", StringComparison.OrdinalIgnoreCase) && File.Exists(customCanvasPath))
+            {
+                template = customCanvasPath;
+                searchTarget = @"levels\multi\custom_canvas\custom_canvas";
+            }
+            // 3. For any other map, ALWAYS prioritize clean retail templates (chill / bunkerworld)
+            // to strictly prevent assets/spawns bleeding from previously compiled maps!
+            else if (File.Exists(chillTemplate))
+            {
+                template = chillTemplate;
+                searchTarget = @"levels\multi\chill\chill";
+            }
+            else if (File.Exists(bunkerTemplate))
+            {
+                template = bunkerTemplate;
+                searchTarget = @"levels\multi\bunkerworld\bunkerworld";
+            }
+            // 4. Fallback if only custom_canvas is present (e.g. minimal mock test environment)
+            else if (File.Exists(customCanvasPath))
+            {
+                template = customCanvasPath;
+                searchTarget = @"levels\multi\custom_canvas\custom_canvas";
+            }
 
             if (template != null)
             {
                 byte[] raw = File.ReadAllBytes(template);
-                string searchTarget = template == template1 ? @"levels\multi\custom_canvas\custom_canvas" : @"levels\multi\chill\chill";
                 byte[] searchBytes = Encoding.ASCII.GetBytes(searchTarget);
                 byte[] replaceBytes = Encoding.ASCII.GetBytes(bspTagPath);
 
