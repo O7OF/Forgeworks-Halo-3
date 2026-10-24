@@ -4,7 +4,7 @@ An all-in-one desktop environment for Halo 3 modding and level creation combinin
 - **Procedural Level Design & 3D Blockout**: Rapid CSG brush work, corridor/room generation, advanced terrain modifiers, and procedural rock/foliage scattering.
 - **Universal Geometry Pipeline**: Multi-format 3D asset importer (`.obj`, `.fbx`, `.gltf`, `.glb`, `.ass`, `.jms`, `.rmf`, `.map`, `.dae`, `.stl`, `.ply`, `.3ds`) with $O(N)$ spatial grid linting, robust N-gon fan triangulation, and high-poly stability.
 - **Tag Pipeline & Reflection**: Direct tag introspection, mutation, and MCC-compliant format export (`.ass`, `.jms`, `.scenario`).
-- **Engine-Native Viewport (Sapien + Guerilla + Blockbench + Godot)**: 60+ FPS hardware-accelerated OpenGL/GLES renderer with multi-object scaling, translation, outliner multi-selection, and transform gizmos.
+- **Engine-Native Viewport (Sapien/Guerilla/Blockbench/Godot)**: 60+ FPS hardware-accelerated OpenGL/GLES renderer with multi-object scaling, translation, outliner multi-selection, and transform gizmos.
 
 ## What's New in v2.2.0
 - **Automated Startup Halo 3 Shader & Texture Catalog**:
