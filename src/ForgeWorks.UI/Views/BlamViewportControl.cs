@@ -942,7 +942,7 @@ void main()
 
     /// <summary>
     /// Projects a 3D world position to 2D screen pixel coordinates using the camera's view/projection matrices.
-    /// Used for Godot-style screen-space axis projection and intuitive gizmo dragging.
+    /// Used for screen-space axis projection and intuitive gizmo dragging.
     /// </summary>
     public bool WorldToScreen(Vector3 worldPos, out Vector2 screenPos)
     {
@@ -1353,7 +1353,7 @@ void main()
 
         bool ctrl = e.KeyModifiers.HasFlag(KeyModifiers.Control);
 
-        // Sub-Element Face Selection in Face Mode (Blockbench / Blender style)
+        // Sub-Element Face Selection in Face Mode (Blam Editing Suite For Halo 3)
         if (props.IsLeftButtonPressed && Vm is { } vmFace && vmFace.SelectionMode == SubElementSelectionMode.Face)
         {
             var ray = MeshSculptEngine.ScreenPointToRay(
@@ -1510,7 +1510,7 @@ void main()
                         while (dAngle > MathF.PI) dAngle -= MathF.PI * 2.0f;
                         while (dAngle < -MathF.PI) dAngle += MathF.PI * 2.0f;
 
-                        // Align rotation sign with camera facing (Godot standard)
+                        // Align rotation sign with camera facing (standard viewport convention)
                         float facing = Vector3.Dot(axisDir, _camera.Forward);
                         if (facing < 0) dAngle = -dAngle;
 
@@ -1527,7 +1527,7 @@ void main()
                     return;
                 }
             }
-            else // Translate (Godot-style screen axis projection)
+            else // Translate (screen axis projection)
             {
                 Vector3 worldDelta;
                 if (_draggedGizmoAxis == 4)

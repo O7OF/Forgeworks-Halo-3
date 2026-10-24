@@ -105,7 +105,6 @@ public static class UniversalGeometryImporter
             else if (entry.Data is long upValLong && upValLong == 2) isNativeZUp = true;
         }
 
-        // Cache materials and associated texture paths
         var resolvedMaterials = new (string name, string? texturePath)[scene.MaterialCount];
         for (int i = 0; i < scene.MaterialCount; i++)
         {
@@ -114,6 +113,22 @@ public static class UniversalGeometryImporter
             if (!string.IsNullOrWhiteSpace(aMat.Name) && aMat.Name != "DefaultMaterial")
             {
                 mName = SanitizeMaterialName(aMat.Name);
+            }
+
+            // Map two-sided and render-only flags from Assimp material properties and naming
+            bool isTwoSided = aMat.IsTwoSided || mName.Contains("foliage") || mName.Contains("leaves");
+            bool isRenderOnly = (aMat.HasOpacity && aMat.Opacity < 0.95f) ||
+                                mName.Contains("light") || mName.Contains("lens") ||
+                                mName.Contains("glow") || mName.Contains("decal") ||
+                                mName.Contains("sprite") || aMat.Name.StartsWith("!") || aMat.Name.EndsWith("!");
+
+            if (isRenderOnly && !mName.StartsWith("!"))
+            {
+                mName = "!" + mName;
+            }
+            if (isTwoSided && !mName.Contains("%"))
+            {
+                mName = mName.StartsWith("!") ? "!%" + mName[1..] : "%" + mName;
             }
 
             string? texPath = null;
@@ -216,6 +231,7 @@ public static class UniversalGeometryImporter
 
         meshObj.MaterialName = matName;
         meshObj.MaterialSlots.Add(matName);
+        meshObj.IsCollideable = !matName.StartsWith("!") && !meshName.Contains("light", StringComparison.OrdinalIgnoreCase) && !meshName.Contains("lens", StringComparison.OrdinalIgnoreCase);
         if (!string.IsNullOrEmpty(texPath))
         {
             meshObj.SourceTexturePath = texPath;
@@ -375,8 +391,25 @@ public static class UniversalGeometryImporter
     {
         if (string.IsNullOrWhiteSpace(name)) return "river riverworld_ground";
         string s = name.Trim().ToLowerInvariant();
-        s = System.Text.RegularExpressions.Regex.Replace(s, @"[^a-z0-9_\+\%\!\$\@\~]+", "_").Trim('_');
-        return string.IsNullOrEmpty(s) ? "custom" : s;
+
+        // Extract prefix flags
+        string prefix = "";
+        while (s.Length > 0 && (s[0] == '%' || s[0] == '!' || s[0] == '+' || s[0] == '$' || s[0] == '@' || s[0] == '~'))
+        {
+            prefix += s[0];
+            s = s[1..];
+        }
+
+        // Extract suffix flags (e.g. lights! -> prefix = !)
+        while (s.Length > 0 && (s[^1] == '!' || s[^1] == '%' || s[^1] == '$' || s[^1] == '@' || s[^1] == '~'))
+        {
+            char flag = s[^1];
+            if (!prefix.Contains(flag)) prefix = flag + prefix;
+            s = s[..^1];
+        }
+
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"[^a-z0-9_]+", "_").Trim('_');
+        return prefix + (string.IsNullOrEmpty(s) ? "custom" : s);
     }
 
     private static Vector3 TransformPoint(Matrix4x4 m, Vector3 p)

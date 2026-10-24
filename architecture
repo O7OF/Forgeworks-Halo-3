@@ -6,7 +6,7 @@
      v                                           v                                           v
 +-----------------------+               +-----------------------+               +-----------------------+
 |  BRUSH & CSG SUBSYSTEM|               |   3D VIEWPORT ENGINE  |               |  TAG SYSTEM SUBSYSTEM |
-| (Blockbench/Hammer UI)|               |  (Silk.NET / Vulkan)  |               | (Guerilla/Sapien Core)|
+| (Blam Editing Suite UI)|              |  (Silk.NET / Vulkan)  |               | (Guerilla/Sapien Core)|
 |                       |               |                       |               |                       |
 | - Polylib / Half-Edge |               | - Blam Cluster Culling|               | - XML/TagDef Registry |
 | - UV Projection Plane |<------------->| - Blam Shader PBR     |<------------->| - In-Memory Binary Tag|

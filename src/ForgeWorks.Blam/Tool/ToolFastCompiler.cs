@@ -191,20 +191,37 @@ public sealed class ToolFastCompiler
             fullLog.Add($"Command: {toolExe} {structureCmd}");
             onLogMessage?.Invoke($"[ForgeWorks] Compiling structure BSP: {assRelative}...");
 
+            DateTime bspStartTimeUtc = DateTime.UtcNow;
             var (code1, log1) = await RunProcessAsync(toolExe, structureCmd, ekPath, onLogMessage, cancellationToken);
             fullLog.Add(log1);
             fullLog.Add($"Exit Code: {code1}\n");
             WriteLastToolOutputLog(ekPath, string.Join("\n", fullLog));
 
             string bspTagPath = Path.Combine(fullTagsDir, $"{levelName}.scenario_structure_bsp");
-            bool bspSuccess = File.Exists(bspTagPath) && code1 == 0 && !log1.Contains("-FATAL-");
+            bool bspExists = File.Exists(bspTagPath);
+            bool bspFresh = bspExists && File.GetLastWriteTimeUtc(bspTagPath) >= bspStartTimeUtc.AddSeconds(-2);
 
-            if (!bspSuccess && (code1 != 0 || log1.Contains("-FATAL-") || log1.Contains("### ERROR")))
+            // Classify errors: -ERROR-, -FATAL-, ### ERROR, shader load/resolution failures, layout exceptions
+            var bspErrors = log1.Split('\n')
+                .Where(l => l.Contains("-ERROR-") || l.Contains("-FATAL-") || l.Contains("### ERROR") ||
+                            l.Contains("failed to load shader", StringComparison.OrdinalIgnoreCase) ||
+                            l.Contains("could not find shader", StringComparison.OrdinalIgnoreCase) ||
+                            l.Contains("fallback", StringComparison.OrdinalIgnoreCase) && l.Contains("shader", StringComparison.OrdinalIgnoreCase))
+                .Select(l => l.Trim())
+                .Distinct()
+                .Take(5)
+                .ToList();
+
+            if (code1 != 0 || !bspFresh || bspErrors.Count > 0 || log1.Contains("-FATAL-"))
             {
                 sw.Stop();
-                fullLog.Add($"\n[ERROR] Structure compilation failed with exit code {code1}. Check log details above.");
+                string errorSummary = bspErrors.Count > 0
+                    ? string.Join("; ", bspErrors)
+                    : (!bspFresh ? "Structure BSP output was not generated or is stale." : $"Tool exited with code {code1}");
+
+                fullLog.Add($"\n[ERROR] Structure compilation failed: {errorSummary}");
                 WriteLastToolOutputLog(ekPath, string.Join("\n", fullLog));
-                return new CompileResult(false, $"Tool structure compilation failed with exit code {code1}. See last-tool-output-log for details.", sw.Elapsed, string.Join("\n", fullLog));
+                return new CompileResult(false, $"Tool structure compilation failed: {errorSummary}. See last-tool-output-log for details.", sw.Elapsed, string.Join("\n", fullLog));
             }
 
             // Re-commit scenario tag to ensure structure tool didn't overwrite scenario properties
@@ -226,6 +243,7 @@ public sealed class ToolFastCompiler
             fullLog.Add($"Command: {toolExe} {cacheCmd}");
             onLogMessage?.Invoke($"[ForgeWorks] Packaging map cache file: {scenarioRelative}...");
 
+            DateTime cacheStartTimeUtc = DateTime.UtcNow;
             var (code2, log2) = await RunProcessAsync(toolExe, cacheCmd, ekPath, onLogMessage, cancellationToken);
             fullLog.Add(log2);
             fullLog.Add($"Exit Code: {code2}\n");
@@ -234,12 +252,24 @@ public sealed class ToolFastCompiler
 
             string expectedMap = Path.Combine(ekPath, "maps", $"{levelName}.map");
             bool mapExists = File.Exists(expectedMap);
+            bool mapFresh = mapExists && File.GetLastWriteTimeUtc(expectedMap) >= cacheStartTimeUtc.AddSeconds(-2);
 
-            if (code2 != 0 || !mapExists)
+            var cacheErrors = log2.Split('\n')
+                .Where(l => l.Contains("-ERROR-") || l.Contains("-FATAL-") || l.Contains("### ERROR"))
+                .Select(l => l.Trim())
+                .Distinct()
+                .Take(5)
+                .ToList();
+
+            if (code2 != 0 || !mapFresh || cacheErrors.Count > 0)
             {
-                fullLog.Add($"\n[ERROR] Build-cache-file failed with exit code {code2}. Expected map exists: {mapExists}");
+                string cacheSummary = cacheErrors.Count > 0
+                    ? string.Join("; ", cacheErrors)
+                    : (!mapFresh ? $"Output map '{expectedMap}' was not created or is stale." : $"Tool exited with code {code2}");
+
+                fullLog.Add($"\n[ERROR] Build-cache-file failed: {cacheSummary}");
                 WriteLastToolOutputLog(ekPath, string.Join("\n", fullLog));
-                return new CompileResult(false, $"Tool build-cache-file failed with exit code {code2}. See last-tool-output-log for details.", sw.Elapsed, string.Join("\n", fullLog), expectedMap);
+                return new CompileResult(false, $"Tool build-cache-file failed: {cacheSummary}. See last-tool-output-log for details.", sw.Elapsed, string.Join("\n", fullLog), expectedMap);
             }
 
             fullLog.Add($"\n================================================================================");

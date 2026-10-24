@@ -132,10 +132,11 @@ public static class CustomShaderBuilder
         var dir = Path.GetDirectoryName(fullShaderTagPath);
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
 
-        // Normalize relative bitmap tag path (strip .bitmap extension if present)
-        string bitmRef = relativeBitmapTagPath.EndsWith(".bitmap", StringComparison.OrdinalIgnoreCase)
-            ? relativeBitmapTagPath[..^7]
-            : relativeBitmapTagPath;
+        // If a valid custom or retail shader tag already exists at the target path, preserve it!
+        if (File.Exists(fullShaderTagPath) && new FileInfo(fullShaderTagPath).Length > 1024)
+        {
+            return;
+        }
 
         // Try to clone an authentic retail template shader from H3EK
         if (!string.IsNullOrEmpty(ekPath) && Directory.Exists(ekPath))
@@ -147,64 +148,21 @@ public static class CustomShaderBuilder
                 Path.Combine(ekPath, "tags", "levels", "multi", "chill", "shaders", "chill_snow.shader"),
                 Path.Combine(ekPath, "tags", "levels", "multi", "riverworld", "shaders", "riverworld_ground.shader"),
                 Path.Combine(ekPath, "tags", "levels", "multi", "salvation", "shaders", "sal_rock.shader"),
-                Path.Combine(ekPath, "tags", "levels", "multi", "custom_canvas", "shaders", "blue_panel_light.shader")
+                Path.Combine(ekPath, "tags", "shaders", "invalid.shader")
             };
 
             foreach (var candidate in candidateTemplates)
             {
-                if (File.Exists(candidate))
+                if (File.Exists(candidate) && new FileInfo(candidate).Length > 1024)
                 {
                     try
                     {
-                        byte[] raw = File.ReadAllBytes(candidate);
-                        string ascii = Encoding.ASCII.GetString(raw);
-
-                        // Find all bitmap tag references in template
-                        var matches = Regex.Matches(ascii, @"levels\\multi\\[a-zA-Z0-9_\\]+\\bitmaps\\[a-zA-Z0-9_]+");
-
-                        // Find the base diffuse map (first non-bump, non-cubemap reference)
-                        string? targetBaseMap = null;
-                        foreach (Match m in matches)
-                        {
-                            if (!m.Value.EndsWith("_bump", StringComparison.OrdinalIgnoreCase) &&
-                                !m.Value.EndsWith("_cubemap", StringComparison.OrdinalIgnoreCase) &&
-                                !m.Value.EndsWith("_illum", StringComparison.OrdinalIgnoreCase) &&
-                                !m.Value.EndsWith("_parallax", StringComparison.OrdinalIgnoreCase))
-                            {
-                                targetBaseMap = m.Value;
-                                break;
-                            }
-                        }
-
-                        if (!string.IsNullOrEmpty(targetBaseMap))
-                        {
-                            byte[] newBytes = Encoding.ASCII.GetBytes(bitmRef);
-                            bool replaced = false;
-
-                            // Replace all occurrences of targetBaseMap (parameter block AND dependency block)
-                            foreach (Match m in matches)
-                            {
-                                if (m.Value.Equals(targetBaseMap, StringComparison.OrdinalIgnoreCase))
-                                {
-                                    int offset = m.Index;
-                                    int origLen = m.Length;
-                                    int copyLen = Math.Min(newBytes.Length, origLen);
-                                    Array.Copy(newBytes, 0, raw, offset, copyLen);
-                                    // Null-terminate and zero pad remainder if new string is shorter
-                                    for (int k = copyLen; k < origLen; k++)
-                                    {
-                                        raw[offset + k] = 0;
-                                    }
-                                    replaced = true;
-                                }
-                            }
-
-                            if (replaced)
-                            {
-                                File.WriteAllBytes(fullShaderTagPath, raw);
-                                return;
-                            }
-                        }
+                        // Copy the authentic validated template directly.
+                        // DO NOT perform global ASCII regex byte-replacement across the binary file,
+                        // as matching "bitm" inside string tables or header chunks causes reproducible
+                        // tag corruption and Tool fatal exception (\sd1, 1836345698).
+                        File.Copy(candidate, fullShaderTagPath, overwrite: true);
+                        return;
                     }
                     catch
                     {
@@ -214,37 +172,14 @@ public static class CustomShaderBuilder
             }
         }
 
-        // Standalone fallback: copy any valid available retail shader in tags
-        if (!string.IsNullOrEmpty(ekPath) && Directory.Exists(ekPath))
+        // If no template is available (e.g. mock test environment), create a placeholder tag file
+        if (!File.Exists(fullShaderTagPath))
         {
-            string anyShader = Path.Combine(ekPath, "tags", "levels", "multi", "chill", "shaders", "chill_metal.shader");
-            if (File.Exists(anyShader))
-            {
-                File.Copy(anyShader, fullShaderTagPath, overwrite: true);
-                return;
-            }
+            using var stream = File.Create(fullShaderTagPath);
+            using var writer = new BinaryWriter(stream, Encoding.ASCII);
+            writer.Write(Encoding.ASCII.GetBytes("rmsh"));
+            writer.Write(new byte[1020]);
         }
-
-        // Standalone binary synthesis for .shader (rmsh) tag (used in unit tests / mock environments)
-        using var stream = File.Create(fullShaderTagPath);
-        using var writer = new BinaryWriter(stream, Encoding.ASCII);
-
-        // 1. Tag Header (0x40 bytes)
-        writer.Write(Encoding.ASCII.GetBytes("rmsh")); // Tag group magic
-        writer.Write((uint)0x00035179);                 // H3 Retail engine checksum
-        writer.Write((uint)0x00000040);                 // Header size
-        writer.Write((uint)0x00000000);                 // Version
-        writer.Write(new byte[0x30]);                   // Padding / metadata
-
-        // 2. Albedo block with bitmap tag reference
-        writer.Write(Encoding.ASCII.GetBytes("bitm")); // Tag group magic for reference
-        byte[] pathBytes = Encoding.ASCII.GetBytes(bitmRef + "\0");
-        writer.Write((uint)pathBytes.Length);
-        writer.Write(pathBytes);
-
-        // Pad to 16-byte alignment
-        int rem = (int)(stream.Position % 16);
-        if (rem != 0) writer.Write(new byte[16 - rem]);
     }
 
     /// <summary>
@@ -355,7 +290,7 @@ public static class CustomShaderBuilder
         foreach (var rawMat in rawMaterials)
         {
             // Skip engine special materials (+sky, +portal, +seamsealer, etc.)
-            if (rawMat.StartsWith("+") || rawMat.StartsWith("%+") || rawMat.StartsWith("!") || rawMat.StartsWith("%!"))
+            if (rawMat.StartsWith("+") || rawMat.StartsWith("%+"))
                 continue;
 
             string cleanId = CleanMaterialIdentifier(rawMat, cleanLevel);
@@ -433,14 +368,40 @@ public static class CustomShaderBuilder
         {
             if (!string.IsNullOrWhiteSpace(m.MaterialName) && rawToCleanMap.TryGetValue(m.MaterialName, out var cleanId))
             {
-                m.MaterialName = $"{cleanLevel} {cleanId}";
+                string prefix = "";
+                string orig = m.MaterialName;
+                while (orig.Length > 0 && (orig[0] == '!' || orig[0] == '%' || orig[0] == '+' || orig[0] == '$' || orig[0] == '*' || orig[0] == '@' || orig[0] == '~'))
+                {
+                    prefix += orig[0];
+                    orig = orig[1..];
+                }
+                while (orig.Length > 0 && (orig[^1] == '!' || orig[^1] == '%' || orig[^1] == '$' || orig[^1] == '*' || orig[^1] == '@' || orig[^1] == '~'))
+                {
+                    char flag = orig[^1];
+                    if (!prefix.Contains(flag)) prefix = flag + prefix;
+                    orig = orig[..^1];
+                }
+                m.MaterialName = $"{prefix}{cleanLevel} {cleanId}";
             }
 
             for (int s = 0; s < m.MaterialSlots.Count; s++)
             {
                 if (rawToCleanMap.TryGetValue(m.MaterialSlots[s], out var cleanSlotId))
                 {
-                    m.MaterialSlots[s] = $"{cleanLevel} {cleanSlotId}";
+                    string prefix = "";
+                    string orig = m.MaterialSlots[s];
+                    while (orig.Length > 0 && (orig[0] == '!' || orig[0] == '%' || orig[0] == '+' || orig[0] == '$' || orig[0] == '*' || orig[0] == '@' || orig[0] == '~'))
+                    {
+                        prefix += orig[0];
+                        orig = orig[1..];
+                    }
+                    while (orig.Length > 0 && (orig[^1] == '!' || orig[^1] == '%' || orig[^1] == '$' || orig[^1] == '*' || orig[^1] == '@' || orig[^1] == '~'))
+                    {
+                        char flag = orig[^1];
+                        if (!prefix.Contains(flag)) prefix = flag + prefix;
+                        orig = orig[..^1];
+                    }
+                    m.MaterialSlots[s] = $"{prefix}{cleanLevel} {cleanSlotId}";
                 }
             }
         }
@@ -463,6 +424,12 @@ public static class CustomShaderBuilder
             s = s[1..];
         }
 
+        // Strip trailing special characters
+        while (s.Length > 0 && (s[^1] == '%' || s[^1] == '!' || s[^1] == '+' || s[^1] == '$' || s[^1] == '@' || s[^1] == '~'))
+        {
+            s = s[..^1];
+        }
+
         // Strip 'material_' or 'mat_' prefix
         if (s.StartsWith("material_", StringComparison.OrdinalIgnoreCase)) s = s[9..];
         else if (s.StartsWith("mat_", StringComparison.OrdinalIgnoreCase)) s = s[4..];
@@ -474,6 +441,8 @@ public static class CustomShaderBuilder
         else if (s.StartsWith(lvl + lvl, StringComparison.OrdinalIgnoreCase))
             s = s[(lvl.Length * 2)..];
         else if (s.StartsWith(lvl + "_", StringComparison.OrdinalIgnoreCase))
+            s = s[(lvl.Length + 1)..];
+        else if (s.StartsWith(lvl + " ", StringComparison.OrdinalIgnoreCase))
             s = s[(lvl.Length + 1)..];
         else if (s.StartsWith(lvl, StringComparison.OrdinalIgnoreCase) && s.Length > lvl.Length && (s[lvl.Length] == '_' || char.IsLetter(s[lvl.Length])))
             s = s[lvl.Length..].TrimStart('_');
@@ -502,6 +471,7 @@ public static class CustomShaderBuilder
         else if (s.Contains("stripes_blue") || s.Contains("stripes_red") || s.Contains("stripes")) s = "stripes";
         else if (s.Contains("symbol_blue")) s = "symbol_blue";
         else if (s.Contains("symbol_red")) s = "symbol_red";
+        else if (s.Contains("lights")) s = "lights"; // Explicitly preserve plural 'lights' to match ASS shader requests
         else if (s.Contains("greenlight") || s.Contains("light")) s = "light";
         else if (s.Contains("arrow")) s = "arrow";
         else if (s.Contains("teleporter") || s.Contains("shield")) s = "shield";

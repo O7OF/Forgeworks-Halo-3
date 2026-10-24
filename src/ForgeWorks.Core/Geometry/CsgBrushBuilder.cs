@@ -32,7 +32,7 @@ public sealed class BrushConfig
 }
 
 /// <summary>
-/// Low-friction 3D blockout brush builder inspired by TrenchBroom, Hammer, and Blockbench.
+/// Low-friction 3D blockout brush builder for Blam Editing Suite For Halo 3, inspired by TrenchBroom and Hammer.
 /// Generates strictly convex and sealed engine-compliant geometry with correct UVs and normals.
 /// </summary>
 public static class CsgBrushBuilder

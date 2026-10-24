@@ -50,7 +50,7 @@ public sealed class AssExporter
 
         // 1. HEADER
         writer.WriteLine(";### HEADER ###");
-        writer.WriteLine("7");
+        writer.WriteLine(version.ToString());
         writer.WriteLine("\"BLENDER\"");
         writer.WriteLine("\"5.2\"");
         writer.WriteLine("\"ForgeWorks\"");
@@ -221,21 +221,35 @@ public sealed class AssExporter
             return !string.IsNullOrEmpty(defaultLevelPrefix) ? $"{defaultLevelPrefix} ground" : "river riverworld_ground";
         }
 
-        // Extract semantic flags: %, !, %!, +, $, @, ~
+        // If special engine surface (+sky, +portal, etc.), preserve exactly
+        if (m.StartsWith("+") || m.StartsWith("%+"))
+        {
+            return m;
+        }
+
+        // Extract leading semantic flags: %, !, %!, +, $, *, @, ~
         string prefix = "";
-        while (m.Length > 0 && (m[0] == '%' || m[0] == '!' || m[0] == '+' || m[0] == '$' || m[0] == '@' || m[0] == '~'))
+        while (m.Length > 0 && (m[0] == '%' || m[0] == '!' || m[0] == '+' || m[0] == '$' || m[0] == '*' || m[0] == '@' || m[0] == '~'))
         {
             prefix += m[0];
             m = m[1..];
         }
 
-        // Clean out colons, slashes, and invalid characters from material identifier
-        m = System.Text.RegularExpressions.Regex.Replace(m, @"[^A-Za-z0-9_\s]+", "_").Trim();
+        // Also extract any trailing flags (e.g. lights! or foliage%) and normalize to prefix
+        while (m.Length > 0 && (m[^1] == '!' || m[^1] == '%' || m[^1] == '$' || m[^1] == '*' || m[^1] == '@' || m[^1] == '~'))
+        {
+            char flag = m[^1];
+            if (!prefix.Contains(flag)) prefix = flag + prefix;
+            m = m[..^1];
+        }
+
+        // Clean out invalid punctuation without mangling into underscores
+        m = System.Text.RegularExpressions.Regex.Replace(m, @"[^A-Za-z0-9_\s]+", "").Trim();
         if (string.IsNullOrEmpty(m)) m = "custom";
 
-        // If regular geometry (no special +sky, +portal, etc.), does not already have a collection prefix (no space),
+        // If regular geometry (no special +sky), does not already have a collection prefix (no space),
         // and defaultLevelPrefix is available, prepend collection prefix so Tool resolves the shader!
-        if (string.IsNullOrEmpty(prefix) && !m.Contains(' ') && !string.IsNullOrEmpty(defaultLevelPrefix))
+        if (!m.Contains(' ') && !string.IsNullOrEmpty(defaultLevelPrefix))
         {
             m = $"{defaultLevelPrefix} {m}";
         }

@@ -10,13 +10,22 @@ public sealed class AssImporter
 {
     public static List<MeshObject> ImportFromFile(string filePath)
     {
-        var result = new List<MeshObject>();
-        if (!File.Exists(filePath)) return result;
+        if (!File.Exists(filePath)) return new List<MeshObject>();
+        using var reader = new StreamReader(filePath);
+        return ImportFromReader(reader);
+    }
 
+    public static List<MeshObject> ImportFromStream(Stream stream)
+    {
+        using var reader = new StreamReader(stream, leaveOpen: true);
+        return ImportFromReader(reader);
+    }
+
+    public static List<MeshObject> ImportFromReader(TextReader reader)
+    {
+        var result = new List<MeshObject>();
         var materials = new List<string>();
         var inv = CultureInfo.InvariantCulture;
-
-        using var reader = new StreamReader(filePath);
         string? line;
 
         string NextNonCommentLine()
@@ -43,6 +52,14 @@ public sealed class AssImporter
                     {
                         string mName = NextNonCommentLine().Trim('"');
                         NextNonCommentLine(); // variant
+                        string propCountStr = NextNonCommentLine(); // property count
+                        if (int.TryParse(propCountStr, out int propCount))
+                        {
+                            for (int p = 0; p < propCount; p++)
+                            {
+                                NextNonCommentLine(); // consume property
+                            }
+                        }
                         materials.Add(mName);
                     }
                 }
@@ -131,9 +148,21 @@ public sealed class AssImporter
                                     mesh.Triangles.Add(new Triangle(v0, v1, v2, matIdx));
                                     if (matIdx >= 0 && matIdx < materials.Count)
                                     {
-                                        mesh.MaterialName = materials[matIdx];
+                                        if (string.IsNullOrEmpty(mesh.MaterialName) || mesh.MaterialName == "default")
+                                        {
+                                            mesh.MaterialName = materials[matIdx];
+                                        }
                                     }
                                 }
+                            }
+                        }
+
+                        if (materials.Count > 0)
+                        {
+                            foreach (var mat in materials)
+                            {
+                                if (!mesh.MaterialSlots.Contains(mat))
+                                    mesh.MaterialSlots.Add(mat);
                             }
                         }
 

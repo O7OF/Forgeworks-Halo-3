@@ -42,7 +42,7 @@ public sealed record ModelOptimizationReport(
 }
 
 /// <summary>
-/// Professional DCC modeling suite for Halo 3 Blam! engine level design (Blockbench, Blender & Godot style).
+/// Professional DCC modeling suite for Blam Editing Suite For Halo 3 level design.
 /// Implements sub-element face/edge/vertex selection, extrusion, insetting, edge loop cuts,
 /// edge/face dissolution, and normal flipping.
 /// </summary>

@@ -61,7 +61,7 @@ public sealed class GeometryAutoRepair
         EnforceMaterialConventions(mesh, report);
 
         // Step 1: Precise Vertex Welding (FIRST!)
-        // Cleanly welds coincident face vertices from Blockbench/Blender/DCC exports.
+        // Cleanly welds coincident face vertices from Blam Editing Suite / Blender / DCC exports.
         // Preserves exact geometry shapes and reduces vertex count cleanly.
         if (weldDistance > 0.0f)
         {
@@ -1862,6 +1862,85 @@ public sealed class GeometryAutoRepair
         }
 
         return toRemove.Count;
+    }
+
+    /// <summary>
+    /// For maps with 2D plane walls (single-sided cliff walls/ridges),
+    /// generates a continuous horizontal rim ledge outwards from all open boundary edges,
+    /// then synthesizes an airtight +sky ceiling dome cap down to this rim.
+    /// This eradicates all open edge errors, achieving a 100% sealed BSP required for Sapien AI pathfinding.
+    /// </summary>
+    public static (int rimTrisAdded, int skyTrisAdded) GenerateRimFor2dPlaneWallsWithSky(
+        MeshObject mesh,
+        float rimWidth = 400.0f,
+        float rimElevation = 50.0f,
+        float skyCeilingOffset = 800.0f,
+        string skyMaterial = "+sky",
+        RepairReport? report = null)
+    {
+        if (mesh == null || mesh.Triangles.Count == 0 || mesh.Vertices.Count == 0)
+            return (0, 0);
+
+        var positions = new Vector3[mesh.Vertices.Count];
+        for (int i = 0; i < mesh.Vertices.Count; i++)
+        {
+            positions[i] = mesh.Vertices[i].Position;
+        }
+
+        var triangles = new Tuple<int, int, int>[mesh.Triangles.Count];
+        for (int i = 0; i < mesh.Triangles.Count; i++)
+        {
+            var t = mesh.Triangles[i];
+            triangles[i] = Tuple.Create(t.V0, t.V1, t.V2);
+        }
+
+        var fsharpRes = FSharp.Topology.generateRimFor2dPlaneWallsWithSky(
+            positions,
+            triangles,
+            rimWidth,
+            rimElevation,
+            skyCeilingOffset);
+
+        if (fsharpRes.NewVertices.Length == 0)
+            return (0, 0);
+
+        // Ensure materials exist
+        int rimMatIndex = 0;
+        int skyMatIndex = mesh.MaterialSlots.IndexOf(skyMaterial);
+        if (skyMatIndex < 0)
+        {
+            skyMatIndex = mesh.MaterialSlots.Count;
+            mesh.MaterialSlots.Add(skyMaterial);
+        }
+
+        // Add new vertices with default normals and triplanar UVs
+        foreach (var p in fsharpRes.NewVertices)
+        {
+            mesh.Vertices.Add(new Vertex(p, Vector3.UnitZ, new Vector2(p.X / 300.0f, p.Y / 300.0f)));
+        }
+
+        // Add rim triangles
+        foreach (var tri in fsharpRes.RimTriangles)
+        {
+            mesh.Triangles.Add(new Triangle(tri.Item1, tri.Item2, tri.Item3, rimMatIndex));
+        }
+
+        // Add sky triangles
+        foreach (var tri in fsharpRes.SkyTriangles)
+        {
+            mesh.Triangles.Add(new Triangle(tri.Item1, tri.Item2, tri.Item3, skyMatIndex));
+        }
+
+        mesh.RecalculateNormals();
+
+        if (report != null)
+        {
+            report.OpenEdgesBridged += fsharpRes.RimTriangles.Length / 2;
+            report.HolesCapped += 1;
+            report.OpenEdgesRemaining = CountOpenEdges(mesh);
+        }
+
+        return (fsharpRes.RimTriangles.Length, fsharpRes.SkyTriangles.Length);
     }
 }
 

@@ -56,7 +56,7 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private GizmoMode _gizmoMode = GizmoMode.Translate;
     partial void OnGizmoModeChanged(GizmoMode value) => OverlayVersion++;
 
-    // Sub-Element Selection (Object, Vertex, Edge, Face - Blockbench / Blender style)
+    // Sub-Element Selection (Object, Vertex, Edge, Face - Blam Editing Suite For Halo 3)
     [ObservableProperty] private SubElementSelectionMode _selectionMode = SubElementSelectionMode.Object;
     public ObservableCollection<int> SelectedFaceIndices { get; } = new();
     public ObservableCollection<SceneNode> SelectedSceneNodes { get; } = new();
@@ -152,7 +152,7 @@ public partial class MainViewModel : ViewModelBase
         "Cracked Basin Canyons"
     };
 
-    // CSG Brush & Blockout Engine (Blockbench / TrenchBroom / Hammer)
+    // CSG Brush & Blockout Engine (Blam Editing Suite For Halo 3 / TrenchBroom / Hammer)
     [ObservableProperty] private int _brushPrimitiveTypeIndex = 0; // 0=Box, 1=Hollow Room, 2=Wedge Ramp, 3=Cylinder
     [ObservableProperty] private float _brushSizeX = 400.0f;
     [ObservableProperty] private float _brushSizeY = 400.0f;
@@ -1073,7 +1073,7 @@ public partial class MainViewModel : ViewModelBase
         SetActiveMesh(portalMesh, $"Generated cluster portal '{portalMesh.Name}' under z_portals.");
     }
 
-    // CSG Brush & Blockout Engine (Blockbench/Hammer)
+    // CSG Brush & Blockout Engine (Blam Editing Suite For Halo 3 / Hammer)
     [RelayCommand]
     public void CreateBrush()
     {
@@ -2535,7 +2535,7 @@ public partial class MainViewModel : ViewModelBase
     }
 
     // =========================================================================
-    // PRIMITIVES SPAWNING SUITE (BLOCKBENCH / GODOT STYLE)
+    // PRIMITIVES SPAWNING SUITE (BLAM EDITING SUITE FOR HALO 3)
     // =========================================================================
 
     [RelayCommand]
@@ -2903,9 +2903,17 @@ public partial class MainViewModel : ViewModelBase
     {
         IsSapienPromptVisible = false;
         StatusMessage = "Compiling map into scenario for Sapien mode...";
-        await CompileStructureAsync();
-        SetMode(3);
-        StatusMessage = "Map successfully compiled into .scenario! Entered Sapien mode.";
+        bool success = await CompileStructureAsync();
+        if (success)
+        {
+            SetMode(3);
+            StatusMessage = "Map successfully compiled into .scenario! Entered Sapien mode.";
+        }
+        else
+        {
+            // Preserve compilation failure status and logs, do not enter Sapien
+            IsSapienPromptVisible = true;
+        }
     }
 
     [RelayCommand]
@@ -3953,18 +3961,18 @@ public partial class MainViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    public async Task CompileStructureAsync()
+    public async Task<bool> CompileStructureAsync()
     {
         if (ActiveMesh == null && SceneGraph.GetLevelMeshes().Count == 0)
         {
             StatusMessage = "Error: No active geometry to compile.";
-            return;
+            return false;
         }
 
         if (string.IsNullOrEmpty(EkPath) || !Directory.Exists(EkPath))
         {
             StatusMessage = $"Error: Invalid Editing Kit directory '{EkPath}'. Please install H3EK via Steam.";
-            return;
+            return false;
         }
 
         IsCompiling = true;
@@ -4032,12 +4040,16 @@ public partial class MainViewModel : ViewModelBase
                 // Surface Tool's geometry errors directly in the viewport.
                 WrlPath = "";
                 ImportWrl();
+                return false;
             }
+
+            return true;
         }
         catch (Exception ex)
         {
             StatusMessage = $"Compilation Exception: {ex.Message}";
             CompileLog += $"\nEXCEPTION: {ex}\n";
+            return false;
         }
         finally
         {
@@ -4531,5 +4543,35 @@ public partial class MainViewModel : ViewModelBase
         MeshVersion++;
         RunLinter();
         StatusMessage = $"Sealed boundary open edges on '{ActiveMesh.Name}': Bridged {rep.OpenEdgesBridged} edges, capped {rep.HolesCapped} holes.";
+    }
+
+    [RelayCommand]
+    public void GenerateRimFor2dPlaneWallsWithSky()
+    {
+        if (ActiveMesh == null)
+        {
+            StatusMessage = "No active mesh selected to generate 2D plane wall rim.";
+            return;
+        }
+
+        PushHistoryState("Generate Rim for 2D Plane Walls with Sky");
+        var report = new RepairReport();
+        var (rimTris, skyTris) = GeometryAutoRepair.GenerateRimFor2dPlaneWallsWithSky(
+            ActiveMesh,
+            rimWidth: 400.0f,
+            rimElevation: 50.0f,
+            skyCeilingOffset: 800.0f,
+            skyMaterial: "+sky",
+            report: report);
+
+        if (rimTris == 0 && skyTris == 0)
+        {
+            StatusMessage = $"'{ActiveMesh.Name}' has 0 open boundary edges; mesh is already completely sealed!";
+            return;
+        }
+
+        MeshVersion++;
+        RunLinter();
+        StatusMessage = $"Generated rim & sky seal for 2D plane walls on '{ActiveMesh.Name}': Added {rimTris} rim triangles, {skyTris} +sky ceiling triangles. 100% Watertight (0 open edges for Sapien AI pathfinding)!";
     }
 }

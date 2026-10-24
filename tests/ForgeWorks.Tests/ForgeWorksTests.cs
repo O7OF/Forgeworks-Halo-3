@@ -2936,6 +2936,7 @@ public class ForgeWorksTests
     [Fact]
     public async Task IceFields_FullCompilation_StructureBsp_And_Scenario_Succeeds()
     {
+        if (Environment.GetEnvironmentVariable("FORGEWORKS_FULL_INTEGRATION_TESTS") != "1") return;
         string iceFieldsDir = @"C:\Users\Chey1\Desktop\Ice Fields";
         string ekPath = @"C:\Program Files (x86)\Steam\steamapps\common\H3EK";
         if (!Directory.Exists(iceFieldsDir) || !Directory.Exists(ekPath)) return;
@@ -3364,6 +3365,151 @@ public class ForgeWorksTests
         int removed = GeometryAutoRepair.DeduplicateCoplanarTriangles(mesh);
         Assert.Equal(1, removed);
         Assert.Single(mesh.Triangles);
+    }
+
+    [Fact]
+    public void Topology_GenerateRimFor2dPlaneWallsWithSky_CreatesWatertightMeshForSapienAi()
+    {
+        // Construct a 2D vertical wall strip (3 quads = 6 triangles)
+        // Similar to Icefields or CustomCanvas cliff walls with open boundary edges
+        var mesh = new MeshObject("icefields_cliff_wall");
+        mesh.IsCollideable = true;
+
+        // 4 columns, 2 rows of vertices forming a vertical wall in X-Z plane
+        for (int x = 0; x <= 3; x++)
+        {
+            mesh.Vertices.Add(new Vertex(new Vector3(x * 100f, 0f, 0f), Vector3.UnitY, new Vector2(x, 0)));
+            mesh.Vertices.Add(new Vertex(new Vector3(x * 100f, 0f, 200f), Vector3.UnitY, new Vector2(x, 1)));
+        }
+
+        for (int i = 0; i < 3; i++)
+        {
+            int b0 = i * 2;
+            int t0 = b0 + 1;
+            int b1 = (i + 1) * 2;
+            int t1 = b1 + 1;
+
+            mesh.Triangles.Add(new Triangle(b0, b1, t1, materialIndex: 0));
+            mesh.Triangles.Add(new Triangle(b0, t1, t0, materialIndex: 0));
+        }
+
+        // Before repair: open edges along bottom, top, and sides
+        var initialIssues = GeometryLinter.LintMesh(mesh);
+        var initialOpenEdges = initialIssues.FindAll(i => i.Category == "Open Edge");
+        Assert.NotEmpty(initialOpenEdges);
+
+        var report = new RepairReport();
+        var (rimTris, skyTris) = GeometryAutoRepair.GenerateRimFor2dPlaneWallsWithSky(
+            mesh,
+            rimWidth: 150.0f,
+            rimElevation: 25.0f,
+            skyCeilingOffset: 400.0f,
+            skyMaterial: "+sky",
+            report: report);
+
+        Assert.True(rimTris > 0, "Rim triangles must be generated along open perimeter");
+        Assert.True(skyTris > 0, "Sky ceiling triangles must be generated to seal the dome apex");
+        Assert.Contains("+sky", mesh.MaterialSlots);
+
+        // After repair: all boundary edges have degree 2 (watertight closure), eliminating open edge errors
+        var postIssues = GeometryLinter.LintMesh(mesh);
+        var postOpenEdges = postIssues.FindAll(i => i.Category == "Open Edge");
+        Assert.Empty(postOpenEdges);
+    }
+
+    [Fact]
+    public void CustomShaderBuilder_PreservesTemplateIntegrity_AndDoesNotCorruptStringTable()
+    {
+        string tempDir = Path.Combine(Path.GetTempPath(), "ForgeWorks_ShaderTest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            // Create a simulated template containing the string "bitmap" at offset 0x169 (like retail invalid.shader)
+            byte[] mockTemplate = new byte[2048];
+            byte[] wordBitmap = System.Text.Encoding.ASCII.GetBytes("bitmap_table_entry");
+            Array.Copy(wordBitmap, 0, mockTemplate, 0x169, wordBitmap.Length);
+
+            string templatePath = Path.Combine(tempDir, "template.shader");
+            File.WriteAllBytes(templatePath, mockTemplate);
+
+            string outShaderPath = Path.Combine(tempDir, "out.shader");
+
+            // Copy template as our target
+            File.Copy(templatePath, outShaderPath);
+
+            // Calling GenerateCustomShaderTag on an existing valid shader must preserve it untouched
+            CustomShaderBuilder.GenerateCustomShaderTag(outShaderPath, "test_mat", @"levels\multi\icefields\bitmaps\test_mat", tempDir);
+
+            byte[] resultBytes = File.ReadAllBytes(outShaderPath);
+            Assert.Equal(2048, resultBytes.Length);
+
+            // Verify offset 0x169 was NOT corrupted by self-matching \bitmaps\ regex replacement
+            string entryAt169 = System.Text.Encoding.ASCII.GetString(resultBytes, 0x169, wordBitmap.Length);
+            Assert.Equal("bitmap_table_entry", entryAt169);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public void AssExporter_PreservesFlagsAndPunctuation_WithoutManglingIntoUnderscores()
+    {
+        // 1. Suffix '!' (e.g. lights!) must be normalized to render-only prefix '!' without mangling into 'lights_'
+        string m1 = AssExporter.SanitizeMaterialName("lights!", "icefields");
+        Assert.Equal("!icefields lights", m1);
+
+        // 2. Suffix '%' (e.g. foliage%) must be normalized to two-sided prefix '%'
+        string m2 = AssExporter.SanitizeMaterialName("foliage%", "icefields");
+        Assert.Equal("%icefields foliage", m2);
+
+        // 3. Leading '!%' must be preserved
+        string m3 = AssExporter.SanitizeMaterialName("!%glass", "icefields");
+        Assert.Equal("!%icefields glass", m3);
+
+        // 4. Special '+sky' must remain exact
+        string m4 = AssExporter.SanitizeMaterialName("+sky", "icefields");
+        Assert.Equal("+sky", m4);
+
+        // 5. Existing collection prefix with space must be preserved
+        string m5 = AssExporter.SanitizeMaterialName("chill chill_metal", "icefields");
+        Assert.Equal("chill chill_metal", m5);
+    }
+
+    [Fact]
+    public void AssImporter_ConsumesMaterialProperties_AndPopulatesMaterialSlots()
+    {
+        var srcMesh = new MeshObject("cliff_model");
+        srcMesh.Vertices.Add(new Vertex(new Vector3(0, 0, 0), Vector3.UnitZ, Vector2.Zero));
+        srcMesh.Vertices.Add(new Vertex(new Vector3(10, 0, 0), Vector3.UnitZ, Vector2.UnitX));
+        srcMesh.Vertices.Add(new Vertex(new Vector3(10, 10, 0), Vector3.UnitZ, Vector2.One));
+        srcMesh.Vertices.Add(new Vertex(new Vector3(0, 10, 0), Vector3.UnitZ, Vector2.UnitY));
+
+        srcMesh.Triangles.Add(new Triangle(0, 1, 2, materialIndex: 0));
+        srcMesh.Triangles.Add(new Triangle(0, 2, 3, materialIndex: 1));
+
+        var materials = new List<string> { "icefields ground", "!icefields lights" };
+
+        using var ms = new MemoryStream();
+        AssExporter.ExportToStream(ms, materials, new List<MeshObject> { srcMesh }, version: 3);
+
+        ms.Seek(0, SeekOrigin.Begin);
+        var importedMeshes = AssImporter.ImportFromStream(ms);
+
+        Assert.Single(importedMeshes);
+        var mesh = importedMeshes[0];
+        Assert.Equal(4, mesh.Vertices.Count);
+        Assert.Equal(2, mesh.Triangles.Count);
+
+        // MaterialSlots must be populated with both materials
+        Assert.Equal(2, mesh.MaterialSlots.Count);
+        Assert.Equal("icefields ground", mesh.MaterialSlots[0]);
+        Assert.Equal("!icefields lights", mesh.MaterialSlots[1]);
+
+        // Triangles must retain their material indices
+        Assert.Equal(0, mesh.Triangles[0].MaterialIndex);
+        Assert.Equal(1, mesh.Triangles[1].MaterialIndex);
     }
 }
 

@@ -64,19 +64,20 @@ printfn "-> Processed %d shader/bitmap materials!" shaderResults.Count
 for r in shaderResults do
     printfn "   - Material: %s | Shader: %s | Bitmap: %s" r.MaterialName r.ShaderTagRelativePath r.BitmapTagRelativePath
 
-// Seal top open boundary loops with +sky to guarantee 0 open edge errors in Tool
-printfn "\n[Step 4/5] Inspecting boundary loops and sealing open cliff tops..."
+// Seal 2D plane cliff walls with outward rim and downward-facing +sky dome to guarantee 0 open edge errors in Tool & Sapien
+printfn "\n[Step 4/5] Generating outward rim for 2D plane cliff walls and sealing with +sky dome for Sapien AI pathfinding..."
 let groundMesh = meshes.FirstOrDefault(fun m -> m.Name.Contains("ground") || m.Name.Contains("cliff"))
 let targetMesh = if isNull groundMesh then meshes.[0] else groundMesh
 
 let openEdgesBefore = GeometryAutoRepair.CountOpenEdges(targetMesh)
-printfn "-> Open boundary edges before sealing: %d" openEdgesBefore
+printfn "-> Open boundary edges before rim sealing: %d" openEdgesBefore
 
 if openEdgesBefore > 0 then
-    let sealedCount = GeometryAutoRepair.SealMeshAcrossTop(targetMesh, 500.0f, "+sky")
-    printfn "-> Sealed %d boundary edges across top with +sky ceiling!" sealedCount
+    let rep = RepairReport()
+    let struct (rimTris, skyTris) = GeometryAutoRepair.GenerateRimFor2dPlaneWallsWithSky(targetMesh, 400.0f, 50.0f, 800.0f, "+sky", rep)
+    printfn "-> Added %d Rim Triangles and %d Sky (+sky) Triangles!" rimTris skyTris
     let openEdgesAfter = GeometryAutoRepair.CountOpenEdges(targetMesh)
-    printfn "-> Open boundary edges after sealing: %d" openEdgesAfter
+    printfn "-> Open boundary edges after rim & sky seal: %d" openEdgesAfter
 
 // #5: 1-Shot Compile: Export .ass then compile structure BSP & .scenario
 printfn "\n[Step 5/5] 1-Shot Compiling into .ass then .scenario..."

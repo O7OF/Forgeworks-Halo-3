@@ -13,11 +13,11 @@
         x:Class="ForgeWorks.UI.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Icon="/Assets/avalonia-logo.ico"
-        Title="ForgeWorks Studio v2.2.0 - Halo 3 Blam! Engine Desktop Editor (Sapien + Guerilla + Blender + Blockbench)"
+        Title="ForgeWorks Studio v2.3.1 - Blam Editing Suite For Halo 3"
         Background="#181a1f">
 
     <Window.Styles>
-        <!-- Blockbench Dark Obsidian Theme Styles -->
+        <!-- Blam Editing Suite For Halo 3 Dark Obsidian Theme Styles -->
         <Style Selector="Button">
             <Setter Property="CornerRadius" Value="4"/>
             <Setter Property="Padding" Value="8,4"/>
@@ -63,7 +63,7 @@
 
     <Grid RowDefinitions="Auto,Auto,*,170,Auto">
 
-        <!-- 1. TOP MENU & WORKSPACE BAR (BLOCKBENCH STYLE) -->
+        <!-- 1. TOP MENU & WORKSPACE BAR (BLAM EDITING SUITE FOR HALO 3) -->
         <Border Grid.Row="0" Background="#1e2128" BorderBrush="#2a2e39" BorderThickness="0,0,0,1" Padding="8,4">
             <Grid ColumnDefinitions="Auto,*,Auto">
                 
@@ -94,7 +94,7 @@
                                 <MenuItem Header="❄️ Port 'Ice Fields' Map to Halo 3..." Command="{Binding PortIceFieldsToHalo3Command}"/>
                                 <MenuItem Header="🎨 Import Model Textures &amp; Generate Custom .shader Tags..." Command="{Binding ImportModelTexturesCommand}"/>
                             </MenuItem>
-                            <MenuItem Header="Spawn Primitive (Blockbench / Blender)">
+                            <MenuItem Header="Spawn Primitive (Blam Editing Suite For Halo 3)">
                                 <MenuItem Header="Spawn Cube / Box" Command="{Binding SpawnCubeCommand}"/>
                                 <MenuItem Header="Spawn Cylinder Pillar" Command="{Binding SpawnCylinderCommand}"/>
                                 <MenuItem Header="Spawn Sphere" Command="{Binding SpawnSphereCommand}"/>
@@ -154,6 +154,7 @@
                                 <MenuItem Header="Sanitize Mesh for Halo 3 (Fix Overlaps, Open Edges &amp; Welds)" Command="{Binding SanitizeActiveMeshForHalo3Command}"/>
                                 <MenuItem Header="Deduplicate Overlapping Surfaces (Fix Red Overlaps)" Command="{Binding DeduplicateOverlappingSurfacesCommand}"/>
                                 <MenuItem Header="Seal Boundary Open Edges Down to Floor" Command="{Binding SealBoundaryOpenEdgesCommand}"/>
+                                <MenuItem Header="🏔️ Generate Rim for 2D Plane Walls with Sky" Command="{Binding GenerateRimFor2dPlaneWallsWithSkyCommand}"/>
                                 <MenuItem Header="Seal Entire Map Watertight (+sky Dome Ceiling)" Command="{Binding SealMapWatertightCommand}"/>
                             </MenuItem>
                             <Separator/>
@@ -200,6 +201,7 @@
                             <MenuItem Header="🛡️ Audit Tool Geometry Limits &amp; Auto-Partition" Command="{Binding AuditToolGeometryLimitsCommand}"/>
                             <Separator/>
                             <MenuItem Header="Generate Watertight Sky Dome (+sky)" Command="{Binding GenerateWatertightSkyDomeCommand}"/>
+                            <MenuItem Header="🏔️ Generate Rim for 2D Plane Walls with Sky" Command="{Binding GenerateRimFor2dPlaneWallsWithSkyCommand}"/>
                             <MenuItem Header="Seal Map Watertight (+sky)" Command="{Binding SealMapWatertightCommand}"/>
                             <MenuItem Header="Generate Cluster Portal Quad (+portal)" Command="{Binding GeneratePortalCommand}"/>
                             <MenuItem Header="Import Tool WRL Error Wire" Command="{Binding ImportWrlCommand}"/>
@@ -209,7 +211,7 @@
                         </MenuItem>
                     </Menu>
 
-                    <!-- Active Document Tab (Blockbench generic model tab) -->
+                    <!-- Active Document Tab (Blam Editing Suite For Halo 3 model tab) -->
                     <Border Background="#252932" CornerRadius="4,4,0,0" Padding="10,4" Margin="12,0,0,0">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <TextBlock Text="🌐" FontSize="11"/>
@@ -375,7 +377,7 @@
                 </StackPanel>
 
                 <!-- Center: Contextual Ribbon based on WorkbenchModeIndex -->
-                <!-- Mode 0: EDIT / CSG BLOCKOUT & DCC MODELING SUITE (BLOCKBENCH & BLENDER STYLE) -->
+                <!-- Mode 0: EDIT / CSG BLOCKOUT & DCC MODELING SUITE (BLAM EDITING SUITE FOR HALO 3) -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center" VerticalAlignment="Center"
                             IsVisible="{Binding WorkbenchModeIndex, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=0}">
                     
@@ -1332,11 +1334,11 @@
                 </Border>
             </Grid>
 
-            <!-- RIGHT PANEL: BLOCKBENCH OUTLINER & TRANSFORM ELEMENT INSPECTOR -->
+            <!-- RIGHT PANEL: BLAM EDITING SUITE FOR HALO 3 OUTLINER & TRANSFORM ELEMENT INSPECTOR -->
             <Border Grid.Column="2" Background="#17191e" BorderBrush="#252932" BorderThickness="1,0,0,0">
                 <Grid RowDefinitions="*,Auto,*">
 
-                    <!-- TOP HALF: OUTLINER / SCENE HIERARCHY (BLOCKBENCH STYLE) -->
+                    <!-- TOP HALF: OUTLINER / SCENE HIERARCHY (BLAM EDITING SUITE FOR HALO 3) -->
                     <Grid Grid.Row="0" RowDefinitions="Auto,*" Margin="6">
                         <!-- Outliner Header Toolbar -->
                         <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,6">
@@ -1492,6 +1494,9 @@
                                                 <TextBlock Text="🛠️ Fix All Geo" FontSize="10"/>
                                             </Button>
                                         </Grid>
+                                        <Button Command="{Binding GenerateRimFor2dPlaneWallsWithSkyCommand}" Background="#0284c7" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" ToolTip.Tip="Generate outward horizontal rim from 2D plane wall boundaries and seal airtight with +sky apex cap to enable Sapien AI pathfinding">
+                                            <TextBlock Text="🏔️ Generate Rim for 2D Plane Walls with Sky" FontSize="10"/>
+                                        </Button>
                                         <Button Command="{Binding SealMapWatertightCommand}" Background="#10b981" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" ToolTip.Tip="Generate watertight sky dome (+sky) enclosing all imported meshes and auto-repair scene">
                                             <TextBlock Text="🌐 Auto-Seal Entire Map (+sky)" FontSize="10"/>
                                         </Button>
