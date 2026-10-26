@@ -99,7 +99,15 @@ public sealed class ProjectMeshData
     public Dictionary<string, string> MaterialTextureMap { get; set; } = new();
     public string? SourceTexturePath { get; set; }
     public bool IsCollideable { get; set; } = true;
-    public float[] TransformMatrix { get; set; } = new float[16];
+    public static float[] CreateIdentityMatrix() => new float[]
+    {
+        1f, 0f, 0f, 0f,
+        0f, 1f, 0f, 0f,
+        0f, 0f, 1f, 0f,
+        0f, 0f, 0f, 1f
+    };
+
+    public float[] TransformMatrix { get; set; } = CreateIdentityMatrix();
 
     public List<ProjectVertexData> Vertices { get; set; } = new();
     public List<ProjectTriangleData> Triangles { get; set; } = new();
@@ -153,12 +161,29 @@ public sealed class ProjectMeshData
 
         if (TransformMatrix is { Length: 16 })
         {
-            mesh.Transform = new Matrix4x4(
-                TransformMatrix[0], TransformMatrix[1], TransformMatrix[2], TransformMatrix[3],
-                TransformMatrix[4], TransformMatrix[5], TransformMatrix[6], TransformMatrix[7],
-                TransformMatrix[8], TransformMatrix[9], TransformMatrix[10], TransformMatrix[11],
-                TransformMatrix[12], TransformMatrix[13], TransformMatrix[14], TransformMatrix[15]
-            );
+            bool isAllZero = true;
+            for (int i = 0; i < 16; i++)
+            {
+                if (TransformMatrix[i] != 0f) { isAllZero = false; break; }
+            }
+
+            if (isAllZero)
+            {
+                mesh.Transform = Matrix4x4.Identity;
+            }
+            else
+            {
+                mesh.Transform = new Matrix4x4(
+                    TransformMatrix[0], TransformMatrix[1], TransformMatrix[2], TransformMatrix[3],
+                    TransformMatrix[4], TransformMatrix[5], TransformMatrix[6], TransformMatrix[7],
+                    TransformMatrix[8], TransformMatrix[9], TransformMatrix[10], TransformMatrix[11],
+                    TransformMatrix[12], TransformMatrix[13], TransformMatrix[14], TransformMatrix[15]
+                );
+            }
+        }
+        else
+        {
+            mesh.Transform = Matrix4x4.Identity;
         }
 
         foreach (var vd in Vertices) mesh.Vertices.Add(vd.ToVertex());

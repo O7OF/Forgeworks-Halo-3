@@ -282,7 +282,8 @@ public static class MeshSealer
         {
             Name = "+sky_watertight_envelope",
             MaterialName = "+sky",
-            IsCollideable = true
+            IsCollideable = true,
+            TransformMatrix = ProjectMeshData.CreateIdentityMatrix()
         };
         skyMesh.MaterialSlots.Add("+sky");
 

@@ -686,7 +686,7 @@ public static class CustomShaderBuilder
         foreach (var rawMat in rawMaterials)
         {
             // Skip engine special materials (+sky, +portal, +seamsealer, etc.)
-            if (rawMat.StartsWith("+") || rawMat.StartsWith("%+"))
+            if (rawMat.StartsWith("+") || rawMat.StartsWith("%+") || rawMat.Equals("sky", StringComparison.OrdinalIgnoreCase) || rawMat.EndsWith(" sky", StringComparison.OrdinalIgnoreCase) || rawMat.EndsWith(" sky%", StringComparison.OrdinalIgnoreCase))
                 continue;
 
             string cleanId = CleanMaterialIdentifier(rawMat, cleanLevel);
@@ -900,6 +900,18 @@ public static class CustomShaderBuilder
         // Reassign clean material names to meshes for seamless ASS export and compilation
         foreach (var m in meshList)
         {
+            if (m.MaterialName.StartsWith("+sky", StringComparison.OrdinalIgnoreCase) || m.Name.StartsWith("+sky", StringComparison.OrdinalIgnoreCase) || m.MaterialName.Equals("sky", StringComparison.OrdinalIgnoreCase))
+            {
+                m.MaterialName = "+sky";
+                if (!m.MaterialSlots.Contains("+sky"))
+                {
+                    m.MaterialSlots.Clear();
+                    m.MaterialSlots.Add("+sky");
+                }
+                m.IsCollideable = true;
+                continue;
+            }
+
             if (!string.IsNullOrWhiteSpace(m.MaterialName) && rawToCleanMap.TryGetValue(m.MaterialName, out var cleanId))
             {
                 string orig = m.MaterialName;
@@ -913,6 +925,12 @@ public static class CustomShaderBuilder
 
             for (int s = 0; s < m.MaterialSlots.Count; s++)
             {
+                if (m.MaterialSlots[s].StartsWith("+sky", StringComparison.OrdinalIgnoreCase) || m.MaterialSlots[s].Equals("sky", StringComparison.OrdinalIgnoreCase))
+                {
+                    m.MaterialSlots[s] = "+sky";
+                    continue;
+                }
+
                 if (rawToCleanMap.TryGetValue(m.MaterialSlots[s], out var cleanSlotId))
                 {
                     string orig = m.MaterialSlots[s];
@@ -936,6 +954,8 @@ public static class CustomShaderBuilder
     public static string CleanMaterialIdentifier(string rawName, string levelName)
     {
         if (string.IsNullOrWhiteSpace(rawName)) return "ground";
+        if (rawName.StartsWith("+sky", StringComparison.OrdinalIgnoreCase) || rawName.Equals("sky", StringComparison.OrdinalIgnoreCase))
+            return "+sky";
         string s = rawName.Trim().ToLowerInvariant();
 
         // Strip leading special characters %, !, +, $, @, ~

@@ -54,26 +54,37 @@ let collidableNames = HashSet<string>([
 ], StringComparer.OrdinalIgnoreCase)
 
 let cleanMaterial (mName: string) =
-    let clean = CustomShaderBuilder.CleanMaterialIdentifier(mName, "custom_canvas")
-    if clean.Equals("coag_water_pool", StringComparison.OrdinalIgnoreCase) then
-        "custom_canvas coag_water_pool'"
-    elif clean.Equals("multi_banner", StringComparison.OrdinalIgnoreCase) then
-        "custom_canvas multi_banner%!"
-    elif clean.Equals("light", StringComparison.OrdinalIgnoreCase) || clean.Equals("lights", StringComparison.OrdinalIgnoreCase) || clean.Equals("arrow", StringComparison.OrdinalIgnoreCase) then
-        "custom_canvas " + clean + "!"
-    elif clean.Equals("ground", StringComparison.OrdinalIgnoreCase) then
-        "custom_canvas ground"
+    if mName.StartsWith("+sky", StringComparison.OrdinalIgnoreCase) || mName.Equals("sky", StringComparison.OrdinalIgnoreCase) then
+        "+sky"
     else
-        // Per C20 Wiki: Material symbol '%' (Two-Sided property) applied to all base panels,
-        // bunker covers, roof covers, trim, and cliffs so Tool duplicates geometry with inverted normals.
-        // This ensures covers NEVER disappear or cull from behind and eliminates open edge warnings!
-        "custom_canvas " + clean + "%"
+        let clean = CustomShaderBuilder.CleanMaterialIdentifier(mName, "custom_canvas")
+        if clean.Equals("+sky", StringComparison.OrdinalIgnoreCase) || clean.Equals("sky", StringComparison.OrdinalIgnoreCase) then
+            "+sky"
+        elif clean.Equals("coag_water_pool", StringComparison.OrdinalIgnoreCase) then
+            "custom_canvas coag_water_pool'"
+        elif clean.Equals("multi_banner", StringComparison.OrdinalIgnoreCase) then
+            "custom_canvas multi_banner%!"
+        elif clean.Equals("light", StringComparison.OrdinalIgnoreCase) || clean.Equals("lights", StringComparison.OrdinalIgnoreCase) || clean.Equals("arrow", StringComparison.OrdinalIgnoreCase) then
+            "custom_canvas " + clean + "!"
+        elif clean.Equals("ground", StringComparison.OrdinalIgnoreCase) then
+            "custom_canvas ground"
+        else
+            // Per C20 Wiki: Material symbol '%' (Two-Sided property) applied to all base panels,
+            // bunker covers, roof covers, trim, and cliffs so Tool duplicates geometry with inverted normals.
+            // This ensures covers NEVER disappear or cull from behind and eliminates open edge warnings!
+            "custom_canvas " + clean + "%"
 
 for m in proj.Meshes do
-    m.MaterialName <- cleanMaterial m.MaterialName
-    for i in 0 .. m.MaterialSlots.Count - 1 do
-        m.MaterialSlots.[i] <- cleanMaterial m.MaterialSlots.[i]
-    m.IsCollideable <- not (m.MaterialName.EndsWith("!"))
+    if m.Name.StartsWith("+sky", StringComparison.OrdinalIgnoreCase) || m.MaterialName.StartsWith("+sky", StringComparison.OrdinalIgnoreCase) then
+        m.MaterialName <- "+sky"
+        m.MaterialSlots.Clear()
+        m.MaterialSlots.Add("+sky")
+        m.IsCollideable <- true
+    else
+        m.MaterialName <- cleanMaterial m.MaterialName
+        for i in 0 .. m.MaterialSlots.Count - 1 do
+            m.MaterialSlots.[i] <- cleanMaterial m.MaterialSlots.[i]
+        m.IsCollideable <- not (m.MaterialName.EndsWith("!"))
 
 // Convert to runtime MeshObjects
 let meshList = proj.Meshes.Select(fun m -> m.ToMesh()).ToList()
@@ -214,9 +225,11 @@ let assPath = Path.Combine(dataDir, "custom_canvas.ass")
 AssExporter.ExportToFile(assPath, matList, meshList, 3, 1.0f, "custom_canvas")
 printfn "-> Exported ASS v3 file: %s (%d bytes)" assPath (FileInfo(assPath).Length)
 
-printfn "-> Running tool_fast.exe structure levels\\multi\\custom_canvas\\structure\\custom_canvas.ass..."
-let struct (sCode, sLog) = ToolFastCompiler.RunProcessAsync(toolExe, "structure \"levels\\multi\\custom_canvas\\structure\\custom_canvas.ass\"", ekPath, null, Threading.CancellationToken.None).GetAwaiter().GetResult()
-printfn "-> Tool structure completed with exit code %d" sCode
+let priorLightExists = File.Exists(Path.Combine(tagsDir, "custom_canvas.scenario_structure_lighting_info"))
+let structVerb = if priorLightExists then "structure-with-lightmap-matching" else "structure"
+printfn "-> Running tool_fast.exe %s levels\\multi\\custom_canvas\\structure\\custom_canvas.ass..." structVerb
+let struct (sCode, sLog) = ToolFastCompiler.RunProcessAsync(toolExe, $"{structVerb} \"levels\\multi\\custom_canvas\\structure\\custom_canvas.ass\"", ekPath, null, Threading.CancellationToken.None).GetAwaiter().GetResult()
+printfn "-> Tool %s completed with exit code %d" structVerb sCode
 
 let bspTagPath = Path.Combine(tagsDir, "custom_canvas.scenario_structure_bsp")
 let bspExists = File.Exists bspTagPath

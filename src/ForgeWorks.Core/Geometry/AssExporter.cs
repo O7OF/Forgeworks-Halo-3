@@ -223,6 +223,11 @@ public sealed class AssExporter
             }
 
             float uniformScale = (scaleVec.X + scaleVec.Y + scaleVec.Z) / 3.0f;
+            if (uniformScale < 0.0001f || float.IsNaN(uniformScale) || float.IsInfinity(uniformScale))
+            {
+                uniformScale = 1.0f;
+                rot = Quaternion.Identity;
+            }
 
             writer.WriteLine($";INSTANCE {instIdx}");
             writer.WriteLine(i.ToString()); // Object index
@@ -250,7 +255,13 @@ public sealed class AssExporter
         // If special engine surface (+sky, +portal, etc.), preserve exactly
         if (m.StartsWith("+") || m.StartsWith("%+"))
         {
+            if (m.Contains("sky", StringComparison.OrdinalIgnoreCase)) return "+sky";
             return m;
+        }
+
+        if (m.Equals("sky", StringComparison.OrdinalIgnoreCase) || m.EndsWith(" sky", StringComparison.OrdinalIgnoreCase) || m.EndsWith(" sky%", StringComparison.OrdinalIgnoreCase))
+        {
+            return "+sky";
         }
 
         // Check if material is water or has water material symbol (')

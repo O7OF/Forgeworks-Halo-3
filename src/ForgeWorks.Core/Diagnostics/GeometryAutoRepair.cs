@@ -1482,9 +1482,18 @@ public sealed class GeometryAutoRepair
     public static void EnforceMaterialConventions(MeshObject mesh, RepairReport? report = null)
     {
         // Preserve +sky
-        if (mesh.MaterialName.StartsWith("+sky", StringComparison.OrdinalIgnoreCase) || mesh.Name.StartsWith("+sky", StringComparison.OrdinalIgnoreCase))
+        if (mesh.MaterialName.StartsWith("+sky", StringComparison.OrdinalIgnoreCase) ||
+            mesh.Name.StartsWith("+sky", StringComparison.OrdinalIgnoreCase) ||
+            mesh.MaterialName.Equals("sky", StringComparison.OrdinalIgnoreCase) ||
+            mesh.MaterialName.EndsWith(" sky", StringComparison.OrdinalIgnoreCase) ||
+            mesh.MaterialName.EndsWith(" sky%", StringComparison.OrdinalIgnoreCase))
         {
             mesh.MaterialName = "+sky";
+            if (!mesh.MaterialSlots.Contains("+sky"))
+            {
+                mesh.MaterialSlots.Clear();
+                mesh.MaterialSlots.Add("+sky");
+            }
             mesh.IsCollideable = true;
             return;
         }

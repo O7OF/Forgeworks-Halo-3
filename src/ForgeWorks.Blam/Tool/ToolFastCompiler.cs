@@ -196,11 +196,16 @@ public sealed class ToolFastCompiler
 
             // Step 2: tool structure levels\multi\<level>\structure\<level>.ass
             string assRelative = Path.Combine(dataRel, $"{levelName}.ass");
-            string structureCmd = $"structure \"{assRelative}\"";
+            string existingBspTag = Path.Combine(fullTagsDir, $"{levelName}.scenario_structure_bsp");
+            string existingLightTag = Path.Combine(fullTagsDir, $"{levelName}.scenario_structure_lighting_info");
+            bool canMatchLightmaps = File.Exists(existingLightTag);
+            string structureCmd = canMatchLightmaps
+                ? $"structure-with-lightmap-matching \"{assRelative}\""
+                : $"structure \"{assRelative}\"";
 
             fullLog.Add($"\n=== STEP 1: COMPILE STRUCTURE BSP ===");
             fullLog.Add($"Command: {toolExe} {structureCmd}");
-            onLogMessage?.Invoke($"[ForgeWorks] Compiling structure BSP: {assRelative}...");
+            onLogMessage?.Invoke($"[ForgeWorks] Compiling structure BSP (matching lightmaps: {canMatchLightmaps}): {assRelative}...");
 
             DateTime bspStartTimeUtc = DateTime.UtcNow;
             var (code1, log1) = await RunProcessAsync(toolExe, structureCmd, ekPath, onLogMessage, cancellationToken);

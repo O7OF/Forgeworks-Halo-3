@@ -124,7 +124,7 @@ public sealed class ScenarioTagBuilder
                         relScenarioTag = relScenarioTag[..^9];
                     }
 
-                    PatchScenarioWithTool(ekPath, relScenarioTag, bspTagPath, spawnPos, safePos, safeExt, killPos, killExt);
+                    PatchScenarioWithTool(ekPath, relScenarioTag, bspTagPath, spawnPos, safePos, safeExt, killPos, killExt, skyTagPath);
                     return;
                 }
                 else
@@ -305,7 +305,8 @@ public sealed class ScenarioTagBuilder
         Vector3 safePos,
         Vector3 safeExtents,
         Vector3 killPos,
-        Vector3 killExtents)
+        Vector3 killExtents,
+        string? skyTagPath = null)
     {
         string toolExe = Path.Combine(ekPath, "tool_fast.exe");
         if (!File.Exists(toolExe)) toolExe = Path.Combine(ekPath, "tool.exe");
@@ -332,10 +333,54 @@ public sealed class ScenarioTagBuilder
         }
 
         PatchField("scenario_struct_definition[0].structure bsps[0].structure bsp", bspTagPath);
+        PatchField("scenario_struct_definition[0].structure bsps[0].structure lighting_info", bspTagPath);
+
+        if (!string.IsNullOrWhiteSpace(skyTagPath))
+        {
+            PatchField("scenario_struct_definition[0].skies[0].sky", skyTagPath);
+            PatchField("scenario_struct_definition[0].skies[0].active on bsps", "1");
+            PatchField("scenario_struct_definition[0].structure bsps[0].default sky", "0");
+        }
+
+        // Establish ambient lighting floor so player and dynamic bipeds are never pitch black in unbaked/canvas maps
+        PatchField("scenario_struct_definition[0].structure bsps[0].hacky ambient min luminance", "0.4");
+        PatchField("scenario_struct_definition[0].structure bsps[0].direct/draft ambient min luminance", "0.4");
+
         PatchField("scenario_struct_definition[0].player starting locations[0].position", FormattableString.Invariant($"{spawnPos.X},{spawnPos.Y},{spawnPos.Z}"));
         PatchField("scenario_struct_definition[0].trigger volumes[1].position", FormattableString.Invariant($"{safePos.X},{safePos.Y},{safePos.Z}"));
         PatchField("scenario_struct_definition[0].trigger volumes[1].extents", FormattableString.Invariant($"{safeExtents.X},{safeExtents.Y},{safeExtents.Z}"));
         PatchField("scenario_struct_definition[0].trigger volumes[0].position", FormattableString.Invariant($"{killPos.X},{killPos.Y},{killPos.Z}"));
         PatchField("scenario_struct_definition[0].trigger volumes[0].extents", FormattableString.Invariant($"{killExtents.X},{killExtents.Y},{killExtents.Z}"));
+
+        // Automatically link faux lightmaps & lighting structure to scenario via Tool
+        LinkLightmapWithTool(ekPath, scenarioRelativeTag);
+    }
+
+    /// <summary>
+    /// Executes tool scenario-set-link-lightmap to bind structure lighting and faux lightmaps into the scenario tag.
+    /// This enables Tool's lightmap fallback during cache building (adding fake-o lightmaps) and ties BSP lightmaps to Sapien.
+    /// </summary>
+    public static void LinkLightmapWithTool(string ekPath, string scenarioRelativeTag)
+    {
+        string toolExe = Path.Combine(ekPath, "tool_fast.exe");
+        if (!File.Exists(toolExe)) toolExe = Path.Combine(ekPath, "tool.exe");
+        if (!File.Exists(toolExe)) return;
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = toolExe,
+            Arguments = $"scenario-set-link-lightmap \"{scenarioRelativeTag}\"",
+            WorkingDirectory = ekPath,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        try
+        {
+            using var p = Process.Start(psi);
+            p?.WaitForExit(5000);
+        }
+        catch { }
     }
 }
