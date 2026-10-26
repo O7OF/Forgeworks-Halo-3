@@ -116,6 +116,7 @@
                             </MenuItem>
                             <Separator/>
                             <MenuItem Header="📁 Setup Map Folders &amp; Scenario" Command="{Binding SetupMapFoldersCommand}"/>
+                            <MenuItem Header="🎨 Import &amp; Convert Textures to Shaders..." Command="{Binding ImportModelTexturesCommand}"/>
                             <MenuItem Header="Save .scenario Tag" Command="{Binding SaveScenarioTagCommand}"/>
                             <Separator/>
                             <MenuItem Header="1-Click Compile &amp; Build" Command="{Binding CompileStructureCommand}"/>
@@ -251,6 +252,15 @@
                     <TextBox Text="{Binding EkPath}" MinWidth="90" MaxWidth="250" Height="24" FontSize="10" Margin="0,0,6,0"/>
                     <Button Command="{Binding SetupMapFoldersCommand}" Background="#0284c7" Foreground="White" FontWeight="Bold" Padding="8,3" Height="24" ToolTip.Tip="Create all required folders and scenario tag for this level in H3EK">
                         <TextBlock Text="📁 Setup Folders" FontSize="10" VerticalAlignment="Center"/>
+                    </Button>
+                    <Button Command="{Binding ImportModelTexturesCommand}" Background="#0d9488" Foreground="White" FontWeight="Bold" Padding="8,3" Height="24" Margin="4,0,0,0" ToolTip.Tip="Batch convert model PNG/JPG textures to TIFFs, compile .bitmap tags with tool_fast, and generate custom Halo 3 .shader tags">
+                        <TextBlock Text="🎨 Import Textures" FontSize="10" VerticalAlignment="Center"/>
+                    </Button>
+                    <Button Command="{Binding GenerateSafeZonesAndSpawnsCommand}" Background="#b45309" Foreground="White" FontWeight="Bold" Padding="8,3" Height="24" Margin="4,0,0,0" ToolTip.Tip="Generate authentic base spawns, generous safe zone volumes, and soft ceilings to prevent dying outside of the world">
+                        <TextBlock Text="🛡️ Safe Zones &amp; Spawns" FontSize="10" VerticalAlignment="Center"/>
+                    </Button>
+                    <Button Command="{Binding StitchSkyAndSealMapCommand}" Background="#059669" Foreground="White" FontWeight="Bold" Padding="8,3" Height="24" Margin="4,0,0,0" ToolTip.Tip="Heal all holes in rocks/ground and stitch +sky directly to canyon rim (0 open edges guaranteed)">
+                        <TextBlock Text="🪡 Stitch Sky &amp; Seal" FontSize="10" VerticalAlignment="Center"/>
                     </Button>
                 </WrapPanel>
 
@@ -640,146 +650,147 @@
                     <!-- SHADER LIST & PAINT/SCULPT BRUSH PALETTE -->
                     <TabItem Header="🎨 Paint &amp; Shaders">
                         <Grid RowDefinitions="Auto,Auto,Auto,Auto,*" Margin="4">
-                            <!-- 1. Dedicated Brush Size & Mode Settings -->
-                            <Border Grid.Row="0" Background="#13151b" BorderBrush="#252b37" BorderThickness="1" CornerRadius="6" Padding="8" Margin="0,0,0,6">
-                                <StackPanel Spacing="5">
+                            <!-- 1. Active Brush Shader & Quick Actions -->
+                            <Border Grid.Row="0" Background="#111318" BorderBrush="#1e293b" BorderThickness="1" CornerRadius="6" Padding="6" Margin="0,0,0,4">
+                                <StackPanel Spacing="4">
                                     <Grid ColumnDefinitions="*,Auto">
-                                        <TextBlock Grid.Column="0" Text="🖌️ Brush &amp; Sculpt Controls" FontWeight="Bold" FontSize="11" Foreground="#38bdf8"/>
-                                        <ComboBox Grid.Column="1" ItemsSource="{Binding SculptBrushModes}" SelectedIndex="{Binding BrushModeIndex}" Height="24" Width="140" FontSize="10"/>
+                                        <StackPanel Grid.Column="0" Spacing="1">
+                                            <TextBlock Text="Active Paint Brush Shader:" FontSize="9" Foreground="#94a3b8"/>
+                                            <TextBlock Text="{Binding PaintMaterialName}" FontSize="11" FontWeight="Bold" Foreground="#4ade80" TextTrimming="CharacterEllipsis"/>
+                                        </StackPanel>
+                                    </Grid>
+                                    <WrapPanel Margin="0,1,0,0">
+                                        <Button Command="{Binding ApplySelectedShaderToActiveMeshCommand}" Background="#16a34a" Foreground="White" FontWeight="Bold" Padding="5,2" Margin="1" ToolTip.Tip="Apply selected shader to the entire active mesh and update 1:1 Blam name">
+                                            <TextBlock Text="🏷️ Apply" FontSize="9"/>
+                                        </Button>
+                                        <Button Command="{Binding SetPaintModeCommand}" Background="#7c3aed" Foreground="White" FontWeight="Bold" Padding="5,2" Margin="1" ToolTip.Tip="Activate 3D mesh paint mode">
+                                            <TextBlock Text="🎨 Paint" FontSize="9"/>
+                                        </Button>
+                                        <Button Command="{Binding FillMeshWithSelectedMaterialCommand}" Background="#0284c7" Foreground="White" FontWeight="Bold" Padding="5,2" Margin="1" ToolTip.Tip="Fill entire active mesh with this shader and auto-fit UVs (triplanar distortion-free)">
+                                            <TextBlock Text="Fill All" FontSize="9"/>
+                                        </Button>
+                                        <Button Command="{Binding AutoFitActiveMeshUvsCommand}" Background="#0f766e" Foreground="White" FontWeight="Bold" Padding="5,2" Margin="1" ToolTip.Tip="Auto-fit triplanar UVs (eliminates cliff wall vertical texture stretching)">
+                                            <TextBlock Text="📐 UVs" FontSize="9"/>
+                                        </Button>
+                                        <Button Command="{Binding SealActiveMeshAcrossTopCommand}" Background="#b45309" Foreground="White" FontWeight="Bold" Padding="5,2" Margin="1" ToolTip.Tip="Seal top open edges across cliff rim with +sky ceiling dome (fixes red open edge errors)">
+                                            <TextBlock Text="🛡️ +Sky" FontSize="9"/>
+                                        </Button>
+                                    </WrapPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- 2. Physical Shader Tuning (Roughness, Metalness & Bump) -->
+                            <Expander Grid.Row="1" Header="🎛️ Physical Shader Tuning (Anti-Shine &amp; Roughness)" IsExpanded="True" Margin="0,0,0,4" Background="#13151c" BorderBrush="#1f293d">
+                                <StackPanel Spacing="5" Margin="4">
+                                    <!-- Preset Chips -->
+                                    <WrapPanel Margin="0,0,0,2">
+                                        <Button Command="{Binding ApplyShaderPresetCommand}" CommandParameter="matte" Background="#065f46" Foreground="#6ee7b7" FontWeight="Bold" FontSize="9" Margin="1" Padding="4,2" Content="🌿 Matte Terrain"/>
+                                        <Button Command="{Binding ApplyShaderPresetCommand}" CommandParameter="metal" Background="#1e3a8a" Foreground="#93c5fd" FontWeight="Bold" FontSize="9" Margin="1" Padding="4,2" Content="⚙️ Metallic Base"/>
+                                        <Button Command="{Binding ApplyShaderPresetCommand}" CommandParameter="satin" Background="#4c1d95" Foreground="#c4b5fd" FontWeight="Bold" FontSize="9" Margin="1" Padding="4,2" Content="🏛️ Satin Wall"/>
+                                        <Button Command="{Binding ApplyShaderPresetCommand}" CommandParameter="water" Background="#0e7490" Foreground="#67e8f9" FontWeight="Bold" FontSize="9" Margin="1" Padding="4,2" Content="💧 Water"/>
+                                    </WrapPanel>
+
+                                    <!-- Shader Type Selector -->
+                                    <Grid ColumnDefinitions="Auto,*">
+                                        <TextBlock Grid.Column="0" Text="Type:" FontSize="9" Foreground="#94a3b8" VerticalAlignment="Center" Width="44"/>
+                                        <ComboBox Grid.Column="1" ItemsSource="{Binding CustomShaderTypes}" SelectedItem="{Binding CustomShaderType}" Height="22" FontSize="9"/>
                                     </Grid>
 
-                                    <!-- Brush Radius Slider -->
+                                    <!-- Roughness Slider -->
+                                    <Grid ColumnDefinitions="Auto,*,Auto">
+                                        <TextBlock Grid.Column="0" Text="Rough:" FontSize="9" Foreground="#94a3b8" VerticalAlignment="Center" Width="44" ToolTip.Tip="1.0 = Completely matte/diffuse, 0.0 = Glossy/shiny"/>
+                                        <Slider Grid.Column="1" Value="{Binding CustomShaderRoughness}" Minimum="0.0" Maximum="1.0" Margin="2,0" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding CustomShaderRoughness, StringFormat='{}{0:F2}'}" FontSize="9" FontWeight="Bold" Foreground="#38bdf8" Width="28" TextAlignment="Right"/>
+                                    </Grid>
+
+                                    <!-- Metalness / Specular Slider -->
+                                    <Grid ColumnDefinitions="Auto,*,Auto">
+                                        <TextBlock Grid.Column="0" Text="Metal:" FontSize="9" Foreground="#94a3b8" VerticalAlignment="Center" Width="44" ToolTip.Tip="0.0 = Non-metal/no shine, 1.0 = Pure metallic reflection"/>
+                                        <Slider Grid.Column="1" Value="{Binding CustomShaderMetalness}" Minimum="0.0" Maximum="1.0" Margin="2,0" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding CustomShaderMetalness, StringFormat='{}{0:F2}'}" FontSize="9" FontWeight="Bold" Foreground="#a78bfa" Width="28" TextAlignment="Right"/>
+                                    </Grid>
+
+                                    <!-- Environment Reflection Slider -->
+                                    <Grid ColumnDefinitions="Auto,*,Auto">
+                                        <TextBlock Grid.Column="0" Text="Env Refl:" FontSize="9" Foreground="#94a3b8" VerticalAlignment="Center" Width="44" ToolTip.Tip="0.0 = No cubemap reflection (prevents shiny ground), 1.0 = Full reflection"/>
+                                        <Slider Grid.Column="1" Value="{Binding CustomShaderEnvReflection}" Minimum="0.0" Maximum="1.0" Margin="2,0" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding CustomShaderEnvReflection, StringFormat='{}{0:F2}'}" FontSize="9" FontWeight="Bold" Foreground="#facc15" Width="28" TextAlignment="Right"/>
+                                    </Grid>
+
+                                    <!-- Bump Map Strength & Toggle -->
+                                    <Grid ColumnDefinitions="Auto,*,Auto">
+                                        <CheckBox Grid.Column="0" Content="Bump" IsChecked="{Binding CustomShaderEnableBump}" FontSize="9" Foreground="#94a3b8" ToolTip.Tip="Enable/disable normal bump map (disable to remove wrinkly ripples)"/>
+                                        <Slider Grid.Column="1" Value="{Binding CustomShaderBumpStrength}" Minimum="0.0" Maximum="1.0" IsEnabled="{Binding CustomShaderEnableBump}" Margin="2,0" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding CustomShaderBumpStrength, StringFormat='{}{0:F2}'}" FontSize="9" Foreground="#94a3b8" Width="28" TextAlignment="Right"/>
+                                    </Grid>
+
+                                    <!-- Custom Textures Folder Path -->
+                                    <Grid ColumnDefinitions="Auto,*">
+                                        <TextBlock Grid.Column="0" Text="Textures:" FontSize="9" Foreground="#94a3b8" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                        <TextBox Grid.Column="1" Text="{Binding CustomTexturesFolder}" PlaceholderText="Auto: Desktop\coagulation\Textures" Height="22" FontSize="9"/>
+                                    </Grid>
+                                </StackPanel>
+                            </Expander>
+
+                            <!-- 3. Brush Size & Mode Settings (Collapsible) -->
+                            <Expander Grid.Row="2" Header="🖌️ Brush &amp; Sculpt Controls" IsExpanded="False" Margin="0,0,0,4" Background="#13151b" BorderBrush="#252b37">
+                                <StackPanel Spacing="5" Margin="4">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Grid.Column="0" Text="Mode:" FontSize="10" Foreground="#94a3b8" VerticalAlignment="Center"/>
+                                        <ComboBox Grid.Column="1" ItemsSource="{Binding SculptBrushModes}" SelectedIndex="{Binding BrushModeIndex}" Height="24" Width="140" FontSize="10"/>
+                                    </Grid>
                                     <Grid ColumnDefinitions="Auto,*,Auto">
                                         <TextBlock Grid.Column="0" Text="Radius:" FontSize="10" Foreground="#94a3b8" VerticalAlignment="Center" Width="46"/>
                                         <Slider Grid.Column="1" Value="{Binding BrushRadius}" Minimum="20" Maximum="2500" Margin="4,0" VerticalAlignment="Center"/>
-                                        <TextBlock Grid.Column="2" Text="{Binding BrushRadius, StringFormat='{}{0:F0}'}" FontSize="10" FontWeight="SemiBold" Foreground="#38bdf8" Width="36" TextAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding BrushRadius, StringFormat='{}{0:F0}'}" FontSize="10" FontWeight="SemiBold" Foreground="#38bdf8" Width="36" TextAlignment="Right"/>
                                     </Grid>
-
-                                    <!-- Brush Strength Slider -->
                                     <Grid ColumnDefinitions="Auto,*,Auto">
                                         <TextBlock Grid.Column="0" Text="Strength:" FontSize="10" Foreground="#94a3b8" VerticalAlignment="Center" Width="46"/>
                                         <Slider Grid.Column="1" Value="{Binding BrushStrength}" Minimum="1" Maximum="60" Margin="4,0" VerticalAlignment="Center"/>
-                                        <TextBlock Grid.Column="2" Text="{Binding BrushStrength, StringFormat='{}{0:F0}'}" FontSize="10" FontWeight="SemiBold" Foreground="#a78bfa" Width="36" TextAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding BrushStrength, StringFormat='{}{0:F0}'}" FontSize="10" FontWeight="SemiBold" Foreground="#a78bfa" Width="36" TextAlignment="Right"/>
                                     </Grid>
                                 </StackPanel>
-                            </Border>
+                            </Expander>
 
-                            <!-- 2. Active Brush Shader & Quick Palette Chips -->
-                            <Border Grid.Row="1" Background="#111318" BorderBrush="#1e293b" BorderThickness="1" CornerRadius="6" Padding="8" Margin="0,0,0,6">
-                                <StackPanel Spacing="6">
-                                    <StackPanel Spacing="4">
-                                        <Grid ColumnDefinitions="*,Auto">
-                                            <StackPanel Grid.Column="0" Spacing="1">
-                                                <TextBlock Text="Active Paint Brush Shader:" FontSize="9" Foreground="#94a3b8"/>
-                                                <TextBlock Text="{Binding PaintMaterialName}" FontSize="11" FontWeight="Bold" Foreground="#4ade80" TextTrimming="CharacterEllipsis"/>
-                                            </StackPanel>
-                                        </Grid>
-                                        <WrapPanel Margin="0,2,0,0">
-                                            <Button Command="{Binding ApplySelectedShaderToActiveMeshCommand}" Background="#16a34a" Foreground="White" FontWeight="Bold" Padding="5,3" Margin="1" ToolTip.Tip="Apply selected shader to the entire active mesh and update 1:1 Blam name">
-                                                <TextBlock Text="🏷️ Apply" FontSize="9"/>
-                                            </Button>
-                                            <Button Command="{Binding SetPaintModeCommand}" Background="#7c3aed" Foreground="White" FontWeight="Bold" Padding="5,3" Margin="1" ToolTip.Tip="Activate 3D mesh paint mode">
-                                                <TextBlock Text="🎨 Paint" FontSize="9"/>
-                                            </Button>
-                                            <Button Command="{Binding FillMeshWithSelectedMaterialCommand}" Background="#0284c7" Foreground="White" FontWeight="Bold" Padding="5,3" Margin="1" ToolTip.Tip="Fill entire active mesh with this shader and auto-fit UVs (triplanar distortion-free)">
-                                                <TextBlock Text="Fill All" FontSize="9"/>
-                                            </Button>
-                                            <Button Command="{Binding AutoFitActiveMeshUvsCommand}" Background="#0f766e" Foreground="White" FontWeight="Bold" Padding="5,3" Margin="1" ToolTip.Tip="Auto-fit triplanar UVs (eliminates cliff wall vertical texture stretching)">
-                                                <TextBlock Text="📐 UVs" FontSize="9"/>
-                                            </Button>
-                                            <Button Command="{Binding SealActiveMeshAcrossTopCommand}" Background="#b45309" Foreground="White" FontWeight="Bold" Padding="5,3" Margin="1" ToolTip.Tip="Seal top open edges across cliff rim with +sky ceiling dome (fixes red open edge errors)">
-                                                <TextBlock Text="🛡️ +Sky" FontSize="9"/>
-                                            </Button>
-                                        </WrapPanel>
-                                    </StackPanel>
-
-                                    <!-- Grouped Authentic Material Presets (1-Click Apply) -->
-                                    <TextBlock Text="Verified Material Presets (1-Click Apply):" FontSize="9" FontWeight="SemiBold" Foreground="#94a3b8"/>
-
-                                    <!-- 1. Snowbound Presets (Snow) -->
-                                    <StackPanel Spacing="1">
-                                        <TextBlock Text="❄️ Snowbound (Snow):" FontSize="8" FontWeight="Bold" Foreground="#38bdf8"/>
-                                        <WrapPanel Margin="0,0,0,2">
-                                            <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="chill chill_snow" Background="#1e293b" Foreground="#38bdf8" FontSize="9" Margin="1" Padding="4,2" Content="❄️ Snow"/>
-                                            <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="sb terrain_snow" Background="#1e293b" Foreground="#7dd3fc" FontSize="9" Margin="1" Padding="4,2" Content="🏔️ Snowbound"/>
-                                            <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="chill chill_glacier_blend" Background="#1e293b" Foreground="#bae6fd" FontSize="9" Margin="1" Padding="4,2" Content="🧊 Glacier"/>
-                                            <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="sb rock_rocky_icy" Background="#1e293b" Foreground="#94a3b8" FontSize="9" Margin="1" Padding="4,2" Content="🪨 Icy Rock"/>
-                                        </WrapPanel>
-                                    </StackPanel>
-
-                                    <!-- 2. Riverworld Presets (Grass & Nature) -->
-                                    <StackPanel Spacing="1">
-                                        <TextBlock Text="🌿 Riverworld (Grass &amp; Nature):" FontSize="8" FontWeight="Bold" Foreground="#4ade80"/>
-                                        <WrapPanel Margin="0,0,0,2">
-                                            <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="river riverworld_ground" Background="#1e293b" Foreground="#4ade80" FontSize="9" Margin="1" Padding="4,2" Content="🌿 Ground"/>
-                                            <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="river riverworld_rock" Background="#1e293b" Foreground="#94a3b8" FontSize="9" Margin="1" Padding="4,2" Content="🪨 Rock"/>
-                                            <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="river riverworld_cliff" Background="#1e293b" Foreground="#cbd5e1" FontSize="9" Margin="1" Padding="4,2" Content="🧗 Cliff"/>
-                                            <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="river riverworld_tree_bark" Background="#1e293b" Foreground="#a3e635" FontSize="9" Margin="1" Padding="4,2" Content="🌲 Bark"/>
-                                        </WrapPanel>
-                                    </StackPanel>
-
-                                    <!-- 3. Shrine Presets (Desert & Sandtrap) -->
-                                    <StackPanel Spacing="1">
-                                        <TextBlock Text="🏜️ Shrine (Desert &amp; Sandtrap):" FontSize="8" FontWeight="Bold" Foreground="#facc15"/>
-                                        <WrapPanel Margin="0,0,0,2">
-                                            <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="shr shrine_ground" Background="#1e293b" Foreground="#facc15" FontSize="9" Margin="1" Padding="4,2" Content="🏜️ Sand Ground"/>
-                                            <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="shr cust_stone_rubble" Background="#1e293b" Foreground="#fbbf24" FontSize="9" Margin="1" Padding="4,2" Content="🧱 Stone Rubble"/>
-                                            <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="shr cust_stone_pyramid1" Background="#1e293b" Foreground="#fde047" FontSize="9" Margin="1" Padding="4,2" Content="🔺 Pyramid"/>
-                                            <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="shr stone_broken_tiling" Background="#1e293b" Foreground="#e2e8f0" FontSize="9" Margin="1" Padding="4,2" Content="🏚️ Broken Stone"/>
-                                            <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="shr cust_copper_plate" Background="#1e293b" Foreground="#f97316" FontSize="9" Margin="1" Padding="4,2" Content="🔶 Copper"/>
-                                        </WrapPanel>
-                                    </StackPanel>
-
-                                    <!-- 4. Architectural Elements (Floors, Walls, Panels, Lights) -->
-                                    <StackPanel Spacing="1">
-                                        <TextBlock Text="🏛️ Architecture (Floors / Walls / Panels / Lights):" FontSize="8" FontWeight="Bold" Foreground="#c084fc"/>
-                                        <WrapPanel Margin="0,0,0,2">
-                                            <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="sal sal_floor_tile" Background="#1e293b" Foreground="#a855f7" FontSize="9" Margin="1" Padding="4,2" Content="🏁 Tile Floor"/>
-                                            <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="sb cov_floor_rubber" Background="#1e293b" Foreground="#c084fc" FontSize="9" Margin="1" Padding="4,2" Content="🟫 Rubber Floor"/>
-                                            <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="chill chill_wall01" Background="#1e293b" Foreground="#60a5fa" FontSize="9" Margin="1" Padding="4,2" Content="🧱 Wall 01"/>
-                                            <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="chill panel_elevator" Background="#1e293b" Foreground="#e2e8f0" FontSize="9" Margin="1" Padding="4,2" Content="🎛️ Panel"/>
-                                            <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="chill light_circle_lift" Background="#1e293b" Foreground="#fbbf24" FontSize="9" Margin="1" Padding="4,2" Content="💡 Lift Light"/>
-                                            <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="sb tech_glow_a" Background="#1e293b" Foreground="#38bdf8" FontSize="9" Margin="1" Padding="4,2" Content="✨ Tech Glow"/>
-                                            <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="+sky" Background="#1e293b" Foreground="#60a5fa" FontSize="9" Margin="1" Padding="4,2" Content="🌐 +Sky"/>
-                                        </WrapPanel>
-                                    </StackPanel>
+                            <!-- 4. Grouped Authentic Material Presets (Collapsible) -->
+                            <Expander Grid.Row="3" Header="📚 Material Presets (Snow, Grass, Shrine, Architecture)" IsExpanded="False" Margin="0,0,0,4" Background="#111318" BorderBrush="#1e293b">
+                                <StackPanel Spacing="4" Margin="4">
+                                    <WrapPanel Margin="0,1">
+                                        <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="chill chill_snow" Background="#1e293b" Foreground="#38bdf8" FontSize="9" Margin="1" Padding="4,2" Content="❄️ Snow"/>
+                                        <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="chill chill_glacier_blend" Background="#1e293b" Foreground="#bae6fd" FontSize="9" Margin="1" Padding="4,2" Content="🧊 Glacier"/>
+                                        <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="river riverworld_ground" Background="#1e293b" Foreground="#4ade80" FontSize="9" Margin="1" Padding="4,2" Content="🌿 Ground"/>
+                                        <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="river riverworld_rock" Background="#1e293b" Foreground="#94a3b8" FontSize="9" Margin="1" Padding="4,2" Content="🪨 Rock"/>
+                                        <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="river riverworld_cliff" Background="#1e293b" Foreground="#cbd5e1" FontSize="9" Margin="1" Padding="4,2" Content="🧗 Cliff"/>
+                                        <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="shr shrine_ground" Background="#1e293b" Foreground="#facc15" FontSize="9" Margin="1" Padding="4,2" Content="🏜️ Sand Ground"/>
+                                        <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="sal sal_floor_tile" Background="#1e293b" Foreground="#a855f7" FontSize="9" Margin="1" Padding="4,2" Content="🏁 Tile Floor"/>
+                                        <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="chill chill_wall01" Background="#1e293b" Foreground="#60a5fa" FontSize="9" Margin="1" Padding="4,2" Content="🧱 Wall 01"/>
+                                        <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="chill panel_elevator" Background="#1e293b" Foreground="#e2e8f0" FontSize="9" Margin="1" Padding="4,2" Content="🎛️ Panel"/>
+                                        <Button Command="{Binding SetBrushShaderCommand}" CommandParameter="+sky" Background="#1e293b" Foreground="#60a5fa" FontSize="9" Margin="1" Padding="4,2" Content="🌐 +Sky"/>
+                                    </WrapPanel>
                                 </StackPanel>
-                            </Border>
+                            </Expander>
 
-                            <!-- 3. Category Filter & Verified Toggle -->
-                            <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,4">
-                                <TextBlock Grid.Column="0" Text="Category:" FontSize="10" Foreground="#94a3b8" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                <ComboBox Grid.Column="1" ItemsSource="{Binding ShaderCategories}" SelectedItem="{Binding SelectedCategory}" Height="24" HorizontalAlignment="Stretch" FontSize="10"/>
-                                <Button Grid.Column="2" Command="{Binding ToggleVerifiedShadersOnlyCommand}"
-                                        Background="#1e293b" Padding="6,3" Margin="4,0,0,0" ToolTip.Tip="Toggle filter: Show only verified working shaders compiled in H3EK">
-                                    <TextBlock Text="✓ Verified Only" FontSize="9" FontWeight="Bold" Foreground="#4ade80"/>
-                                </Button>
-                            </Grid>
-
-                            <!-- 4. Quick Category Filter Chips -->
-                            <WrapPanel Grid.Row="3" Margin="0,0,0,6">
-                                <Button Command="{Binding FilterShaderCategoryCommand}" CommandParameter="All" Background="#27272a" Margin="1" Padding="5,2" FontSize="9" Content="All"/>
-                                <Button Command="{Binding FilterShaderCategoryCommand}" CommandParameter="Floors" Background="#27272a" Margin="1" Padding="5,2" FontSize="9" Content="Floors"/>
-                                <Button Command="{Binding FilterShaderCategoryCommand}" CommandParameter="Walls" Background="#27272a" Margin="1" Padding="5,2" FontSize="9" Content="Walls"/>
-                                <Button Command="{Binding FilterShaderCategoryCommand}" CommandParameter="Panels" Background="#27272a" Margin="1" Padding="5,2" FontSize="9" Content="Panels"/>
-                                <Button Command="{Binding FilterShaderCategoryCommand}" CommandParameter="Lights" Background="#27272a" Margin="1" Padding="5,2" FontSize="9" Content="Lights"/>
-                                <Button Command="{Binding FilterShaderCategoryCommand}" CommandParameter="Snow" Background="#27272a" Margin="1" Padding="5,2" FontSize="9" Content="Snow"/>
-                                <Button Command="{Binding FilterShaderCategoryCommand}" CommandParameter="Grass" Background="#27272a" Margin="1" Padding="5,2" FontSize="9" Content="Grass"/>
-                                <Button Command="{Binding FilterShaderCategoryCommand}" CommandParameter="Desert" Background="#27272a" Margin="1" Padding="5,2" FontSize="9" Content="Desert"/>
-                                <Button Command="{Binding FilterShaderCategoryCommand}" CommandParameter="Rock" Background="#27272a" Margin="1" Padding="5,2" FontSize="9" Content="Rock"/>
-                                <Button Command="{Binding FilterShaderCategoryCommand}" CommandParameter="Metal" Background="#27272a" Margin="1" Padding="5,2" FontSize="9" Content="Metal"/>
-                                <Button Command="{Binding FilterShaderCategoryCommand}" CommandParameter="Special" Background="#27272a" Margin="1" Padding="5,2" FontSize="9" Content="+Sky"/>
-                            </WrapPanel>
-
-                            <!-- 5. Search Bar & Shader List (Differentiating Verified from Raw Tags) -->
-                            <Grid Grid.Row="4" RowDefinitions="Auto,*">
-                                <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" Margin="0,0,0,4">
-                                    <TextBox Grid.Column="0" Text="{Binding ShaderSearchQuery}" PlaceholderText="Search 14k+ shaders (e.g. chill, rock)..." Height="26" FontSize="10"/>
-                                    <Button Grid.Column="1" Command="{Binding PerformShaderSearchCommand}" Content="Search" Height="26" FontSize="10" Margin="4,0,0,0"/>
-                                    <Button Grid.Column="2" Command="{Binding ImportModelTexturesCommand}" Background="#7c3aed" Foreground="White" FontWeight="Bold" Content="+ Shaders" Height="26" FontSize="10" Margin="4,0,0,0" ToolTip.Tip="Import model PNG/JPG/TIF textures, convert to TIFF in data\, and generate custom .shader tags in tags\levels\multi\level\shaders\"/>
+                            <!-- 5. Search Bar & Spacious Shader List (14,000+ Shaders) -->
+                            <Grid Grid.Row="4" RowDefinitions="Auto,Auto,*" Margin="0,2,0,0">
+                                <!-- Category Filter & Verified Toggle -->
+                                <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,4">
+                                    <TextBlock Grid.Column="0" Text="Category:" FontSize="9" Foreground="#94a3b8" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                    <ComboBox Grid.Column="1" ItemsSource="{Binding ShaderCategories}" SelectedItem="{Binding SelectedCategory}" Height="22" HorizontalAlignment="Stretch" FontSize="9"/>
+                                    <Button Grid.Column="2" Command="{Binding ToggleVerifiedShadersOnlyCommand}"
+                                            Background="#1e293b" Padding="5,2" Margin="4,0,0,0" ToolTip.Tip="Toggle filter: Show only verified working shaders compiled in H3EK">
+                                        <TextBlock Text="✓ Verified Only" FontSize="8" FontWeight="Bold" Foreground="#4ade80"/>
+                                    </Button>
                                 </Grid>
 
-                                <ListBox Grid.Row="1" ItemsSource="{Binding SearchResults}" SelectedItem="{Binding SelectedShader}" Background="#111317">
+                                <!-- Search Box -->
+                                <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto" Margin="0,0,0,4">
+                                    <TextBox Grid.Column="0" Text="{Binding ShaderSearchQuery}" PlaceholderText="Search 14k+ shaders (e.g. chill, rock)..." Height="26" FontSize="10"/>
+                                    <Button Grid.Column="1" Command="{Binding PerformShaderSearchCommand}" Content="Search" Height="26" FontSize="10" Margin="4,0,0,0"/>
+                                    <Button Grid.Column="2" Command="{Binding ImportModelTexturesCommand}" Background="#7c3aed" Foreground="White" FontWeight="Bold" Content="+ Textures" Height="26" FontSize="10" Margin="4,0,0,0" ToolTip.Tip="Batch convert model PNG/JPG textures to TIFFs, compile .bitmap tags with tool_fast, and synthesize custom .shader tags in tags\levels\multi\level\shaders\"/>
+                                </Grid>
+
+                                <!-- ListBox: Full remaining vertical height with smooth scrolling -->
+                                <ListBox Grid.Row="2" ItemsSource="{Binding SearchResults}" SelectedItem="{Binding SelectedShader}" Background="#111317" MinHeight="250" ScrollViewer.VerticalScrollBarVisibility="Auto">
                                     <ListBox.ItemTemplate>
                                         <DataTemplate>
                                             <Border BorderBrush="#1f242d" BorderThickness="0,0,0,1" Padding="4,5">
@@ -1608,6 +1619,9 @@
                         </Button>
                         <Button Command="{Binding SetupMapFoldersCommand}" Background="#0284c7" Foreground="White" FontWeight="Bold" Padding="8,2" FontSize="10" Margin="2,1" ToolTip.Tip="Setup all required folders and scenario tag for active map in H3EK">
                             <TextBlock Text="📁 Setup Map Folders"/>
+                        </Button>
+                        <Button Command="{Binding ImportModelTexturesCommand}" Background="#0d9488" Foreground="White" FontWeight="Bold" Padding="8,2" FontSize="10" Margin="2,1" ToolTip.Tip="Batch convert model PNG/JPG textures to TIFFs, compile .bitmap tags with tool_fast, and generate custom Halo 3 .shader tags">
+                            <TextBlock Text="🎨 Import Textures"/>
                         </Button>
                         <Button Command="{Binding CompileStructureCommand}" Background="#059669" Foreground="White" FontWeight="Bold" Padding="10,2" FontSize="10" Margin="2,1" ToolTip.Tip="Compile structure BSP and build cache map file">
                             <TextBlock Text="⚡ 1-Click Fast Compile"/>

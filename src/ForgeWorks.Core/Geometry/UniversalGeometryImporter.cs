@@ -111,18 +111,28 @@ public static class UniversalGeometryImporter
 
             // Map two-sided and render-only flags from Assimp material properties and naming
             bool isTwoSided = aMat.IsTwoSided || mName.Contains("foliage") || mName.Contains("leaves");
-            bool isRenderOnly = (aMat.HasOpacity && aMat.Opacity < 0.95f) ||
+            
+            bool isSolidKeyword = mName.Contains("ground") || mName.Contains("cliff") || mName.Contains("rock") ||
+                                  mName.Contains("terrain") || mName.Contains("wall") || mName.Contains("floor") ||
+                                  mName.Contains("plate") || mName.Contains("panel") || mName.Contains("metal") ||
+                                  mName.Contains("stone") || mName.Contains("wood") || mName.Contains("concrete") ||
+                                  mName.Contains("brick") || mName.Contains("ramp") || mName.Contains("bridge") ||
+                                  mName.Contains("roof") || mName.Contains("sand") || mName.Contains("ice") ||
+                                  mName.Contains("dirt") || mName.Contains("grass") || mName.Contains("ladder") ||
+                                  mName.Contains("scratchy") || mName.Contains("graytech");
+
+            bool isRenderOnly = !isSolidKeyword && ((aMat.HasOpacity && aMat.Opacity < 0.95f) ||
                                 mName.Contains("light") || mName.Contains("lens") ||
                                 mName.Contains("glow") || mName.Contains("decal") ||
-                                mName.Contains("sprite") || aMat.Name.StartsWith("!") || aMat.Name.EndsWith("!");
+                                mName.Contains("sprite") || aMat.Name.StartsWith("!") || aMat.Name.EndsWith("!"));
 
-            if (isRenderOnly && !mName.StartsWith("!"))
-            {
-                mName = "!" + mName;
-            }
             if (isTwoSided && !mName.Contains("%"))
             {
-                mName = mName.StartsWith("!") ? "!%" + mName[1..] : "%" + mName;
+                mName += "%";
+            }
+            if (isRenderOnly && !mName.EndsWith("!"))
+            {
+                mName += "!";
             }
 
             string? texPath = null;

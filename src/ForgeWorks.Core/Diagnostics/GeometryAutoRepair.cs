@@ -1506,32 +1506,22 @@ public sealed class GeometryAutoRepair
 
         if (isWater)
         {
-            if (!mat.StartsWith("!") && !mat.StartsWith("%")) mat = "!" + mat;
-            if (!mat.EndsWith("!")) mat = mat + "!";
-            mesh.MaterialName = mat;
+            string clean = mat.TrimStart('!', '%').TrimEnd('!', '\'');
+            mesh.MaterialName = clean + "'!";
             mesh.IsCollideable = false;
             if (report != null) report.WaterQuadsFixed++;
         }
         else if (IsDecalOrCard(mat) || IsDecalOrCard(mesh.Name))
         {
-            // Decals and thin surface cards in Blam must be marked render-only (%! or !) to prevent open edge BSP errors
-            string clean = mat.TrimEnd('!');
-            if (!clean.StartsWith("%!") && !clean.StartsWith("!"))
-            {
-                clean = "%!" + clean.TrimStart('%');
-            }
-            mesh.MaterialName = clean;
+            // Decals and thin surface cards in Blam must be marked render-only (! or %!) to prevent open edge BSP errors
+            string clean = mat.TrimStart('!', '%').TrimEnd('!', '%');
+            mesh.MaterialName = clean + "%!";
             mesh.IsCollideable = false;
         }
-        else if (mat.StartsWith("%"))
+        else if (mat.EndsWith("%") || mat.StartsWith("%"))
         {
-            // Foliage / two-sided cards in Blam: prefix '%!' makes them render-only without collision.
-            string clean = mat.TrimEnd('!');
-            if (!clean.StartsWith("%!"))
-            {
-                clean = "%!" + clean.Substring(1);
-            }
-            mesh.MaterialName = clean;
+            string clean = mat.TrimStart('%').TrimEnd('%');
+            mesh.MaterialName = clean + "%";
         }
 
         for (int i = 0; i < mesh.MaterialSlots.Count; i++)
@@ -1541,35 +1531,26 @@ public sealed class GeometryAutoRepair
             {
                 mesh.MaterialSlots[i] = "+sky";
             }
-            else if ((sMat.Contains("water", StringComparison.OrdinalIgnoreCase) && !sMat.Contains("watertight", StringComparison.OrdinalIgnoreCase)) || sMat.EndsWith("'"))
+            else if ((sMat.Contains("water", StringComparison.OrdinalIgnoreCase) && !sMat.Contains("watertight", StringComparison.OrdinalIgnoreCase)) || sMat.EndsWith("'") || sMat.EndsWith("'!"))
             {
-                if (!sMat.StartsWith("!") && !sMat.StartsWith("%")) sMat = "!" + sMat;
-                mesh.MaterialSlots[i] = sMat.TrimEnd('!');
+                string clean = sMat.TrimStart('!', '%').TrimEnd('!', '\'');
+                mesh.MaterialSlots[i] = clean + "'!";
                 if (report != null) report.WaterQuadsFixed++;
             }
             else if (IsDecalOrCard(sMat))
             {
-                string clean = sMat.TrimEnd('!');
-                if (!clean.StartsWith("%!") && !clean.StartsWith("!"))
-                {
-                    clean = "%!" + clean.TrimStart('%');
-                }
-                mesh.MaterialSlots[i] = clean;
+                string clean = sMat.TrimStart('!', '%').TrimEnd('!', '%');
+                mesh.MaterialSlots[i] = clean + "%!";
             }
-            else if (sMat.StartsWith("%"))
+            else if (sMat.EndsWith("%") || sMat.StartsWith("%"))
             {
-                string clean = sMat.TrimEnd('!');
-                if (!clean.StartsWith("%!"))
-                {
-                    clean = "%!" + clean.Substring(1);
-                }
-                mesh.MaterialSlots[i] = clean;
+                string clean = sMat.TrimStart('%').TrimEnd('%');
+                mesh.MaterialSlots[i] = clean + "%";
             }
-            else if (sMat.EndsWith("!"))
+            else if (sMat.EndsWith("!") || sMat.StartsWith("!"))
             {
-                string clean = sMat.TrimEnd('!');
-                if (!clean.StartsWith("!")) clean = "!" + clean;
-                mesh.MaterialSlots[i] = clean;
+                string clean = sMat.TrimStart('!').TrimEnd('!');
+                mesh.MaterialSlots[i] = clean + "!";
             }
         }
     }

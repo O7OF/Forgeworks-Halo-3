@@ -95,11 +95,21 @@ public sealed class AssExporter
                     CleanFloat(v.Position.Y * scale),
                     CleanFloat(v.Position.Z * scale)));
 
-                // Normal I J K
+                // Normal I J K (Must be unit length for Bungie tool.exe)
+                Vector3 norm = v.Normal;
+                if (norm.LengthSquared() > 1e-6f)
+                {
+                    norm = Vector3.Normalize(norm);
+                }
+                else
+                {
+                    norm = Vector3.UnitZ;
+                }
+
                 writer.WriteLine(string.Format(inv, "{0:F10}\t{1:F10}\t{2:F10}",
-                    CleanFloat(v.Normal.X),
-                    CleanFloat(v.Normal.Y),
-                    CleanFloat(v.Normal.Z)));
+                    CleanFloat(norm.X),
+                    CleanFloat(norm.Y),
+                    CleanFloat(norm.Z)));
 
                 // Vertex Color (R G B) - only ASS version >= 6
                 if (version >= 6)
@@ -263,25 +273,35 @@ public sealed class AssExporter
             return m;
         }
 
-        // Extract leading semantic flags: %, !, %!, +, $, *, @, ~
-        string prefix = "";
-        while (m.Length > 0 && (m[0] == '%' || m[0] == '!' || m[0] == '+' || m[0] == '$' || m[0] == '*' || m[0] == '@' || m[0] == '~'))
+        // Extract special leading '+' (e.g. +sky, +portal, +seamsealer)
+        bool hasSpecialPlus = m.StartsWith("+") || m.StartsWith("%+") || m.StartsWith("!+");
+        m = m.TrimStart('+');
+
+        // Extract semantic flags: %, !, $, *, @, ~, #, ?
+        string symbols = "";
+        while (m.Length > 0 && (m[0] == '%' || m[0] == '!' || m[0] == '$' || m[0] == '*' || m[0] == '@' || m[0] == '~' || m[0] == '#' || m[0] == '?'))
         {
-            prefix += m[0];
+            char c = m[0];
+            if (!symbols.Contains(c)) symbols += c;
             m = m[1..];
         }
 
-        // Also extract any trailing flags (e.g. lights! or foliage%) and normalize to prefix
-        while (m.Length > 0 && (m[^1] == '!' || m[^1] == '%' || m[^1] == '$' || m[^1] == '*' || m[^1] == '@' || m[^1] == '~'))
+        // Also extract any trailing flags (e.g. lights! or foliage% or multi_banner%!)
+        while (m.Length > 0 && (m[^1] == '!' || m[^1] == '%' || m[^1] == '$' || m[^1] == '*' || m[^1] == '@' || m[^1] == '~' || m[^1] == '#' || m[^1] == '?'))
         {
-            char flag = m[^1];
-            if (!prefix.Contains(flag)) prefix = flag + prefix;
+            char c = m[^1];
+            if (!symbols.Contains(c)) symbols += c;
             m = m[..^1];
         }
 
         // Clean out invalid punctuation without mangling into underscores
         m = System.Text.RegularExpressions.Regex.Replace(m, @"[^A-Za-z0-9_\s]+", "").Trim();
         if (string.IsNullOrEmpty(m)) m = "custom";
+
+        if (hasSpecialPlus)
+        {
+            return "+" + m;
+        }
 
         // If regular geometry (no special +sky), does not already have a collection prefix (no space),
         // and defaultLevelPrefix is available, prepend collection prefix so Tool resolves the shader!
@@ -290,7 +310,17 @@ public sealed class AssExporter
             m = $"{defaultLevelPrefix} {m}";
         }
 
-        return prefix + m;
+        // Per C20 Wiki: Material symbols are added to the END of the material name
+        // (e.g. "custom_canvas panel_d%", "custom_canvas multi_banner%!", "custom_canvas lights!")
+        string sortedSymbols = "";
+        if (symbols.Contains('%')) sortedSymbols += "%";
+        if (symbols.Contains('!')) sortedSymbols += "!";
+        foreach (char c in symbols)
+        {
+            if (c != '%' && c != '!') sortedSymbols += c;
+        }
+
+        return m + sortedSymbols;
     }
 
     private static float CleanFloat(float val, float fallback = 0.0f)

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Numerics;
 using System.Text;
@@ -79,47 +80,95 @@ public sealed class ScenarioTagBuilder
 
             if (template != null)
             {
-                byte[] raw = File.ReadAllBytes(template);
-                byte[] searchBytes = Encoding.ASCII.GetBytes(searchTarget);
-                byte[] replaceBytes = Encoding.ASCII.GetBytes(bspTagPath);
+                string toolExe = Path.Combine(ekPath, "tool_fast.exe");
+                if (!File.Exists(toolExe)) toolExe = Path.Combine(ekPath, "tool.exe");
 
-                bool patched = false;
-                int idx = 0;
-                while (idx <= raw.Length - searchBytes.Length)
+                if (File.Exists(toolExe))
                 {
-                    bool match = true;
-                    for (int j = 0; j < searchBytes.Length; j++)
+                    if (!string.Equals(Path.GetFullPath(template), Path.GetFullPath(outputPath), StringComparison.OrdinalIgnoreCase))
                     {
-                        if (raw[idx + j] != searchBytes[j])
+                        File.Copy(template, outputPath, overwrite: true);
+                    }
+
+                    // Determine primary player spawn (must spawn inside level and safe zone)
+                    Vector3 spawnPos = (spawns != null && spawns.Count > 0)
+                        ? spawns[0].Position
+                        : new Vector3(11500.0f, -13000.0f, 1250.0f);
+
+                    // Determine safe zone bounds
+                    Vector3 safePos = new Vector3(11500.0f, -13000.0f, 2500.0f);
+                    Vector3 safeExt = new Vector3(25000.0f, 25000.0f, 10000.0f);
+                    Vector3 killPos = new Vector3(11500.0f, -13000.0f, -2000.0f);
+                    Vector3 killExt = new Vector3(25000.0f, 25000.0f, 500.0f);
+
+                    if (volumes != null)
+                    {
+                        foreach (var v in volumes)
                         {
-                            match = false;
-                            break;
+                            if (v.Name.Contains("safe", StringComparison.OrdinalIgnoreCase))
+                            {
+                                safePos = v.Position;
+                                safeExt = v.Extents;
+                            }
+                            else if (v.Name.Contains("kill", StringComparison.OrdinalIgnoreCase))
+                            {
+                                killPos = v.Position;
+                                killExt = v.Extents;
+                            }
                         }
                     }
 
-                    if (match)
+                    string relScenarioTag = Path.GetRelativePath(Path.Combine(ekPath, "tags"), outputPath).Replace('/', '\\');
+                    if (relScenarioTag.EndsWith(".scenario", StringComparison.OrdinalIgnoreCase))
                     {
-                        // Safely patch without exceeding the original string length.
-                        // Overwriting past searchBytes.Length wipes out the subsequent 'tgrf' (reversed 'frgt') chunk tag.
-                        int copyLen = Math.Min(replaceBytes.Length, searchBytes.Length);
-                        Array.Copy(replaceBytes, 0, raw, idx, copyLen);
-                        for (int k = copyLen; k < searchBytes.Length; k++)
-                        {
-                            raw[idx + k] = 0; // Null-pad within slot bounds only
-                        }
-                        patched = true;
-                        idx += searchBytes.Length;
+                        relScenarioTag = relScenarioTag[..^9];
                     }
-                    else
-                    {
-                        idx++;
-                    }
-                }
 
-                if (patched)
-                {
-                    File.WriteAllBytes(outputPath, raw);
+                    PatchScenarioWithTool(ekPath, relScenarioTag, bspTagPath, spawnPos, safePos, safeExt, killPos, killExt);
                     return;
+                }
+                else
+                {
+                    byte[] raw = File.ReadAllBytes(template);
+                    byte[] searchBytes = Encoding.ASCII.GetBytes(searchTarget);
+                    byte[] replaceBytes = Encoding.ASCII.GetBytes(bspTagPath);
+
+                    bool patched = false;
+                    int idx = 0;
+                    while (idx <= raw.Length - searchBytes.Length)
+                    {
+                        bool match = true;
+                        for (int j = 0; j < searchBytes.Length; j++)
+                        {
+                            if (raw[idx + j] != searchBytes[j])
+                            {
+                                match = false;
+                                break;
+                            }
+                        }
+
+                        if (match)
+                        {
+                            int copyLen = Math.Min(replaceBytes.Length, searchBytes.Length);
+                            Array.Copy(replaceBytes, 0, raw, idx, copyLen);
+                            for (int k = copyLen; k < searchBytes.Length; k++)
+                            {
+                                raw[idx + k] = 0;
+                            }
+                            patched = true;
+                            idx += searchBytes.Length;
+                        }
+                        else
+                        {
+                            idx++;
+                        }
+                    }
+
+                    if (patched)
+                    {
+                        File.WriteAllBytes(outputPath, raw);
+                        return;
+                    }
                 }
             }
         }
@@ -246,5 +295,47 @@ public sealed class ScenarioTagBuilder
         // 7. Write String Table Data
         byte[] stringBytes = stringTable.ToArray();
         writer.Write(stringBytes);
+    }
+
+    public static void PatchScenarioWithTool(
+        string ekPath,
+        string scenarioRelativeTag,
+        string bspTagPath,
+        Vector3 spawnPos,
+        Vector3 safePos,
+        Vector3 safeExtents,
+        Vector3 killPos,
+        Vector3 killExtents)
+    {
+        string toolExe = Path.Combine(ekPath, "tool_fast.exe");
+        if (!File.Exists(toolExe)) toolExe = Path.Combine(ekPath, "tool.exe");
+        if (!File.Exists(toolExe)) return;
+
+        void PatchField(string fieldPath, string fieldValue)
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = toolExe,
+                Arguments = $"patch-tag-field \"{scenarioRelativeTag}\" \"{fieldPath}\" \"{fieldValue}\"",
+                WorkingDirectory = ekPath,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+            try
+            {
+                using var p = Process.Start(psi);
+                p?.WaitForExit(5000);
+            }
+            catch { }
+        }
+
+        PatchField("scenario_struct_definition[0].structure bsps[0].structure bsp", bspTagPath);
+        PatchField("scenario_struct_definition[0].player starting locations[0].position", FormattableString.Invariant($"{spawnPos.X},{spawnPos.Y},{spawnPos.Z}"));
+        PatchField("scenario_struct_definition[0].trigger volumes[1].position", FormattableString.Invariant($"{safePos.X},{safePos.Y},{safePos.Z}"));
+        PatchField("scenario_struct_definition[0].trigger volumes[1].extents", FormattableString.Invariant($"{safeExtents.X},{safeExtents.Y},{safeExtents.Z}"));
+        PatchField("scenario_struct_definition[0].trigger volumes[0].position", FormattableString.Invariant($"{killPos.X},{killPos.Y},{killPos.Z}"));
+        PatchField("scenario_struct_definition[0].trigger volumes[0].extents", FormattableString.Invariant($"{killExtents.X},{killExtents.Y},{killExtents.Z}"));
     }
 }

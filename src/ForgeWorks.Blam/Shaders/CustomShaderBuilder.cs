@@ -19,6 +19,71 @@ public sealed record CustomShaderResult(
 );
 
 /// <summary>
+/// Physical parameters for custom shader synthesis (roughness, metalness, reflections, bump).
+/// </summary>
+public sealed class CustomShaderProperties
+{
+    public string ShaderType { get; set; } = "Matte / Environment";
+    public float Roughness { get; set; } = 0.95f;
+    public float Metalness { get; set; } = 0.02f;
+    public float EnvironmentReflection { get; set; } = 0.0f;
+    public bool EnableBumpMap { get; set; } = false;
+    public float BumpMapStrength { get; set; } = 0.0f;
+
+    public static CustomShaderProperties CreateDefault(string cleanMaterialId)
+    {
+        var id = (cleanMaterialId ?? "").ToLowerInvariant();
+        if (id.Contains("ground") || id.Contains("cliff") || id.Contains("rock") || 
+            id.Contains("dirt") || id.Contains("sand") || id.Contains("snow"))
+        {
+            return new CustomShaderProperties
+            {
+                ShaderType = "Matte / Environment",
+                Roughness = 0.95f,
+                Metalness = 0.02f,
+                EnvironmentReflection = 0.0f,
+                EnableBumpMap = false,
+                BumpMapStrength = 0.0f
+            };
+        }
+        if (id.Contains("water"))
+        {
+            return new CustomShaderProperties
+            {
+                ShaderType = "Water / Liquid",
+                Roughness = 0.1f,
+                Metalness = 0.9f,
+                EnvironmentReflection = 0.8f,
+                EnableBumpMap = false,
+                BumpMapStrength = 0.0f
+            };
+        }
+        if (id.Contains("light") || id.Contains("arrow") || id.Contains("banner"))
+        {
+            return new CustomShaderProperties
+            {
+                ShaderType = "Matte / Render-Only",
+                Roughness = 0.95f,
+                Metalness = 0.0f,
+                EnvironmentReflection = 0.0f,
+                EnableBumpMap = false,
+                BumpMapStrength = 0.0f
+            };
+        }
+        // Base structures, panels, metal
+        return new CustomShaderProperties
+        {
+            ShaderType = "Metallic / Structure",
+            Roughness = 0.45f,
+            Metalness = 0.75f,
+            EnvironmentReflection = 0.25f,
+            EnableBumpMap = true,
+            BumpMapStrength = 0.6f
+        };
+    }
+}
+
+/// <summary>
 /// Architecture for creating H3EK-compliant custom .shader (rmsh) tags,
 /// converting PNG/JPG model textures into tool.exe compatible uncompressed TIFFs,
 /// updating tags\levels\shader_collections.txt, and organizing data/tags directory trees.
@@ -32,7 +97,7 @@ public static class CustomShaderBuilder
     /// Converts a PNG, JPG, or BMP file to an uncompressed 32-bit ARGB TIFF required by tool.exe 'tool bitmaps'.
     /// Ensures power-of-two dimensions, strips GDI+ metadata tags, and enforces CompressionNone.
     /// </summary>
-    public static bool ConvertImageToTif(string sourceImagePath, string targetTifPath)
+    public static bool ConvertImageToTif(string sourceImagePath, string targetTifPath, bool upscaleToHalo3Standards = false)
     {
         if (!File.Exists(sourceImagePath)) return false;
 
@@ -48,12 +113,34 @@ public static class CustomShaderBuilder
             int targetW = EnsurePowerOfTwo(src.Width);
             int targetH = EnsurePowerOfTwo(src.Height);
 
+            // Halo 3 Texture Standard Upscaling:
+            // Low-res textures (128x128 / 256x256) upscaled to 1024x1024.
+            // Ground & Cliff textures upscaled to 2048x2048 for high-fidelity terrain.
+            if (upscaleToHalo3Standards)
+            {
+                bool isTerrain = targetTifPath.Contains("ground", StringComparison.OrdinalIgnoreCase)
+                              || targetTifPath.Contains("cliff", StringComparison.OrdinalIgnoreCase)
+                              || targetTifPath.Contains("terrain", StringComparison.OrdinalIgnoreCase)
+                              || targetTifPath.Contains("rock", StringComparison.OrdinalIgnoreCase);
+
+                int minDim = isTerrain ? 2048 : 1024;
+                if (targetW < minDim || targetH < minDim)
+                {
+                    float scaleFactor = MathF.Max((float)minDim / targetW, (float)minDim / targetH);
+                    targetW = EnsurePowerOfTwo((int)(targetW * scaleFactor));
+                    targetH = EnsurePowerOfTwo((int)(targetH * scaleFactor));
+                    targetW = Math.Clamp(targetW, 1024, 2048);
+                    targetH = Math.Clamp(targetH, 1024, 2048);
+                }
+            }
+
             using var bmp = new Bitmap(targetW, targetH, PixelFormat.Format32bppArgb);
             using (var g = Graphics.FromImage(bmp))
             {
                 g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
                 g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
                 g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
+                g.CompositingQuality = System.Drawing.Drawing2D.CompositingQuality.HighQuality;
                 g.Clear(Color.Transparent);
                 g.DrawImage(src, new Rectangle(0, 0, targetW, targetH));
             }
@@ -199,21 +286,25 @@ public static class CustomShaderBuilder
         string fullShaderTagPath,
         string materialName,
         string relativeBitmapTagPath,
-        string? ekPath = null)
+        string? ekPath = null,
+        CustomShaderProperties? properties = null)
     {
         var dir = Path.GetDirectoryName(fullShaderTagPath);
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
 
-        string templateTag = Path.Combine(ekPath ?? "", "tags", "levels", "multi", "chill", "shaders", "chill_metal.shader");
+        properties ??= CustomShaderProperties.CreateDefault(materialName);
+
+        string templateTag = Path.Combine(ekPath ?? "", "tags", "levels", "multi", "shrine", "shaders", "forerunner", "panel_wallsection.shader");
         if (!File.Exists(templateTag) && !string.IsNullOrEmpty(ekPath))
         {
             string[] candidateTemplates = new[]
             {
-                Path.Combine(ekPath, "tags", "levels", "multi", "chill", "shaders", "chill_metal.shader"),
-                Path.Combine(ekPath, "tags", "levels", "multi", "chill", "shaders", "chill_bridgegen.shader"),
-                Path.Combine(ekPath, "tags", "levels", "multi", "chill", "shaders", "chill_snow.shader"),
-                Path.Combine(ekPath, "tags", "levels", "multi", "riverworld", "shaders", "riverworld_ground.shader"),
-                Path.Combine(ekPath, "tags", "levels", "multi", "salvation", "shaders", "sal_rock.shader")
+                Path.Combine(ekPath, "tags", "levels", "multi", "shrine", "shaders", "forerunner", "panel_wallsection.shader"),
+                Path.Combine(ekPath, "tags", "levels", "multi", "chill", "shaders", "waste_panel_trim.shader"),
+                Path.Combine(ekPath, "tags", "levels", "multi", "riverworld", "shaders", "riverworld_rock.shader"),
+                Path.Combine(ekPath, "tags", "levels", "multi", "shrine", "shaders", "human", "hev1.shader"),
+                Path.Combine(ekPath, "tags", "levels", "multi", "chill", "shaders", "chill_wall01.shader"),
+                Path.Combine(ekPath, "tags", "levels", "multi", "chill", "shaders", "chill_metal.shader")
             };
             templateTag = candidateTemplates.FirstOrDefault(File.Exists) ?? "";
         }
@@ -231,10 +322,57 @@ public static class CustomShaderBuilder
             return;
         }
 
-        // We use chill_metal.shader as our validated base template.
-        // chill_metal.shader has base_map: "levels\multi\riverworld\bitmaps\riverworld_metal" (length 48).
-        const string templateSearchTarget = @"levels\multi\riverworld\bitmaps\riverworld_metal";
-        const int targetLen = 48; // Exactly 48 characters
+        byte[] raw = File.ReadAllBytes(templateTag);
+        string templateStr = Encoding.ASCII.GetString(raw);
+
+        // Standard environment shader template (_0_1_0_1_2_2_0_0_0_0).
+        // panel_wallsection.shader is our clean, authentic, non-strata matte environment template.
+        // Base map: "levels\multi\shrine\bitmaps\forerunner\panel_wallsection_dif" (60 characters).
+        // Bump map: "levels\multi\shrine\bitmaps\forerunner\panel_wallsection_bump" (61 characters).
+        // Detail map: "levels\multi\salvation\bitmaps\weathering_smear_detail" (54 characters).
+        string templateSearchTarget = @"levels\multi\shrine\bitmaps\forerunner\panel_wallsection_dif";
+        int targetLen = 60;
+        string templateBumpTarget = @"levels\multi\shrine\bitmaps\forerunner\panel_wallsection_bump";
+        int targetBumpLen = 61;
+        string templateDetailTarget = @"levels\multi\salvation\bitmaps\weathering_smear_detail";
+        int targetDetailLen = 54;
+
+        if (templateStr.Contains(@"levels\multi\shrine\bitmaps\forerunner\panel_wallsection_dif"))
+        {
+            templateSearchTarget = @"levels\multi\shrine\bitmaps\forerunner\panel_wallsection_dif";
+            targetLen = 60;
+            templateBumpTarget = @"levels\multi\shrine\bitmaps\forerunner\panel_wallsection_bump";
+            targetBumpLen = 61;
+            templateDetailTarget = @"levels\multi\salvation\bitmaps\weathering_smear_detail";
+            targetDetailLen = 54;
+        }
+        else if (templateStr.Contains(@"levels\solo\070_waste\bitmaps\waste_panel_trim"))
+        {
+            templateSearchTarget = @"levels\solo\070_waste\bitmaps\waste_panel_trim";
+            targetLen = 46;
+            templateBumpTarget = @"levels\solo\070_waste\bitmaps\waste_panel_trim_bump";
+            targetBumpLen = 51;
+            templateDetailTarget = "";
+            targetDetailLen = 0;
+        }
+        else if (templateStr.Contains(@"levels\multi\riverworld\bitmaps\riverworld_metal"))
+        {
+            templateSearchTarget = @"levels\multi\riverworld\bitmaps\riverworld_metal";
+            targetLen = 48;
+            templateBumpTarget = @"levels\multi\riverworld\bitmaps\riverworld_metal_bump";
+            targetBumpLen = 53;
+            templateDetailTarget = "";
+            targetDetailLen = 0;
+        }
+        else if (templateStr.Contains(@"levels\multi\riverworld\bitmaps\cliff_rock_base_brown"))
+        {
+            templateSearchTarget = @"levels\multi\riverworld\bitmaps\cliff_rock_base_brown";
+            targetLen = 53;
+            templateBumpTarget = @"levels\multi\riverworld\bitmaps\cliff_rock_bump";
+            targetBumpLen = 47;
+            templateDetailTarget = @"levels\multi\riverworld\bitmaps\cliff_rock_detail";
+            targetDetailLen = 49;
+        }
 
         string normalizedBitm = relativeBitmapTagPath.Replace('/', '\\').Trim('\\');
         if (normalizedBitm.EndsWith(".bitmap", StringComparison.OrdinalIgnoreCase))
@@ -242,58 +380,19 @@ public static class CustomShaderBuilder
             normalizedBitm = normalizedBitm[..^7];
         }
 
-        string paddedBitmPath;
-        if (normalizedBitm.Length > targetLen)
-        {
-            int lastSlash = normalizedBitm.LastIndexOf('\\');
-            if (lastSlash > 0 && lastSlash < targetLen)
-            {
-                string dirPart = normalizedBitm.Substring(0, lastSlash + 1);
-                int maxNameLen = targetLen - dirPart.Length;
-                string namePart = normalizedBitm.Substring(lastSlash + 1);
-                if (namePart.Length > maxNameLen) namePart = namePart.Substring(0, maxNameLen);
-                normalizedBitm = dirPart + namePart;
-            }
-            else
-            {
-                normalizedBitm = normalizedBitm.Substring(0, targetLen);
-            }
-        }
+        string paddedBitmPath = PadPathToLength(normalizedBitm, targetLen);
 
-        if (normalizedBitm.Length < targetLen)
-        {
-            int lastSlash = normalizedBitm.LastIndexOf('\\');
-            int pad = targetLen - normalizedBitm.Length;
-            if (lastSlash >= 0)
-            {
-                paddedBitmPath = normalizedBitm.Substring(0, lastSlash) + new string('\\', pad + 1) + normalizedBitm.Substring(lastSlash + 1);
-            }
-            else
-            {
-                paddedBitmPath = normalizedBitm + new string('\\', pad);
-            }
-        }
-        else
-        {
-            paddedBitmPath = normalizedBitm;
-        }
+        string bumpRelPath = normalizedBitm + "_bump";
+        bool hasBumpBitmap = !string.IsNullOrEmpty(ekPath) &&
+                             (File.Exists(Path.Combine(ekPath, "tags", bumpRelPath + ".bitmap")) ||
+                              File.Exists(Path.Combine(ekPath, "data", bumpRelPath + ".tif")));
 
-        // If target file already exists and is already patched with this exact bitmap, preserve it
-        if (File.Exists(fullShaderTagPath) && new FileInfo(fullShaderTagPath).Length > 1024)
-        {
-            byte[] existingBytes = File.ReadAllBytes(fullShaderTagPath);
-            string existingStr = Encoding.ASCII.GetString(existingBytes);
-            if (existingStr.Contains(paddedBitmPath) || existingStr.Contains(normalizedBitm))
-            {
-                return;
-            }
-        }
-
-        byte[] raw = File.ReadAllBytes(templateTag);
         byte[] searchBytes = Encoding.ASCII.GetBytes(templateSearchTarget);
         byte[] replaceBytes = Encoding.ASCII.GetBytes(paddedBitmPath);
+
         byte[] bumpSuffix = Encoding.ASCII.GetBytes("_bump");
 
+        // Replace base albedo map references (guarding against bump map if bump shares base prefix)
         for (int i = 0; i <= raw.Length - searchBytes.Length; i++)
         {
             bool match = true;
@@ -324,7 +423,131 @@ public static class CustomShaderBuilder
             }
         }
 
+        // Neutralize detail_map (eliminates horizontal strata / high-frequency repeating detail)
+        if (!string.IsNullOrEmpty(templateDetailTarget) && targetDetailLen > 0)
+        {
+            string neutralDetail = PadPathToLength(@"shaders\default_bitmaps\bitmaps\gray_50_percent", targetDetailLen);
+            byte[] detailSearchBytes = Encoding.ASCII.GetBytes(templateDetailTarget);
+            byte[] neutralDetailBytes = Encoding.ASCII.GetBytes(neutralDetail);
+
+            for (int i = 0; i <= raw.Length - detailSearchBytes.Length; i++)
+            {
+                bool match = true;
+                for (int j = 0; j < detailSearchBytes.Length; j++)
+                {
+                    if (raw[i + j] != detailSearchBytes[j]) { match = false; break; }
+                }
+                if (match)
+                {
+                    Array.Copy(neutralDetailBytes, 0, raw, i, neutralDetailBytes.Length);
+                }
+            }
+        }
+
+        // Configure bump map (if custom bump exists AND is enabled, pad to length; otherwise neutralize to gray_50_percent)
+        if (!string.IsNullOrEmpty(templateBumpTarget) && targetBumpLen > 0)
+        {
+            bool shouldReplaceBump = (hasBumpBitmap && properties.EnableBumpMap) || !templateStr.Contains(@"levels\multi\riverworld\bitmaps\riverworld_metal");
+            if (shouldReplaceBump)
+            {
+                string neutralBump = PadPathToLength(@"shaders\default_bitmaps\bitmaps\gray_50_percent", targetBumpLen);
+                string primaryBumpPath = (hasBumpBitmap && properties.EnableBumpMap)
+                    ? PadPathToLength(bumpRelPath, targetBumpLen)
+                    : neutralBump;
+                byte[] bumpSearchBytes = Encoding.ASCII.GetBytes(templateBumpTarget);
+                byte[] bumpReplaceBytes = Encoding.ASCII.GetBytes(primaryBumpPath);
+
+                for (int i = 0; i <= raw.Length - bumpSearchBytes.Length; i++)
+                {
+                    bool match = true;
+                    for (int j = 0; j < bumpSearchBytes.Length; j++)
+                    {
+                        if (raw[i + j] != bumpSearchBytes[j]) { match = false; break; }
+                    }
+
+                    if (match)
+                    {
+                        Array.Copy(bumpReplaceBytes, 0, raw, i, bumpReplaceBytes.Length);
+                    }
+                }
+            }
+        }
+
+        // Patch physical shader properties (roughness, metalness, reflections)
+        PatchShaderFloatParam(raw, "specular_coefficient", properties.Metalness, properties.Metalness * 0.3f);
+        PatchShaderFloatParam(raw, "roughness", properties.Roughness, properties.Roughness);
+        PatchShaderFloatParam(raw, "environment_map_specular_contribution", properties.EnvironmentReflection, properties.EnvironmentReflection);
+        PatchShaderFloatParam(raw, "area_specular_contribution", properties.Metalness * 0.15f, properties.Metalness * 0.15f);
+        PatchShaderFloatParam(raw, "analytical_specular_contribution", properties.Metalness * 0.4f, properties.Metalness * 0.5f);
+
         File.WriteAllBytes(fullShaderTagPath, raw);
+    }
+
+    private static void PatchShaderFloatParam(byte[] raw, string paramName, float val1, float val2)
+    {
+        string needle = paramName + "frgt";
+        byte[] needleBytes = Encoding.ASCII.GetBytes(needle);
+        byte[] adgt = Encoding.ASCII.GetBytes("adgt");
+
+        int idx = -1;
+        for (int i = 0; i <= raw.Length - needleBytes.Length; i++)
+        {
+            bool m = true;
+            for (int j = 0; j < needleBytes.Length; j++)
+            {
+                if (raw[i + j] != needleBytes[j]) { m = false; break; }
+            }
+            if (m) { idx = i; break; }
+        }
+
+        if (idx >= 0)
+        {
+            int adgtIdx = -1;
+            int limit = Math.Min(raw.Length - 4, idx + 350);
+            for (int i = idx; i <= limit; i++)
+            {
+                if (raw[i] == adgt[0] && raw[i + 1] == adgt[1] && raw[i + 2] == adgt[2] && raw[i + 3] == adgt[3])
+                {
+                    adgtIdx = i;
+                    break;
+                }
+            }
+
+            if (adgtIdx >= 0 && adgtIdx + 24 <= raw.Length)
+            {
+                byte[] b1 = BitConverter.GetBytes(val1);
+                byte[] b2 = BitConverter.GetBytes(val2);
+                Array.Copy(b1, 0, raw, adgtIdx + 16, 4);
+                Array.Copy(b2, 0, raw, adgtIdx + 20, 4);
+            }
+        }
+    }
+
+    private static string PadPathToLength(string path, int targetLen)
+    {
+        if (path.Length == targetLen) return path;
+
+        if (path.Length > targetLen)
+        {
+            int lastSlash = path.LastIndexOf('\\');
+            if (lastSlash > 0 && lastSlash < targetLen)
+            {
+                string dirPart = path.Substring(0, lastSlash + 1);
+                int maxNameLen = targetLen - dirPart.Length;
+                string namePart = path.Substring(lastSlash + 1);
+                if (namePart.Length > maxNameLen) namePart = namePart.Substring(0, maxNameLen);
+                return dirPart + namePart;
+            }
+            return path.Substring(0, targetLen);
+        }
+
+        int slash = path.LastIndexOf('\\');
+        int pad = targetLen - path.Length;
+        if (slash >= 0)
+        {
+            return path.Substring(0, slash) + new string('\\', pad + 1) + path.Substring(slash + 1);
+        }
+        return path + new string('\\', pad);
     }
 
     /// <summary>
@@ -374,8 +597,9 @@ public static class CustomShaderBuilder
         string levelName,
         IEnumerable<MeshObject> meshes,
         string? sourceAssetDir,
-        HaloShaderCatalog? catalog = null)
-        => SetupCustomShadersForModel(ekPath, levelName, "multi", meshes, sourceAssetDir, catalog);
+        HaloShaderCatalog? catalog = null,
+        Dictionary<string, CustomShaderProperties>? shaderPropertiesMap = null)
+        => SetupCustomShadersForModel(ekPath, levelName, "multi", meshes, sourceAssetDir, catalog, shaderPropertiesMap);
 
     /// <summary>
     /// Processes imported geometry and textures:
@@ -393,7 +617,8 @@ public static class CustomShaderBuilder
         string scenarioType,
         IEnumerable<MeshObject> meshes,
         string? sourceAssetDir,
-        HaloShaderCatalog? catalog = null)
+        HaloShaderCatalog? catalog = null,
+        Dictionary<string, CustomShaderProperties>? shaderPropertiesMap = null)
     {
         var results = new List<CustomShaderResult>();
         string cleanLevel = SanitizeIdentifier(levelName);
@@ -412,9 +637,35 @@ public static class CustomShaderBuilder
 
         // Search directory for matching textures
         var candidateFiles = new List<string>();
+        var searchDirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         if (!string.IsNullOrEmpty(sourceAssetDir) && Directory.Exists(sourceAssetDir))
+            searchDirs.Add(sourceAssetDir);
+
+        try
         {
-            candidateFiles.AddRange(Directory.GetFiles(sourceAssetDir, "*.*", SearchOption.AllDirectories));
+            string desktop = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+            if (Directory.Exists(desktop))
+            {
+                string coagTex = Path.Combine(desktop, "coagulation", "Textures");
+                if (Directory.Exists(coagTex)) searchDirs.Add(coagTex);
+                string coagRoot = Path.Combine(desktop, "coagulation");
+                if (Directory.Exists(coagRoot)) searchDirs.Add(coagRoot);
+                string levelTex = Path.Combine(desktop, levelName, "Textures");
+                if (Directory.Exists(levelTex)) searchDirs.Add(levelTex);
+                string levelRoot = Path.Combine(desktop, levelName);
+                if (Directory.Exists(levelRoot)) searchDirs.Add(levelRoot);
+            }
+        }
+        catch { }
+
+        foreach (var dir in searchDirs)
+        {
+            try
+            {
+                candidateFiles.AddRange(Directory.GetFiles(dir, "*.*", SearchOption.AllDirectories));
+            }
+            catch { }
         }
 
         // Distinct raw materials
@@ -444,32 +695,87 @@ public static class CustomShaderBuilder
             if (!cleanToTexMap.ContainsKey(cleanId))
             {
                 // Find matching texture file:
-                // 1. Check if any mesh with this material has an explicit SourceTexturePath
-                string? matchedTex = meshList
-                    .Where(m => (m.MaterialName == rawMat || m.MaterialSlots.Contains(rawMat)) &&
-                                !string.IsNullOrEmpty(m.SourceTexturePath) &&
-                                File.Exists(m.SourceTexturePath))
-                    .Select(m => m.SourceTexturePath)
-                    .FirstOrDefault();
-
-                // 2. Direct candidate matching from asset directory
-                if (string.IsNullOrEmpty(matchedTex))
+                // 1. Check if any mesh has an explicit MaterialTextureMap for this material
+                string? matchedTex = null;
+                foreach (var m in meshList)
                 {
-                    matchedTex = candidateFiles.FirstOrDefault(f =>
+                    if (m.MaterialTextureMap != null && m.MaterialTextureMap.Count > 0)
                     {
-                        string fn = Path.GetFileNameWithoutExtension(f).ToLowerInvariant();
-                        string fnNorm = fn.Replace(" ", "_");
-                        return fn == cleanId ||
-                               fnNorm == cleanId ||
-                               fn.Contains(cleanId) ||
-                               fnNorm.Contains(cleanId) ||
-                               fn.EndsWith(cleanId) ||
-                               cleanId.Contains(fn) ||
-                               cleanId.Contains(fnNorm);
-                    });
+                        if (m.MaterialTextureMap.TryGetValue(rawMat, out var tex) && File.Exists(tex))
+                        {
+                            matchedTex = tex;
+                            break;
+                        }
+                        foreach (var (slotKey, texVal) in m.MaterialTextureMap)
+                        {
+                            if (!string.IsNullOrEmpty(texVal) && File.Exists(texVal))
+                            {
+                                string cleanSlot = CleanMaterialIdentifier(slotKey, cleanLevel);
+                                if (cleanSlot.Equals(cleanId, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    matchedTex = texVal;
+                                    break;
+                                }
+                            }
+                        }
+                        if (!string.IsNullOrEmpty(matchedTex)) break;
+                    }
                 }
 
-                // 3. Check data\levels\...\bitmaps directory for pre-existing source texture
+                // 2. Check if any mesh with this material has an explicit SourceTexturePath
+                if (string.IsNullOrEmpty(matchedTex))
+                {
+                    matchedTex = meshList
+                        .Where(m => (m.MaterialName == rawMat || m.MaterialSlots.Contains(rawMat)) &&
+                                    !string.IsNullOrEmpty(m.SourceTexturePath) &&
+                                    File.Exists(m.SourceTexturePath))
+                        .Select(m => m.SourceTexturePath)
+                        .FirstOrDefault();
+                }
+
+                // 3. Direct candidate matching from asset directory (prioritize diffuse over alpha/bump/masks)
+                if (string.IsNullOrEmpty(matchedTex) && candidateFiles.Count > 0)
+                {
+                    var diffuseCandidates = candidateFiles.Where(f =>
+                    {
+                        string fn = Path.GetFileNameWithoutExtension(f).ToLowerInvariant();
+                        return !fn.Contains("alpha") && !fn.Contains("bump") && !fn.EndsWith(" cc") &&
+                               !fn.Contains("mask") && !fn.Contains("cloud");
+                    }).ToList();
+
+                    // Try exact name match
+                    matchedTex = diffuseCandidates.FirstOrDefault(f =>
+                    {
+                        string fn = Path.GetFileNameWithoutExtension(f).ToLowerInvariant().Replace(" ", "_");
+                        return fn == cleanId || fn == $"coag_{cleanId}" || fn == $"ch_{cleanId}" || fn == $"blood_{cleanId}";
+                    });
+
+                    // Try contains
+                    if (string.IsNullOrEmpty(matchedTex))
+                    {
+                        matchedTex = diffuseCandidates.FirstOrDefault(f =>
+                        {
+                            string fn = Path.GetFileNameWithoutExtension(f).ToLowerInvariant().Replace(" ", "_");
+                            return fn.Contains(cleanId) || cleanId.Contains(fn) ||
+                                   (cleanId == "ch_flat_graytech" && fn.Contains("graytech")) ||
+                                   (cleanId == "light" && fn.Contains("light_bands")) ||
+                                   (cleanId == "lights" && fn.Contains("lights")) ||
+                                   (cleanId == "arrow" && fn.Contains("arrow"));
+                        });
+                    }
+
+                    // Fallback to any candidate if still not found
+                    if (string.IsNullOrEmpty(matchedTex))
+                    {
+                        matchedTex = candidateFiles.FirstOrDefault(f =>
+                        {
+                            string fn = Path.GetFileNameWithoutExtension(f).ToLowerInvariant().Replace(" ", "_");
+                            return fn.Contains(cleanId);
+                        });
+                    }
+                }
+
+                // 4. Check data\levels\...\bitmaps directory for pre-existing source texture
                 if (string.IsNullOrEmpty(matchedTex))
                 {
                     foreach (var ext in new[] { ".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff" })
@@ -497,9 +803,55 @@ public static class CustomShaderBuilder
             {
                 if (!string.Equals(sourceTex, targetTif, StringComparison.OrdinalIgnoreCase))
                 {
-                    ConvertImageToTif(sourceTex, targetTif);
+                    ConvertImageToTif(sourceTex, targetTif, upscaleToHalo3Standards: true);
                 }
                 anyTifCreated = true;
+
+                // Also check for matching bump map
+                string? bumpSource = null;
+                string sourceDir = Path.GetDirectoryName(sourceTex) ?? "";
+                string sourceBaseName = Path.GetFileNameWithoutExtension(sourceTex);
+                var bumpCandidates = new[]
+                {
+                    Path.Combine(sourceDir, $"{sourceBaseName}_bump.png"),
+                    Path.Combine(sourceDir, $"{sourceBaseName}_bump.PNG"),
+                    Path.Combine(sourceDir, $"{sourceBaseName} bump.png"),
+                    Path.Combine(sourceDir, $"{sourceBaseName} bump.PNG"),
+                    Path.Combine(sourceDir, $"{cleanId}_bump.png"),
+                    Path.Combine(sourceDir, $"{cleanId}_bump.PNG"),
+                    Path.Combine(sourceDir, $"{cleanId} bump.png"),
+                    Path.Combine(sourceDir, $"{cleanId} bump.PNG")
+                };
+                foreach (var bc in bumpCandidates)
+                {
+                    if (File.Exists(bc)) { bumpSource = bc; break; }
+                }
+
+                // Specific Coagulation known bump map names
+                if (string.IsNullOrEmpty(bumpSource))
+                {
+                    if (cleanId.Equals("ground", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string p = Path.Combine(sourceDir, "coag_landslide_bump.PNG");
+                        if (File.Exists(p)) bumpSource = p;
+                    }
+                    else if (cleanId.Equals("coag_panel_i", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string p = Path.Combine(sourceDir, "panel_i_bump.PNG");
+                        if (File.Exists(p)) bumpSource = p;
+                    }
+                    else if (cleanId.Equals("panels", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string p = Path.Combine(sourceDir, "ch_panel_thin_strips_bump.PNG");
+                        if (File.Exists(p)) bumpSource = p;
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(bumpSource) && File.Exists(bumpSource))
+                {
+                    string targetBumpTif = Path.Combine(dataBitmapsDir, $"{cleanId}_bump.tif");
+                    ConvertImageToTif(bumpSource, targetBumpTif, upscaleToHalo3Standards: true);
+                }
             }
             else if (!File.Exists(targetTif))
             {
@@ -527,7 +879,13 @@ public static class CustomShaderBuilder
             string shaderTag = Path.Combine(tagsShadersDir, $"{cleanId}.shader");
             string relShader = Path.Combine("levels", scenarioType, cleanLevel, "shaders", $"{cleanId}.shader");
 
-            GenerateCustomShaderTag(shaderTag, cleanId, relBitm, ekPath);
+            CustomShaderProperties? props = null;
+            if (shaderPropertiesMap != null && shaderPropertiesMap.TryGetValue(cleanId, out var customP))
+            {
+                props = customP;
+            }
+
+            GenerateCustomShaderTag(shaderTag, cleanId, relBitm, ekPath, props);
 
             string fullMatName = $"{cleanLevel} {cleanId}";
             if (catalog != null)
@@ -544,40 +902,26 @@ public static class CustomShaderBuilder
         {
             if (!string.IsNullOrWhiteSpace(m.MaterialName) && rawToCleanMap.TryGetValue(m.MaterialName, out var cleanId))
             {
-                string prefix = "";
                 string orig = m.MaterialName;
-                while (orig.Length > 0 && (orig[0] == '!' || orig[0] == '%' || orig[0] == '+' || orig[0] == '$' || orig[0] == '*' || orig[0] == '@' || orig[0] == '~'))
-                {
-                    prefix += orig[0];
-                    orig = orig[1..];
-                }
-                while (orig.Length > 0 && (orig[^1] == '!' || orig[^1] == '%' || orig[^1] == '$' || orig[^1] == '*' || orig[^1] == '@' || orig[^1] == '~'))
-                {
-                    char flag = orig[^1];
-                    if (!prefix.Contains(flag)) prefix = flag + prefix;
-                    orig = orig[..^1];
-                }
-                m.MaterialName = $"{prefix}{cleanLevel} {cleanId}";
+                string leading = orig.StartsWith("+") ? "+" : "";
+                string trailing = "";
+                if (orig.Contains("%")) trailing += "%";
+                if (orig.Contains("!")) trailing += "!";
+                if (orig.Contains("'")) trailing += "'";
+                m.MaterialName = $"{leading}{cleanLevel} {cleanId}{trailing}";
             }
 
             for (int s = 0; s < m.MaterialSlots.Count; s++)
             {
                 if (rawToCleanMap.TryGetValue(m.MaterialSlots[s], out var cleanSlotId))
                 {
-                    string prefix = "";
                     string orig = m.MaterialSlots[s];
-                    while (orig.Length > 0 && (orig[0] == '!' || orig[0] == '%' || orig[0] == '+' || orig[0] == '$' || orig[0] == '*' || orig[0] == '@' || orig[0] == '~'))
-                    {
-                        prefix += orig[0];
-                        orig = orig[1..];
-                    }
-                    while (orig.Length > 0 && (orig[^1] == '!' || orig[^1] == '%' || orig[^1] == '$' || orig[^1] == '*' || orig[^1] == '@' || orig[^1] == '~'))
-                    {
-                        char flag = orig[^1];
-                        if (!prefix.Contains(flag)) prefix = flag + prefix;
-                        orig = orig[..^1];
-                    }
-                    m.MaterialSlots[s] = $"{prefix}{cleanLevel} {cleanSlotId}";
+                    string leading = orig.StartsWith("+") ? "+" : "";
+                    string trailing = "";
+                    if (orig.Contains("%")) trailing += "%";
+                    if (orig.Contains("!")) trailing += "!";
+                    if (orig.Contains("'")) trailing += "'";
+                    m.MaterialSlots[s] = $"{leading}{cleanLevel} {cleanSlotId}{trailing}";
                 }
             }
         }

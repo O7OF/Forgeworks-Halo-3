@@ -3524,19 +3524,20 @@ public class ForgeWorksTests
     [Fact]
     public void AssExporter_PreservesFlagsAndPunctuation_WithoutManglingIntoUnderscores()
     {
-        // 1. Suffix '!' (e.g. lights!) must be normalized to render-only prefix '!' without mangling into 'lights_'
+        // Per C20 Wiki: Material symbols belong at the END of the material name:
+        // 1. Suffix '!' (e.g. lights!) must be placed at the end without mangling into 'lights_'
         string m1 = AssExporter.SanitizeMaterialName("lights!", "icefields");
-        Assert.Equal("!icefields lights", m1);
+        Assert.Equal("icefields lights!", m1);
 
-        // 2. Suffix '%' (e.g. foliage%) must be normalized to two-sided prefix '%'
+        // 2. Suffix '%' (e.g. foliage%) must be placed at the end for two-sided rendering
         string m2 = AssExporter.SanitizeMaterialName("foliage%", "icefields");
-        Assert.Equal("%icefields foliage", m2);
+        Assert.Equal("icefields foliage%", m2);
 
-        // 3. Leading '!%' must be preserved
+        // 3. Leading '!%' must be normalized to trailing symbols '%!'
         string m3 = AssExporter.SanitizeMaterialName("!%glass", "icefields");
-        Assert.Equal("!%icefields glass", m3);
+        Assert.Equal("icefields glass%!", m3);
 
-        // 4. Special '+sky' must remain exact
+        // 4. Special '+sky' must remain exact with leading '+'
         string m4 = AssExporter.SanitizeMaterialName("+sky", "icefields");
         Assert.Equal("+sky", m4);
 
@@ -3573,7 +3574,7 @@ public class ForgeWorksTests
         // MaterialSlots must be populated with both materials
         Assert.Equal(2, mesh.MaterialSlots.Count);
         Assert.Equal("icefields ground", mesh.MaterialSlots[0]);
-        Assert.Equal("!icefields lights", mesh.MaterialSlots[1]);
+        Assert.Equal("icefields lights!", mesh.MaterialSlots[1]);
 
         // Triangles must retain their material indices
         Assert.Equal(0, mesh.Triangles[0].MaterialIndex);
