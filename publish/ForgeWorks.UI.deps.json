@@ -7,15 +7,15 @@
   "targets": {
     ".NETCoreApp,Version=v10.0": {},
     ".NETCoreApp,Version=v10.0/win-x64": {
-      "ForgeWorks.UI/2.4.2": {
+      "ForgeWorks.UI/2.4.3": {
         "dependencies": {
           "Avalonia": "12.1.4",
           "Avalonia.Desktop": "12.1.4",
           "Avalonia.Fonts.Inter": "12.1.4",
           "Avalonia.Themes.Fluent": "12.1.4",
           "CommunityToolkit.Mvvm": "8.4.2",
-          "ForgeWorks.Blam": "2.4.2",
-          "ForgeWorks.Core": "2.4.2",
+          "ForgeWorks.Blam": "2.4.3",
+          "ForgeWorks.Core": "2.4.3",
           "Silk.NET.OpenGL": "2.23.0",
           "System.Drawing.Common": "10.0.13",
           "runtimepack.Microsoft.NETCore.App.Runtime.win-x64": "10.0.13"
@@ -1160,27 +1160,27 @@
           }
         }
       },
-      "ForgeWorks.Blam/2.4.2": {
+      "ForgeWorks.Blam/2.4.3": {
         "dependencies": {
-          "ForgeWorks.Core": "2.4.2",
+          "ForgeWorks.Core": "2.4.3",
           "System.Drawing.Common": "10.0.13"
         },
         "runtime": {
           "ForgeWorks.Blam.dll": {
-            "assemblyVersion": "2.4.2.0",
-            "fileVersion": "2.4.2.0"
+            "assemblyVersion": "2.4.3.0",
+            "fileVersion": "2.4.3.0"
           }
         }
       },
-      "ForgeWorks.Core/2.4.2": {
+      "ForgeWorks.Core/2.4.3": {
         "dependencies": {
           "AssimpNetter": "6.0.5",
           "ForgeWorks.FSharp": "2.4.2"
         },
         "runtime": {
           "ForgeWorks.Core.dll": {
-            "assemblyVersion": "2.4.2.0",
-            "fileVersion": "2.4.2.0"
+            "assemblyVersion": "2.4.3.0",
+            "fileVersion": "2.4.3.0"
           }
         }
       },
@@ -1198,7 +1198,7 @@
     }
   },
   "libraries": {
-    "ForgeWorks.UI/2.4.2": {
+    "ForgeWorks.UI/2.4.3": {
       "type": "project",
       "serviceable": false,
       "sha512": ""
@@ -1411,12 +1411,12 @@
       "path": "tmds.dbus.protocol/0.94.1",
       "hashPath": "tmds.dbus.protocol.0.94.1.nupkg.sha512"
     },
-    "ForgeWorks.Blam/2.4.2": {
+    "ForgeWorks.Blam/2.4.3": {
       "type": "project",
       "serviceable": false,
       "sha512": ""
     },
-    "ForgeWorks.Core/2.4.2": {
+    "ForgeWorks.Core/2.4.3": {
       "type": "project",
       "serviceable": false,
       "sha512": ""

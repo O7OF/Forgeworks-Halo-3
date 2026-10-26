@@ -33,3 +33,9 @@ $RECYCLE.BIN/
 .DS_Store
 
 .fake
+
+## User Projects & Map Files (Ignore all user map projects)
+My Projects/*
+!My Projects/.gitkeep
+*.blam
+last-tool-output-log.txt

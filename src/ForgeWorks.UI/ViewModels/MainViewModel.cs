@@ -3569,6 +3569,24 @@ public partial class MainViewModel : ViewModelBase
         exportMeshes.AddRange(SceneGraph.GetPortalMeshes());
         if (exportMeshes.Count == 0 && ActiveMesh != null) exportMeshes.Add(ActiveMesh);
 
+        // Auto-configure and compile any custom textures/bitmaps before exporting ASS geometry
+        if (!string.IsNullOrWhiteSpace(EkPath) && Directory.Exists(EkPath) && exportMeshes.Count > 0)
+        {
+            try
+            {
+                string? projDir = !string.IsNullOrEmpty(CurrentProjectPath) ? Path.GetDirectoryName(CurrentProjectPath) : null;
+                CustomShaderBuilder.SetupCustomShadersForModel(
+                    EkPath,
+                    ActiveLevelName,
+                    "multi",
+                    exportMeshes,
+                    projDir,
+                    _catalog);
+                PerformShaderSearch();
+            }
+            catch { }
+        }
+
         var audit = ToolLimitGuard.AuditScene(exportMeshes);
         if (audit.NeedsAutoPartitioning)
         {
@@ -3583,7 +3601,7 @@ public partial class MainViewModel : ViewModelBase
 
         var materials = CollectMaterials(exportMeshes);
         AssExporter.ExportToFile(assPath, materials, exportMeshes, version: 3, levelName: ActiveLevelName);
-        StatusMessage = $"Exported ASS: {assPath} ({exportMeshes.Count} meshes, {materials.Count} materials).";
+        StatusMessage = $"Exported ASS: {assPath} ({exportMeshes.Count} meshes, {materials.Count} materials). Custom bitmaps & shaders compiled.";
     }
 
     [RelayCommand]
@@ -4307,6 +4325,31 @@ public partial class MainViewModel : ViewModelBase
                 exportMeshes = ToolLimitGuard.PartitionOversizedMeshes(exportMeshes, out var autoPortals);
                 exportMeshes.AddRange(autoPortals);
                 CompileLog += $"[ForgeWorks Tool Limit Guard] Partitioned into {exportMeshes.Count} compliant sub-clusters. Safe for tool_fast.exe!\n";
+            }
+
+            // Setup custom shaders & bitmaps for all meshes prior to ASS generation
+            if (!string.IsNullOrWhiteSpace(EkPath) && Directory.Exists(EkPath) && exportMeshes.Count > 0)
+            {
+                try
+                {
+                    string? projDir = !string.IsNullOrEmpty(CurrentProjectPath) ? Path.GetDirectoryName(CurrentProjectPath) : null;
+                    var shaderResults = CustomShaderBuilder.SetupCustomShadersForModel(
+                        EkPath,
+                        ActiveLevelName,
+                        "multi",
+                        exportMeshes,
+                        projDir,
+                        _catalog);
+                    if (shaderResults.Count > 0)
+                    {
+                        CompileLog += $"[ForgeWorks] Configured {shaderResults.Count} custom .shader tags & TIFFs for H3EK.\n";
+                    }
+                    PerformShaderSearch();
+                }
+                catch (Exception shaderEx)
+                {
+                    CompileLog += $"[ForgeWorks] Custom shader notice: {shaderEx.Message}\n";
+                }
             }
 
             foreach (var m in exportMeshes)

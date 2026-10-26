@@ -204,14 +204,8 @@ public static class CustomShaderBuilder
         var dir = Path.GetDirectoryName(fullShaderTagPath);
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
 
-        // If a valid custom or retail shader tag already exists at the target path, preserve it!
-        if (File.Exists(fullShaderTagPath) && new FileInfo(fullShaderTagPath).Length > 1024)
-        {
-            return;
-        }
-
-        // Try to clone an authentic retail template shader from H3EK
-        if (!string.IsNullOrEmpty(ekPath) && Directory.Exists(ekPath))
+        string templateTag = Path.Combine(ekPath ?? "", "tags", "levels", "multi", "chill", "shaders", "chill_metal.shader");
+        if (!File.Exists(templateTag) && !string.IsNullOrEmpty(ekPath))
         {
             string[] candidateTemplates = new[]
             {
@@ -219,39 +213,118 @@ public static class CustomShaderBuilder
                 Path.Combine(ekPath, "tags", "levels", "multi", "chill", "shaders", "chill_bridgegen.shader"),
                 Path.Combine(ekPath, "tags", "levels", "multi", "chill", "shaders", "chill_snow.shader"),
                 Path.Combine(ekPath, "tags", "levels", "multi", "riverworld", "shaders", "riverworld_ground.shader"),
-                Path.Combine(ekPath, "tags", "levels", "multi", "salvation", "shaders", "sal_rock.shader"),
-                Path.Combine(ekPath, "tags", "shaders", "invalid.shader")
+                Path.Combine(ekPath, "tags", "levels", "multi", "salvation", "shaders", "sal_rock.shader")
             };
+            templateTag = candidateTemplates.FirstOrDefault(File.Exists) ?? "";
+        }
 
-            foreach (var candidate in candidateTemplates)
+        if (string.IsNullOrEmpty(templateTag) || !File.Exists(templateTag))
+        {
+            // If no template is available (e.g. mock test environment), create a placeholder tag file
+            if (!File.Exists(fullShaderTagPath))
             {
-                if (File.Exists(candidate) && new FileInfo(candidate).Length > 1024)
+                using var stream = File.Create(fullShaderTagPath);
+                using var writer = new BinaryWriter(stream, Encoding.ASCII);
+                writer.Write(Encoding.ASCII.GetBytes("rmsh"));
+                writer.Write(new byte[1020]);
+            }
+            return;
+        }
+
+        // We use chill_metal.shader as our validated base template.
+        // chill_metal.shader has base_map: "levels\multi\riverworld\bitmaps\riverworld_metal" (length 48).
+        const string templateSearchTarget = @"levels\multi\riverworld\bitmaps\riverworld_metal";
+        const int targetLen = 48; // Exactly 48 characters
+
+        string normalizedBitm = relativeBitmapTagPath.Replace('/', '\\').Trim('\\');
+        if (normalizedBitm.EndsWith(".bitmap", StringComparison.OrdinalIgnoreCase))
+        {
+            normalizedBitm = normalizedBitm[..^7];
+        }
+
+        string paddedBitmPath;
+        if (normalizedBitm.Length > targetLen)
+        {
+            int lastSlash = normalizedBitm.LastIndexOf('\\');
+            if (lastSlash > 0 && lastSlash < targetLen)
+            {
+                string dirPart = normalizedBitm.Substring(0, lastSlash + 1);
+                int maxNameLen = targetLen - dirPart.Length;
+                string namePart = normalizedBitm.Substring(lastSlash + 1);
+                if (namePart.Length > maxNameLen) namePart = namePart.Substring(0, maxNameLen);
+                normalizedBitm = dirPart + namePart;
+            }
+            else
+            {
+                normalizedBitm = normalizedBitm.Substring(0, targetLen);
+            }
+        }
+
+        if (normalizedBitm.Length < targetLen)
+        {
+            int lastSlash = normalizedBitm.LastIndexOf('\\');
+            int pad = targetLen - normalizedBitm.Length;
+            if (lastSlash >= 0)
+            {
+                paddedBitmPath = normalizedBitm.Substring(0, lastSlash) + new string('\\', pad + 1) + normalizedBitm.Substring(lastSlash + 1);
+            }
+            else
+            {
+                paddedBitmPath = normalizedBitm + new string('\\', pad);
+            }
+        }
+        else
+        {
+            paddedBitmPath = normalizedBitm;
+        }
+
+        // If target file already exists and is already patched with this exact bitmap, preserve it
+        if (File.Exists(fullShaderTagPath) && new FileInfo(fullShaderTagPath).Length > 1024)
+        {
+            byte[] existingBytes = File.ReadAllBytes(fullShaderTagPath);
+            string existingStr = Encoding.ASCII.GetString(existingBytes);
+            if (existingStr.Contains(paddedBitmPath) || existingStr.Contains(normalizedBitm))
+            {
+                return;
+            }
+        }
+
+        byte[] raw = File.ReadAllBytes(templateTag);
+        byte[] searchBytes = Encoding.ASCII.GetBytes(templateSearchTarget);
+        byte[] replaceBytes = Encoding.ASCII.GetBytes(paddedBitmPath);
+        byte[] bumpSuffix = Encoding.ASCII.GetBytes("_bump");
+
+        for (int i = 0; i <= raw.Length - searchBytes.Length; i++)
+        {
+            bool match = true;
+            for (int j = 0; j < searchBytes.Length; j++)
+            {
+                if (raw[i + j] != searchBytes[j]) { match = false; break; }
+            }
+
+            if (match)
+            {
+                bool isBump = (i + searchBytes.Length + bumpSuffix.Length <= raw.Length);
+                if (isBump)
                 {
-                    try
+                    for (int b = 0; b < bumpSuffix.Length; b++)
                     {
-                        // Copy the authentic validated template directly.
-                        // DO NOT perform global ASCII regex byte-replacement across the binary file,
-                        // as matching "bitm" inside string tables or header chunks causes reproducible
-                        // tag corruption and Tool fatal exception (\sd1, 1836345698).
-                        File.Copy(candidate, fullShaderTagPath, overwrite: true);
-                        return;
+                        if (raw[i + searchBytes.Length + b] != bumpSuffix[b])
+                        {
+                            isBump = false;
+                            break;
+                        }
                     }
-                    catch
-                    {
-                        // Fall back to next candidate
-                    }
+                }
+
+                if (!isBump)
+                {
+                    Array.Copy(replaceBytes, 0, raw, i, replaceBytes.Length);
                 }
             }
         }
 
-        // If no template is available (e.g. mock test environment), create a placeholder tag file
-        if (!File.Exists(fullShaderTagPath))
-        {
-            using var stream = File.Create(fullShaderTagPath);
-            using var writer = new BinaryWriter(stream, Encoding.ASCII);
-            writer.Write(Encoding.ASCII.GetBytes("rmsh"));
-            writer.Write(new byte[1020]);
-        }
+        File.WriteAllBytes(fullShaderTagPath, raw);
     }
 
     /// <summary>
@@ -370,22 +443,45 @@ public static class CustomShaderBuilder
 
             if (!cleanToTexMap.ContainsKey(cleanId))
             {
-                // Find matching texture file
-                string? matchedTex = null;
+                // Find matching texture file:
+                // 1. Check if any mesh with this material has an explicit SourceTexturePath
+                string? matchedTex = meshList
+                    .Where(m => (m.MaterialName == rawMat || m.MaterialSlots.Contains(rawMat)) &&
+                                !string.IsNullOrEmpty(m.SourceTexturePath) &&
+                                File.Exists(m.SourceTexturePath))
+                    .Select(m => m.SourceTexturePath)
+                    .FirstOrDefault();
 
-                // 1. Direct candidate matching
-                matchedTex = candidateFiles.FirstOrDefault(f =>
+                // 2. Direct candidate matching from asset directory
+                if (string.IsNullOrEmpty(matchedTex))
                 {
-                    string fn = Path.GetFileNameWithoutExtension(f).ToLowerInvariant();
-                    string fnNorm = fn.Replace(" ", "_");
-                    return fn == cleanId ||
-                           fnNorm == cleanId ||
-                           fn.Contains(cleanId) ||
-                           fnNorm.Contains(cleanId) ||
-                           fn.EndsWith(cleanId) ||
-                           cleanId.Contains(fn) ||
-                           cleanId.Contains(fnNorm);
-                });
+                    matchedTex = candidateFiles.FirstOrDefault(f =>
+                    {
+                        string fn = Path.GetFileNameWithoutExtension(f).ToLowerInvariant();
+                        string fnNorm = fn.Replace(" ", "_");
+                        return fn == cleanId ||
+                               fnNorm == cleanId ||
+                               fn.Contains(cleanId) ||
+                               fnNorm.Contains(cleanId) ||
+                               fn.EndsWith(cleanId) ||
+                               cleanId.Contains(fn) ||
+                               cleanId.Contains(fnNorm);
+                    });
+                }
+
+                // 3. Check data\levels\...\bitmaps directory for pre-existing source texture
+                if (string.IsNullOrEmpty(matchedTex))
+                {
+                    foreach (var ext in new[] { ".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff" })
+                    {
+                        string p = Path.Combine(dataBitmapsDir, cleanId + ext);
+                        if (File.Exists(p))
+                        {
+                            matchedTex = p;
+                            break;
+                        }
+                    }
+                }
 
                 cleanToTexMap[cleanId] = matchedTex;
             }
@@ -399,12 +495,20 @@ public static class CustomShaderBuilder
 
             if (sourceTex != null && File.Exists(sourceTex))
             {
-                ConvertImageToTif(sourceTex, targetTif);
+                if (!string.Equals(sourceTex, targetTif, StringComparison.OrdinalIgnoreCase))
+                {
+                    ConvertImageToTif(sourceTex, targetTif);
+                }
                 anyTifCreated = true;
             }
             else if (!File.Exists(targetTif))
             {
                 CreateDefaultTexture(targetTif, cleanId);
+                anyTifCreated = true;
+            }
+            else
+            {
+                // Existing .tif in directory
                 anyTifCreated = true;
             }
         }

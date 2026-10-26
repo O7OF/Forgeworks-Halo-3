@@ -3476,6 +3476,52 @@ public class ForgeWorksTests
     }
 
     [Fact]
+    public void CustomShaderBuilder_GenerateCustomShaderTag_PatchesBaseMapTagReference_WithPaddedBitmapPath()
+    {
+        string tempDir = Path.Combine(Path.GetTempPath(), "ForgeWorks_ShaderPatchTest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            // Create mock template tag with base_map and bump_map
+            string templateDir = Path.Combine(tempDir, "tags", "levels", "multi", "chill", "shaders");
+            Directory.CreateDirectory(templateDir);
+            string templatePath = Path.Combine(templateDir, "chill_metal.shader");
+
+            byte[] mock = new byte[4096];
+            System.Text.Encoding.ASCII.GetBytes("rmsh").CopyTo(mock, 0x24);
+            // Put riverworld_metal and riverworld_metal_bump
+            byte[] baseBytes = System.Text.Encoding.ASCII.GetBytes(@"levels\multi\riverworld\bitmaps\riverworld_metal");
+            byte[] bumpBytes = System.Text.Encoding.ASCII.GetBytes(@"levels\multi\riverworld\bitmaps\riverworld_metal_bump");
+
+            baseBytes.CopyTo(mock, 0x500);
+            bumpBytes.CopyTo(mock, 0x700);
+            baseBytes.CopyTo(mock, 0x900); // Dependency table
+            bumpBytes.CopyTo(mock, 0xB00);
+
+            File.WriteAllBytes(templatePath, mock);
+
+            string outShaderPath = Path.Combine(tempDir, "custom.shader");
+            CustomShaderBuilder.GenerateCustomShaderTag(outShaderPath, "ground", @"levels\multi\custom_canvas\bitmaps\ground", tempDir);
+
+            Assert.True(File.Exists(outShaderPath));
+            byte[] outBytes = File.ReadAllBytes(outShaderPath);
+            Assert.Equal(mock.Length, outBytes.Length);
+
+            string outStr = System.Text.Encoding.ASCII.GetString(outBytes);
+            // Verify custom_canvas\bitmaps replaced base_map occurrences
+            Assert.Contains(@"custom_canvas\bitmaps", outStr);
+            Assert.Contains(@"ground", outStr);
+
+            // Verify bump map was preserved and not damaged
+            Assert.Contains(@"levels\multi\riverworld\bitmaps\riverworld_metal_bump", outStr);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
     public void AssExporter_PreservesFlagsAndPunctuation_WithoutManglingIntoUnderscores()
     {
         // 1. Suffix '!' (e.g. lights!) must be normalized to render-only prefix '!' without mangling into 'lights_'

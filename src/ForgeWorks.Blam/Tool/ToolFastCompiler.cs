@@ -160,6 +160,17 @@ public sealed class ToolFastCompiler
                 fullLog.Add(bLog);
                 fullLog.Add($"Exit Code: {bCode}\n");
                 WriteLastToolOutputLog(ekPath, string.Join("\n", fullLog));
+
+                // Ensure all compiled custom bitmaps have corresponding .shader tags referencing them
+                string fullShadersDir = Path.Combine(ekPath, "tags", "levels", scenarioType, levelName, "shaders");
+                Directory.CreateDirectory(fullShadersDir);
+                foreach (var tif in Directory.GetFiles(fullDataBitmaps, "*.tif"))
+                {
+                    string id = Path.GetFileNameWithoutExtension(tif);
+                    string shaderTag = Path.Combine(fullShadersDir, $"{id}.shader");
+                    string relBitm = Path.Combine("levels", scenarioType, levelName, "bitmaps", id);
+                    Shaders.CustomShaderBuilder.GenerateCustomShaderTag(shaderTag, id, relBitm, ekPath);
+                }
             }
 
             // Step 1: Synthesize and write authentic .scenario tag with all spawns, equipment, volumes
